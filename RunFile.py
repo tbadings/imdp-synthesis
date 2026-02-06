@@ -25,7 +25,7 @@ from core.partition import RectangularPartition
 # import sys
 # sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
-# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000']
+# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
