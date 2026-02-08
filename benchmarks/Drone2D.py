@@ -35,14 +35,14 @@ class Drone2D(DroneDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-3, -3]
         self.uMax = [3 ,3]
-        self.num_actions = [7, 7]
+        self.num_actions = [5, 5]
 
-        v_min = -4.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 4.5
+        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
+        v_max = 3.5
 
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min], [7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([14, 9, 14, 9]) # 7 not enough
+        self.partition['number_per_dim'] = np.array([14, 7, 14, 7]) # 7 not enough
 
         self.goal = np.array([
             [[3, v_min, 3, v_min], [6, v_max, 6, v_max]]

@@ -30,7 +30,9 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
         - idx_upp: The upper index bounds in the grid corresponding to the forward reachable set.
     """
 
-    frs_min, frs_max = step_set(state_min, state_max, input, input)
+    epsilon = 0.00
+
+    frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
 
     # If covariance is zero, then the span equals the number of cells the forward reachable set contains at most
     frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width), int)

@@ -203,7 +203,7 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0]])
 
             # Covariance of the process noise
-            cov = [0,0,0,0] #[0.15, 0.15, 0.15, 0.15]
+            cov = [0.15, 0, 0.15, 0] #[0.15, 0.15, 0.15, 0.15]
 
         else:
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
@@ -213,7 +213,7 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0], [0], [0]])
 
             # Covariance of the process noise
-            cov = [0,0,0,0,0,0] #[0.15, 0, 0.15, 0, 0.15, 0]
+            cov = [0.15, 0, 0.15, 0, 0.15, 0] #[0.15, 0, 0.15, 0, 0.15, 0]
 
         self.noise = {
             'cov': np.diag(cov),
@@ -371,5 +371,60 @@ class MountainCarDynamics:
 
         state_next_min = jnp.min(state_next, axis=1)
         state_next_max = jnp.max(state_next, axis=1)
+
+        return state_next_min, state_next_max
+    
+class DoubleIntegratorDynamics:
+    def __init__(self, args):
+        self.linear = False
+
+        self.n = 2
+        self.p = 1
+        self.state_variables = ['position', 'velocity']
+        self.wrap = jnp.array([True, False], dtype=bool)
+
+        # Discretization step size
+        self.tau = 1.0
+
+        # State transition matrix
+        self.A  = np.array([[1, self.tau],
+                          [0, 1]])
+        
+        # Input matrix
+        self.B  = np.array([[self.tau**2/2],
+                           [self.tau]])
+    
+        # Disturbance matrix
+        self.Q  = np.array([[0],[0],])
+
+        # Covariance of the process noise
+        cov = [0.15, 0.15]
+        self.noise = {
+            'cov': np.diag(cov),
+            'cov_diag': np.array(cov)
+        }
+
+    def step(self, state, action, noise):
+        state_next = self.A @ state + self.B @ action + noise
+
+        return state_next
+
+    @partial(jax.jit, static_argnums=(0))
+    def step_set(self, state_min, state_max, action_min, action_max):
+
+        action_min = jnp.maximum(action_min, self.uMin)
+        action_max = jnp.minimum(action_max, self.uMax)
+
+        # Get vertices of the state and action boxes
+        state_vertices = setmath.box2vertices(state_min, state_max)
+        action_vertices = setmath.box2vertices(action_min, action_max)
+        
+        # Propogate dynamics for all vertices
+        Ax = jnp.dot(self.A, state_vertices.T).T  # Shape (2^n, n)
+        Bu = jnp.dot(self.B, action_vertices.T).T  # Shape (2^p, n)
+
+        # Combine min/max to get the reachable set
+        state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
+        state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
 
         return state_next_min, state_next_max

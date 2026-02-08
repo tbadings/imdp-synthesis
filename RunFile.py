@@ -21,11 +21,15 @@ from core.actions_forward import RectangularForward
 from core.model import parse_linear_model, parse_nonlinear_model
 from core.options import parse_arguments
 from core.partition import RectangularPartition
+from core.imdp import IMDP
 
-# import sys
+import sys
 # sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
-# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
+sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
@@ -71,10 +75,14 @@ if __name__ == '__main__':
         base_model = benchmarks.Drone2D(args)
     elif args.model == 'Drone3D':
         base_model = benchmarks.Drone3D(args)
+    elif args.model == 'Drone3D_small':
+        base_model = benchmarks.Drone3D_small(args)
     elif args.model == 'Pendulum':
         base_model = benchmarks.Pendulum(args)
     elif args.model == 'MountainCar':
         base_model = benchmarks.MountainCar(args)
+    elif args.model == 'DoubleIntegrator':
+        base_model = benchmarks.DoubleIntegrator(args)
     else:
         assert False, f"The passed model '{args.model}' could not be found"
 
@@ -92,60 +100,86 @@ if __name__ == '__main__':
 
     # Create actions based on forward reachable sets
     actions = RectangularForward(partition=partition, model=model)
-
-    # With forward reachability, every action is enabled in every state
-    enabled_actions = np.full((len(partition.regions['centers']), len(actions.idxs)), fill_value=True, dtype=np.bool)
-
-    print(f"(Number of actions in each state: {np.sum(np.any(enabled_actions, axis=0))})\n")
+    actions_inputs = actions.inputs
 
     P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions.frs, actions.max_slice)
+    del actions
 
-    # %% Model checking
-
-    from core.imdp import BuilderStorm
-
-    # Compute optimal policy on the iMDP abstraction
-    print('\nCreate iMDP using storm...')
-
-    # Build interval MDP via StormPy
-    builderS = BuilderStorm(partition=partition,
-                            actions=actions,
-                            states=np.array(partition.regions['idxs']),
-                            x0=model.x0,
-                            goal_regions=np.array(partition.goal['idxs']),
-                            critical_regions=np.array(partition.critical['idxs']),
-                            P_full=P_full,
-                            P_id=P_id,
-                            P_absorbing=P_absorbing)
-
-    print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
-    print(builderS.imdp)
+    imdp = IMDP(partition=partition,
+                states=np.array(partition.regions['idxs']),
+                actions_inputs=actions_inputs,
+                x0=model.x0,
+                goal_regions=np.array(partition.goal['idxs']),
+                critical_regions=np.array(partition.critical['idxs']),
+                P_full=P_full,
+                P_id=P_id,
+                P_absorbing=P_absorbing)
 
     t = time.time()
+
+    print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
+
+    # %% Build and verify with JAX-based RVI
+
+    from core.imdp import BuilderStorm, RVI_JAX
+
+    print('Compute optimal policy via robust value iteration with JAX...')
+
+    t = time.time()
+    V, Q, policy, policy_inputs = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
+    print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
+    
+    # t = time.time()
+    # V2, Q2, policy2, policy_inputs2 = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000)
+    # print (f'- RVI with JAX (synchronous) took: {(time.time() - t):.3f} sec.')
+
+    # print('Max. difference in value functions:', np.max(np.abs(V - V2)))
+    # print('Total difference in value functions:', np.sum(np.abs(V - V2)))
+
+    # %% Build interval MDP via Storm
+    print('Compute optimal policy via robust value iteration with Storm')
+
+    print('\n- Create iMDP using storm...')
+    t = time.time()
+    builderS = BuilderStorm(imdp)
+
+    print(builderS.imdp)
+
     result = builderS.compute_reach_avoid()
-    policy, policy_inputs = builderS.get_policy(actions)
-    print(f'- Verify with storm took: {(time.time() - t):.3f} sec.')
+    V_storm = builderS.results
+    policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
+    print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
     print('Total sum of reach probs:', np.sum(builderS.results))
     print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
 
     # %% Simulations and plot
 
+    sim_policy = policy
+    sim_policy_inputs = policy_inputs
+    sim_values = V
+
+    # sim_policy = policy_storm
+    # sim_policy_inputs = policy_inputs_storm
+    # sim_values = V_storm
+
     from core.simulate import MonteCarloSim
     from plotting.traces import plot_traces
     from plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=100)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=100)
     print('Empirical satisfaction probability:', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
-    heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=builderS.results, filename="heatmap_satprob")
+    heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_values, filename="heatmap_satprob")
     if model.p >  1:
-        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=policy_inputs[:,0], filename="heatmap_inputs")
+        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
     else:
-        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=policy_inputs, filename="heatmap_inputs")
+        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs, filename="heatmap_inputs")
 
     if args.model == 'Pendulum':
         model.plot_trajectory_gif(np.array(sim.results['traces'][0]['x'])[:,0], filename=f'output/pendulum_{stamp}.gif')
 
     if args.model == 'MountainCar':
         model.plot_trajectory_gif(np.array(sim.results['traces'][0]['x'])[:,0], filename=f'output/mountaincar_{stamp}.gif')
+        
+# %%
