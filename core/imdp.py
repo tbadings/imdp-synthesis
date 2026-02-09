@@ -1,7 +1,6 @@
 import logging
 
 import numpy as np
-import stormpy
 from tqdm import tqdm
 from copy import copy, deepcopy
 import jax
@@ -54,6 +53,8 @@ class BuilderStorm:
     """
     Class to construct the IMDP abstraction and compute an optimal Markov policy using Storm.
     """
+
+    import stormpy
 
     def __init__(self, IMDP):
         '''

@@ -121,7 +121,7 @@ if __name__ == '__main__':
 
     # %% Build and verify with JAX-based RVI
 
-    from core.imdp import BuilderStorm, RVI_JAX
+    from core.imdp import RVI_JAX
 
     print('Compute optimal policy via robust value iteration with JAX...')
 
@@ -137,6 +137,9 @@ if __name__ == '__main__':
     # print('Total difference in value functions:', np.sum(np.abs(V - V2)))
 
     # %% Build interval MDP via Storm
+
+    from core.imdp import BuilderStorm
+
     print('Compute optimal policy via robust value iteration with Storm')
 
     print('\n- Create iMDP using storm...')
