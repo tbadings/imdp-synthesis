@@ -446,15 +446,6 @@ def RVI_JAX(imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, 
     """
 
     iterations_phase1 = 100
-
-    n_states = imdp.nr_states
-
-    V = np.zeros(n_states)
-    policy = np.zeros(n_states, dtype=int)
-    
-    # Mark goal and absorbing states
-    for s in imdp.goal_regions:
-        V[s] = 1
     
     P_id_plusAbs = {}
     P_full_plusAbs = {}
@@ -501,6 +492,18 @@ def RVI_JAX(imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, 
                                s in imdp.critical_regions or 
                                s == imdp.absorbing_state or
                                len(imdp.P_id[s]) == 0]
+    
+    # Initialize value function and policy
+    V = np.zeros(imdp.nr_states)
+    if len(imdp.goal_regions) > 0:
+        V[imdp.goal_regions] = 1
+    # if len(imdp.critical_regions) > 0:
+    #     V[imdp.critical_regions] = 0
+    # for s in imdp.states:
+    #     if len(imdp.P_id[s]) == 0:
+    #         V[s] = 0
+    # V[imdp.absorbing_state] = 0 # Absorbing state
+    policy = np.zeros(imdp.nr_states, dtype=int)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
 
