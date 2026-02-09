@@ -37,8 +37,10 @@ if __name__ == '__main__':
     args = parse_arguments()
     if args.gpu:
         jax.config.update('jax_platform_name', 'gpu')
+        print('- Requested to run on GPU')
     else:
         jax.config.update('jax_platform_name', 'cpu')
+        print('- Requested to run on GPU')
 
     print('=== JAX STATUS ===')
     # print(f'Devices available: {jax.devices()}')
