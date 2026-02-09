@@ -138,7 +138,7 @@ if __name__ == '__main__':
 
     # %% Build interval MDP via Storm
 
-    # from core.imdp import BuilderStorm
+    # from core.storm import BuilderStorm
 
     # print('Compute optimal policy via robust value iteration with Storm')
 
