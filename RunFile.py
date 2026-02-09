@@ -135,7 +135,7 @@ if __name__ == '__main__':
 
     with jax.default_device(args.rvi_device):
         t = time.time()
-        V, Q, policy, policy_inputs = RVI_JAX(args, imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
+        V, Q, policy, policy_inputs = RVI_JAX(args, imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, BATCH_SIZE=1000, policy_iteration=False)
         print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
         
     # t = time.time()
