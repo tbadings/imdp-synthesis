@@ -43,7 +43,7 @@ if __name__ == '__main__':
         print('- Requested to run on GPU')
 
     print('=== JAX STATUS ===')
-    # print(f'Devices available: {jax.devices()}')
+    print(f'Devices available: {jax.devices()}')
     from jax.extend.backend import get_backend
 
     print(f'Jax runs on: {get_backend().platform}')
