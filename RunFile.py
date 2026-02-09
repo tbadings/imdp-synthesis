@@ -27,7 +27,7 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
-sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         print('- Requested to run on GPU')
     else:
         jax.config.update('jax_platform_name', 'cpu')
-        print('- Requested to run on GPU')
+        print('- Requested to run on CPU')
 
     print('=== JAX STATUS ===')
     print(f'Devices available: {jax.devices()}')
@@ -128,7 +128,7 @@ if __name__ == '__main__':
     print('Compute optimal policy via robust value iteration with JAX...')
 
     t = time.time()
-    V, Q, policy, policy_inputs = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=False)
+    V, Q, policy, policy_inputs = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
     print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
     
     # t = time.time()
