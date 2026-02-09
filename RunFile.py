@@ -31,13 +31,6 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
-print('=== JAX STATUS ===')
-print(f'Devices available: {jax.devices()}')
-from jax.extend.backend import get_backend
-
-print(f'Jax runs on: {get_backend().platform}')
-print('==================\n')
-
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
 
