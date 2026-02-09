@@ -41,6 +41,12 @@ if __name__ == '__main__':
     else:
         jax.config.update('jax_platform_name', 'cpu')
         print('- Requested to run on CPU')
+    if args.gpu_rvi:
+        args.rvi_device = jax.devices('gpu')[0]
+        print('- Requested to run RVI on GPU')
+    else:
+        args.rvi_device = jax.devices('cpu')[0]
+        print('- Requested to run RVI on CPU')
 
     print('=== JAX STATUS ===')
     print(f'Devices available: {jax.devices()}')
@@ -127,10 +133,11 @@ if __name__ == '__main__':
 
     print('Compute optimal policy via robust value iteration with JAX...')
 
-    t = time.time()
-    V, Q, policy, policy_inputs = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
-    print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
-    
+    with jax.default_device(args.rvi_device):
+        t = time.time()
+        V, Q, policy, policy_inputs = RVI_JAX(args, imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
+        print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
+        
     # t = time.time()
     # V2, Q2, policy2, policy_inputs2 = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000)
     # print (f'- RVI with JAX (synchronous) took: {(time.time() - t):.3f} sec.')

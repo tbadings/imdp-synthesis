@@ -19,6 +19,8 @@ def parse_arguments():
 
     parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run on GPU. Otherwise, run on CPU")
+    parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
+                        help="If true, run RVI on GPU. Otherwise, run on CPU")
 
     parser.add_argument('--model', type=str, default='Drone2D',
                         help="Benchmark model to run")

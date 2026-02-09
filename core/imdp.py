@@ -124,56 +124,7 @@ def robust_value_iteration(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
     
     return V
 
-@jax.jit
-def compute_lower_val(prob_lb, prob_ub, successor_values):
-    
-    # Budget is the total probability mass we can assign to the successors
-    budget = 1.0 - jnp.sum(prob_lb)
-    
-    # Sort the values for these successor states
-    sort = jnp.argsort(successor_values)
-    sorted_lb = prob_lb[sort]
-    sorted_ub = prob_ub[sort]
-    
-    # Vectorized computation of extra probabilities
-    extra_probs = jnp.minimum(sorted_ub - sorted_lb, budget)
-    cumsum = jnp.cumsum(extra_probs)
-    extra_probs = jnp.minimum(extra_probs, jnp.maximum(0.0, budget - cumsum + extra_probs))
-    
-    probs = sorted_lb + extra_probs
-    lower_val = probs @ successor_values[sort]
-    
-    return lower_val
-
-vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0), out_axes=0))
-
-@jax.jit
-def state_policy_improvement(successors_slice, prob_lb_slice, prob_ub_slice, V):
-
-    # Retrieve the values for the successor states, including absorbing state
-    successor_values = V[successors_slice]
-
-    # Compute lower value for all actions in parallel using JAX vectorization
-    lower_vals = vmap_compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
-
-    return jnp.max(lower_vals), jnp.argmax(lower_vals)
-
-vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0)))
-
-@jax.jit
-def state_policy_evaluation(successors_slice, prob_lb_slice, prob_ub_slice, V):
-
-    # Retrieve the values for the successor states, including absorbing state
-    successor_values = V[successors_slice]
-
-    # Compute lower value for the action specified by the current policy
-    lower_val = compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
-
-    return lower_val
-
-vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
-
-def RVI_JAX(imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, BATCH_SIZE=2000, policy_iteration=False):
+def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, BATCH_SIZE=2000, policy_iteration=False):
     """
     Robust value iteration for interval MDPs.
     
@@ -187,6 +138,56 @@ def RVI_JAX(imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, 
     
     P_id_plusAbs = {}
     P_full_plusAbs = {}
+
+    #####
+
+    def compute_lower_val(prob_lb, prob_ub, successor_values):
+        
+        # Budget is the total probability mass we can assign to the successors
+        budget = 1.0 - jnp.sum(prob_lb)
+        
+        # Sort the values for these successor states
+        sort = jnp.argsort(successor_values)
+        sorted_lb = prob_lb[sort]
+        sorted_ub = prob_ub[sort]
+        
+        # Vectorized computation of extra probabilities
+        extra_probs = jnp.minimum(sorted_ub - sorted_lb, budget)
+        cumsum = jnp.cumsum(extra_probs)
+        extra_probs = jnp.minimum(extra_probs, jnp.maximum(0.0, budget - cumsum + extra_probs))
+        
+        probs = sorted_lb + extra_probs
+        lower_val = probs @ successor_values[sort]
+        
+        return lower_val
+
+    vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0), out_axes=0))
+
+    def state_policy_improvement(successors_slice, prob_lb_slice, prob_ub_slice, V):
+
+        # Retrieve the values for the successor states, including absorbing state
+        successor_values = V[successors_slice]
+
+        # Compute lower value for all actions in parallel using JAX vectorization
+        lower_vals = vmap_compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
+
+        return jnp.max(lower_vals), jnp.argmax(lower_vals)
+
+    vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0)))
+
+    def state_policy_evaluation(successors_slice, prob_lb_slice, prob_ub_slice, V):
+
+        # Retrieve the values for the successor states, including absorbing state
+        successor_values = V[successors_slice]
+
+        # Compute lower value for the action specified by the current policy
+        lower_val = compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
+
+        return lower_val
+
+    vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
+
+    ######
 
     # Append the absorbing state to the IMDP object
     for s in imdp.states:
