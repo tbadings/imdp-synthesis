@@ -5,7 +5,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
-from scipy.interpolate import interp1d
+from scipy.interpolate import CubicSpline
 
 from core.utils import cm2inch, remove_consecutive_duplicates
 from plotting.utils import plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
@@ -107,9 +107,8 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
             else:
                 kind = 'quadratic'
 
-            interpolator = interp1d(distance, state_trace, kind=kind,
-                                    axis=0)
-            interpolated_points = interpolator(alpha)
+            cs = CubicSpline(distance, state_trace, bc_type='natural')
+            interpolated_points = cs(alpha)
 
             # Plot trace
             plt.plot(*interpolated_points.T, '-', color="blue", linewidth=1);
