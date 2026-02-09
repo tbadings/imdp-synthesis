@@ -138,22 +138,22 @@ if __name__ == '__main__':
 
     # %% Build interval MDP via Storm
 
-    from core.imdp import BuilderStorm
+    # from core.imdp import BuilderStorm
 
-    print('Compute optimal policy via robust value iteration with Storm')
+    # print('Compute optimal policy via robust value iteration with Storm')
 
-    print('\n- Create iMDP using storm...')
-    t = time.time()
-    builderS = BuilderStorm(imdp)
+    # print('\n- Create iMDP using storm...')
+    # t = time.time()
+    # builderS = BuilderStorm(imdp)
 
-    print(builderS.imdp)
+    # print(builderS.imdp)
 
-    result = builderS.compute_reach_avoid()
-    V_storm = builderS.results
-    policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
-    print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
-    print('Total sum of reach probs:', np.sum(builderS.results))
-    print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
+    # result = builderS.compute_reach_avoid()
+    # V_storm = builderS.results
+    # policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
+    # print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
+    # print('Total sum of reach probs:', np.sum(builderS.results))
+    # print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
 
     # %% Simulations and plot
 
