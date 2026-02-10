@@ -85,7 +85,7 @@ def check_if_region_in_goal(goals_A, goals_b, points):
 
 
 # Vectorized function over different sets of points
-vmap_check_if_region_in_goal = jax.vmap(check_if_region_in_goal, in_axes=(None, None, 0), out_axes=0)
+vmap_check_if_region_in_goal = jax.jit(jax.vmap(check_if_region_in_goal, in_axes=(None, None, 0), out_axes=0))
 
 
 @jax.jit
@@ -154,13 +154,13 @@ class RectangularPartition(object):
         upper_bounds = centers + self.cell_width / 2
 
         # Determine the vertices of all partition elements
-        vmap_get_vertices_from_bounds = jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0)
+        vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
         all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
         print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         t = time.time()
         # Determine halfspace (Ax <= b) inequalities
-        vmap_center2halfspace = jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0))
+        vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
         print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
@@ -200,7 +200,7 @@ class RectangularPartition(object):
             goal_centers = jnp.array(goal_centers, dtype=float)
             goal_widths = jnp.array(goal_widths, dtype=float)
 
-            vmap_center2halfspace = jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0))
+            vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
             goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
 
             # Determine goal regions

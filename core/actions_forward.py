@@ -53,7 +53,8 @@ class RectangularForward(object):
         t_total = time.time()
 
         # Vectorized function over different sets of points
-        vmap_forward_reach = jax.vmap(forward_reach, in_axes=(None, None, None, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0,))
+        vmap_forward_reach = jax.jit(jax.vmap(forward_reach, in_axes=(None, None, None, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0,)),
+                                     static_argnums=(0))
 
         discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in range(len(model.num_actions))]
         discrete_inputs = np.array(list(itertools.product(*discrete_per_dimension)))
