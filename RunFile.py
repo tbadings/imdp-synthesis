@@ -110,7 +110,7 @@ if __name__ == '__main__':
     actions = RectangularForward(partition=partition, model=model)
     actions_inputs = actions.inputs
 
-    P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions.frs, actions.max_slice)
+    P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions)
     del actions
 
     imdp = IMDP(partition=partition,

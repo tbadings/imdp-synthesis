@@ -57,29 +57,31 @@ class RectangularForward(object):
                                      static_argnums=(0))
 
         discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in range(len(model.num_actions))]
-        discrete_inputs = np.array(list(itertools.product(*discrete_per_dimension)))
+        self.inputs = np.array(list(itertools.product(*discrete_per_dimension)))
 
         t = time.time()
 
-        frs = {}
         pbar = tqdm(enumerate(zip(partition.regions['lower_bounds'], partition.regions['upper_bounds'])), total=len(partition.regions['lower_bounds']))
         self.max_slice = jnp.zeros(model.n)
         
         # Pre-compute all inputs on device
-        discrete_inputs_jax = jax.device_put(discrete_inputs)
+        discrete_inputs_jax = jax.device_put(self.inputs)
         
+        self.frs_lb = np.zeros((len(partition.regions['lower_bounds']), len(self.inputs), model.n))
+        self.frs_ub = np.zeros_like(self.frs_lb)
+        self.frs_idx_lb = np.zeros_like(self.frs_lb)
+        self.frs_idx_ub = np.zeros_like(self.frs_lb)
+
         for i, (lb, ub) in pbar:
             # Batch compute forward reachable sets for all actions
-            flb, fub, fsp, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, discrete_inputs_jax, 
+            flb, fub, _, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, discrete_inputs_jax, 
                                  model.noise['cov_diag'], partition.number_per_dim, 
                                  partition.cell_width, partition.boundary_lb, partition.boundary_ub)
 
-            frs[i] = {
-            'lb': flb,
-            'ub': fub,
-            'idx_lb': fil,
-            'idx_ub': fiu
-            }
+            self.frs_lb[i] = flb
+            self.frs_ub[i] = fub
+            self.frs_idx_lb[i] = fil
+            self.frs_idx_ub[i] = fiu
 
             self.max_slice = jnp.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
         
@@ -87,9 +89,7 @@ class RectangularForward(object):
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
 
-        self.inputs = discrete_inputs
-        self.idxs = np.arange(len(discrete_inputs))
-        self.frs = frs
+        self.idxs = np.arange(len(self.inputs))
 
         print(f'Defining actions took {(time.time() - t_total):.3f} sec.')
         print('')
