@@ -54,7 +54,7 @@ class RectangularForward(object):
 
         # Vectorized function over different sets of points
         vmap_forward_reach = jax.jit(jax.vmap(forward_reach, in_axes=(None, None, None, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0,)),
-                                     static_argnums=(0))
+                                     static_argnums=(0,3,4,5,6,7,8))
 
         discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in range(len(model.num_actions))]
         self.inputs = jnp.array(list(itertools.product(*discrete_per_dimension)))
@@ -71,7 +71,7 @@ class RectangularForward(object):
         cell_width = jax.device_put(partition.cell_width)
         boundary_lb = jax.device_put(partition.boundary_lb)
         boundary_ub = jax.device_put(partition.boundary_ub)
-                
+
         self.frs_lb = np.zeros((len(partition.regions['lower_bounds']), len(self.inputs), model.n))
         self.frs_ub = np.zeros_like(self.frs_lb)
         self.frs_idx_lb = np.zeros_like(self.frs_lb)
