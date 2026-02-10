@@ -66,7 +66,12 @@ class RectangularForward(object):
         
         # Pre-compute all inputs on device
         discrete_inputs_jax = jax.device_put(self.inputs)
-        
+        noise_cov = jax.device_put(model.noise['cov_diag'])
+        number_per_dim = jax.device_put(partition.number_per_dim)
+        cell_width = jax.device_put(partition.cell_width)
+        boundary_lb = jax.device_put(partition.boundary_lb)
+        boundary_ub = jax.device_put(partition.boundary_ub)
+                
         self.frs_lb = np.zeros((len(partition.regions['lower_bounds']), len(self.inputs), model.n))
         self.frs_ub = np.zeros_like(self.frs_lb)
         self.frs_idx_lb = np.zeros_like(self.frs_lb)
@@ -75,8 +80,7 @@ class RectangularForward(object):
         for i, (lb, ub) in pbar:
             # Batch compute forward reachable sets for all actions
             flb, fub, _, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, discrete_inputs_jax, 
-                                 model.noise['cov_diag'], partition.number_per_dim, 
-                                 partition.cell_width, partition.boundary_lb, partition.boundary_ub)
+                                 noise_cov, number_per_dim, cell_width, boundary_lb, boundary_ub)
 
             self.frs_lb[i] = flb
             self.frs_ub[i] = fub
