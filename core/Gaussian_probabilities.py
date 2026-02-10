@@ -234,6 +234,10 @@ def compute_probability_intervals(args, model, partition, actions):
     frs_ub = actions.frs_ub
     frs_idx_lb = actions.frs_idx_lb
 
+    frs_lb = jax.device_put(frs_lb)
+    frs_ub = jax.device_put(frs_ub)
+    frs_idx_lb = jax.device_put(frs_idx_lb)
+
     for iter, (i, j) in enumerate(zip(starts, ends)):
         print('- Compute probability intervals for states {} to {}... (out of {})'.format(i, j - 1, len(partition.regions['idxs'])))
         
