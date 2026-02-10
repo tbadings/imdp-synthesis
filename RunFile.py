@@ -29,7 +29,7 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
-sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
