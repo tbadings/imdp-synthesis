@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from collections import ChainMap
 from itertools import chain
+import time
 
 # Note: The following implementation only works for Gaussian distributions with diagonal covariance
 
