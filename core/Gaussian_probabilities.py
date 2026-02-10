@@ -210,6 +210,10 @@ def compute_probability_intervals(args, model, partition, actions):
     '''
 
     # vmap to compute distributions for all actions in a state, then vmap over multiple states
+    vmap_interval_distribution_per_dim1 = jax.jit(
+        jax.vmap(interval_distribution_per_dim, in_axes=(None, None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0, 0)),
+        static_argnums=(0, 1, 2, 4))
+
     vmap_interval_distribution_per_dim = jax.jit(
         jax.vmap(  # Outer vmap over states i:j
             jax.vmap(  # Inner vmap over actions
@@ -234,15 +238,10 @@ def compute_probability_intervals(args, model, partition, actions):
     frs_ub = actions.frs_ub
     frs_idx_lb = actions.frs_idx_lb
 
-    frs_lb = jax.device_put(frs_lb)
-    frs_ub = jax.device_put(frs_ub)
-    frs_idx_lb = jax.device_put(frs_idx_lb)
-    region_idx_array = jax.device_put(partition.region_idx_array)
-    critical_bools = jax.device_put(partition.critical['bools'])
-
     for iter, (i, j) in enumerate(zip(starts, ends)):
         print('- Compute probability intervals for states {} to {}... (out of {})'.format(i, j - 1, len(partition.regions['idxs'])))
         
+        t = time.time()
         # Vectorized computation over batch of states i:j
         p, p_idx, p_id, p_nonzero, pa, k = vmap_interval_distribution_per_dim(
             model.n,
@@ -259,9 +258,30 @@ def compute_probability_intervals(args, model, partition, actions):
             model.noise['cov'],
             partition.boundary_lb,
             partition.boundary_ub,
-            region_idx_array,
-            critical_bools)
+            partition.region_idx_array,
+            partition.critical['bools'])
+        print(f'  - Done (took {(time.time() - t):.3f} sec.)')
 
+        # For all states
+        # for s in tqdm(np.arange(i,j), total=j-i):
+        #     _, _, _, _, _, _ = vmap_interval_distribution_per_dim1(model.n,
+        #                                                         actions.max_slice,
+        #                                                         tuple(np.array(model.wrap)),
+        #                                                         model.wrap,
+        #                                                         args.decimals,
+        #                                                         partition.number_per_dim,
+        #                                                         partition.regions_per_dim['lower_bounds'],
+        #                                                         partition.regions_per_dim['upper_bounds'],
+        #                                                         frs_idx_lb[s],
+        #                                                         frs_lb[s],
+        #                                                         frs_ub[s],
+        #                                                         model.noise['cov'],
+        #                                                         partition.boundary_lb,
+        #                                                         partition.boundary_ub,
+        #                                                         partition.region_idx_array,
+        #                                                         partition.critical['bools'])
+
+        t = time.time()
         # Convert to numpy and store in dictionaries
         keep = {s: np.array(k[s-i], dtype=bool) for s in range(i, j)}
         prob = {s: np.array(p[s-i]) for s in range(i, j)}
@@ -278,6 +298,7 @@ def compute_probability_intervals(args, model, partition, actions):
         list_prob[iter] = [[np.round(val[prob_nonzero[s][a]], args.decimals) for a, val in enumerate(row) if keep[s][a]] for s, row in prob.items()]
         list_prob_absorbing[iter] = [[np.maximum(pAbs_min, np.round(val, args.decimals)) for a, val in enumerate(row) if keep[s][a]] for s, row in prob_absorbing.items()]
         list_prob_id[iter] = {s: {a: val[prob_nonzero[s][a]] for a, val in enumerate(row) if keep[s][a]} for s, row in prob_id.items()}
+        print(f'  - Conversion to numpy and storing in dictionaries took: {(time.time() - t):.3f} sec.')
 
     # Merge list_prob over batches
     prob = list(chain(*list_prob))
