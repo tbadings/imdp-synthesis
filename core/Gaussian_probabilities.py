@@ -237,6 +237,8 @@ def compute_probability_intervals(args, model, partition, actions):
     frs_lb = jax.device_put(frs_lb)
     frs_ub = jax.device_put(frs_ub)
     frs_idx_lb = jax.device_put(frs_idx_lb)
+    region_idx_array = jax.device_put(partition.region_idx_array)
+    critical_bools = jax.device_put(partition.critical['bools'])
 
     for iter, (i, j) in enumerate(zip(starts, ends)):
         print('- Compute probability intervals for states {} to {}... (out of {})'.format(i, j - 1, len(partition.regions['idxs'])))
@@ -257,8 +259,8 @@ def compute_probability_intervals(args, model, partition, actions):
             model.noise['cov'],
             partition.boundary_lb,
             partition.boundary_ub,
-            partition.region_idx_array,
-            partition.critical['bools'])
+            region_idx_array,
+            critical_bools)
 
         # Convert to numpy and store in dictionaries
         keep = {s: np.array(k[s-i], dtype=bool) for s in range(i, j)}
