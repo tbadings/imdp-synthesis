@@ -209,11 +209,6 @@ def compute_probability_intervals(args, model, partition, actions):
         - prob_absorbing: Probability interval of reaching the absorbing state per state-action pair
     '''
 
-    # vmap to compute distributions for all actions in a state, then vmap over multiple states
-    vmap_interval_distribution_per_dim1 = jax.jit(
-        jax.vmap(interval_distribution_per_dim, in_axes=(None, None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0, 0)),
-        static_argnums=(0, 1, 2, 4))
-
     vmap_interval_distribution_per_dim = jax.jit(
         jax.vmap(  # Outer vmap over states i:j
             jax.vmap(  # Inner vmap over actions
@@ -243,7 +238,7 @@ def compute_probability_intervals(args, model, partition, actions):
         
         t = time.time()
         # Vectorized computation over batch of states i:j
-        p, p_idx, p_id, p_nonzero, pa, k = vmap_interval_distribution_per_dim(
+        p[i:j], p_idx[i:j], p_id[i:j], p_nonzero[i:j], pa[i:j], k[i:j] = vmap_interval_distribution_per_dim(
             model.n,
             actions.max_slice,
             tuple(np.array(model.wrap)),
@@ -261,25 +256,6 @@ def compute_probability_intervals(args, model, partition, actions):
             partition.region_idx_array,
             partition.critical['bools'])
         print(f'  - Done (took {(time.time() - t):.3f} sec.)')
-
-        # For all states
-        # for s in tqdm(np.arange(i,j), total=j-i):
-        #     _, _, _, _, _, _ = vmap_interval_distribution_per_dim1(model.n,
-        #                                                         actions.max_slice,
-        #                                                         tuple(np.array(model.wrap)),
-        #                                                         model.wrap,
-        #                                                         args.decimals,
-        #                                                         partition.number_per_dim,
-        #                                                         partition.regions_per_dim['lower_bounds'],
-        #                                                         partition.regions_per_dim['upper_bounds'],
-        #                                                         frs_idx_lb[s],
-        #                                                         frs_lb[s],
-        #                                                         frs_ub[s],
-        #                                                         model.noise['cov'],
-        #                                                         partition.boundary_lb,
-        #                                                         partition.boundary_ub,
-        #                                                         partition.region_idx_array,
-        #                                                         partition.critical['bools'])
 
         t = time.time()
         # Convert to numpy and store in dictionaries
