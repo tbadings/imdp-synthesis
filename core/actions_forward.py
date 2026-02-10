@@ -80,15 +80,14 @@ class RectangularForward(object):
         for i, (lb, ub) in pbar:
             # Batch compute forward reachable sets for all actions
             flb, fub, _, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, self.inputs, 
-                                 model.noise['cov_diag'], partition.number_per_dim, partition.cell_width, partition.boundary_lb, partition.boundary_ub)
+                     model.noise['cov_diag'], partition.number_per_dim, partition.cell_width, partition.boundary_lb, partition.boundary_ub)
 
             self.frs_lb[i] = flb
             self.frs_ub[i] = fub
             self.frs_idx_lb[i] = fil
             self.frs_idx_ub[i] = fiu
 
-            self.max_slice = jnp.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
-        
+        self.max_slice = jnp.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
         self.max_slice = tuple(np.astype(np.array(self.max_slice), int).tolist())
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
