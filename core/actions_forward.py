@@ -57,7 +57,7 @@ class RectangularForward(object):
                                      static_argnums=(0))
 
         discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in range(len(model.num_actions))]
-        self.inputs = np.array(list(itertools.product(*discrete_per_dimension)))
+        self.inputs = jnp.array(list(itertools.product(*discrete_per_dimension)))
 
         t = time.time()
 

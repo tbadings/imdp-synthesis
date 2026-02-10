@@ -28,7 +28,7 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
 sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
 if __name__ == '__main__':
@@ -109,6 +109,8 @@ if __name__ == '__main__':
     # Create actions based on forward reachable sets
     actions = RectangularForward(partition=partition, model=model)
     actions_inputs = actions.inputs
+
+    assert False
 
     P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions)
     del actions

@@ -113,12 +113,12 @@ class RectangularPartition(object):
         t_total = time.time()
 
         # Retrieve necessary data from the model object
-        self.number_per_dim = model.partition['number_per_dim']
-        partition_boundary = model.partition['boundary']
+        self.number_per_dim = jnp.asarray(model.partition['number_per_dim'])
+        partition_boundary = jnp.asarray(model.partition['boundary'])
         self.boundary_lb = partition_boundary[0]
         self.boundary_ub = partition_boundary[1]
-        goal_regions = model.goal
-        critical_regions = model.critical
+        goal_regions = jnp.asarray(model.goal)
+        critical_regions = jnp.asarray(model.critical)
 
         # Set partition as being (hyper)rectangula
         self.rectangular = True
@@ -205,8 +205,8 @@ class RectangularPartition(object):
 
             # Determine goal regions
             goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
-            goal_regions_idxs = region_idxs[goal_regions_bools]
-            goal_regions_centers = centers[goal_regions_bools]
+            goal_regions_idxs = jnp.asarray(region_idxs[goal_regions_bools], dtype=int)
+            goal_regions_centers = jnp.asarray(centers[goal_regions_bools], dtype=int)
         else:
             goal_regions_bools = jnp.full(self.size, False, dtype=bool)
             goal_regions_idxs = jnp.array([], dtype=int)
@@ -215,7 +215,7 @@ class RectangularPartition(object):
 
         self.goal = {
             'bools': goal_regions_bools,
-            'idxs': goal_regions_idxs.tolist(),
+            'idxs': goal_regions_idxs,
             'centers': goal_regions_centers
         }
         print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
@@ -229,8 +229,8 @@ class RectangularPartition(object):
             vfun = jax.jit(jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0))
             critical_regions_bools = ~vfun(self.regions['lower_bounds'], self.regions['upper_bounds'],
                                            critical_lbs + EPS, critical_ubs - EPS)
-            critical_regions_idxs = region_idxs[critical_regions_bools]
-            critical_regions_centers = centers[critical_regions_bools]
+            critical_regions_idxs = jnp.asarray(region_idxs[critical_regions_bools], dtype=int)
+            critical_regions_centers = jnp.asarray(centers[critical_regions_bools], dtype=int)
         else:
             critical_regions_bools = jnp.full(self.size, False, dtype=bool)
             critical_regions_idxs = jnp.array([], dtype=int)
@@ -239,7 +239,7 @@ class RectangularPartition(object):
 
         self.critical = {
             'bools': critical_regions_bools,
-            'idxs': critical_regions_idxs.tolist(),
+            'idxs': critical_regions_idxs,
             'centers': critical_regions_centers
         }
         print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
