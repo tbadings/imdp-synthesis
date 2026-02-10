@@ -63,20 +63,27 @@ class RectangularForward(object):
 
         frs = {}
         pbar = tqdm(enumerate(zip(partition.regions['lower_bounds'], partition.regions['upper_bounds'])), total=len(partition.regions['lower_bounds']))
-        self.max_slice = np.zeros(model.n)
+        self.max_slice = jnp.zeros(model.n)
+        
+        # Pre-compute all inputs on device
+        discrete_inputs_jax = jax.device_put(discrete_inputs)
+        
         for i, (lb, ub) in pbar:
-            # For every state, compute for every action the [lb,ub] forward reachable set
-            flb, fub, fsp, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, discrete_inputs, model.noise['cov_diag'], partition.number_per_dim, partition.cell_width,
-                                                         partition.boundary_lb, partition.boundary_ub)
+            # Batch compute forward reachable sets for all actions
+            flb, fub, fsp, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, discrete_inputs_jax, 
+                                 model.noise['cov_diag'], partition.number_per_dim, 
+                                 partition.cell_width, partition.boundary_lb, partition.boundary_ub)
 
-            frs[i] = {}
-            frs[i]['lb'] = flb
-            frs[i]['ub'] = fub
-            frs[i]['idx_lb'] = fil
-            frs[i]['idx_ub'] = fiu
+            frs[i] = {
+            'lb': flb,
+            'ub': fub,
+            'idx_lb': fil,
+            'idx_ub': fiu
+            }
 
-            self.max_slice = np.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
-        self.max_slice = tuple(np.astype(self.max_slice, int).tolist())
+            self.max_slice = jnp.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
+        
+        self.max_slice = tuple(np.astype(np.array(self.max_slice), int).tolist())
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
 
