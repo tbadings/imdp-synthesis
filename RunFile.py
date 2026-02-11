@@ -113,7 +113,8 @@ if __name__ == '__main__':
     # assert False
 
     t = time.time()
-    P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=10000)
+    with jax.default_device(args.rvi_device):
+        P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=10000)
     print(f'- V2 took: {(time.time() - t):.3f} sec.')
 
     t = time.time()
