@@ -2,6 +2,7 @@ import logging
 from tqdm import tqdm
 import time
 import stormpy
+import numpy as np
 
 class BuilderStorm:
     """

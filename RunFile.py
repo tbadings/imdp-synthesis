@@ -16,7 +16,7 @@ import jax
 import numpy as np
 
 import benchmarks
-from core.Gaussian_probabilities import compute_probability_intervals
+from core.Gaussian_probabilities import compute_probability_intervals, compute_probability_intervals_vec
 from core.actions_forward import RectangularForward
 from core.model import parse_linear_model, parse_nonlinear_model
 from core.options import parse_arguments
@@ -28,7 +28,7 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '10000', '--plot_title']
+sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
 if __name__ == '__main__':
@@ -110,9 +110,17 @@ if __name__ == '__main__':
     actions = RectangularForward(partition=partition, model=model)
     actions_inputs = actions.inputs
 
-    assert False
+    # assert False
 
+    t = time.time()
+    P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=10000)
+    print(f'- V2 took: {(time.time() - t):.3f} sec.')
+
+    t = time.time()
     P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions)
+    print(f'- V1 took: {(time.time() - t):.3f} sec.')
+    
+    assert False
     del actions
 
     imdp = IMDP(partition=partition,
@@ -124,8 +132,6 @@ if __name__ == '__main__':
                 P_full=P_full,
                 P_id=P_id,
                 P_absorbing=P_absorbing)
-
-    t = time.time()
 
     print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
 
@@ -149,22 +155,22 @@ if __name__ == '__main__':
 
     # %% Build interval MDP via Storm
 
-    # from core.storm import BuilderStorm
+    from core.storm import BuilderStorm
 
-    # print('Compute optimal policy via robust value iteration with Storm')
+    print('Compute optimal policy via robust value iteration with Storm')
 
-    # print('\n- Create iMDP using storm...')
-    # t = time.time()
-    # builderS = BuilderStorm(imdp)
+    print('\n- Create iMDP using storm...')
+    t = time.time()
+    builderS = BuilderStorm(imdp)
 
-    # print(builderS.imdp)
+    print(builderS.imdp)
 
-    # result = builderS.compute_reach_avoid()
-    # V_storm = builderS.results
-    # policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
-    # print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
-    # print('Total sum of reach probs:', np.sum(builderS.results))
-    # print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
+    result = builderS.compute_reach_avoid()
+    V_storm = builderS.results
+    policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
+    print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
+    print('Total sum of reach probs:', np.sum(builderS.results))
+    print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
 
     # %% Simulations and plot
 
@@ -180,7 +186,7 @@ if __name__ == '__main__':
     from plotting.traces import plot_traces
     from plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=100)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
     print('Empirical satisfaction probability:', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
