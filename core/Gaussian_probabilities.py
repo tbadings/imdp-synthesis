@@ -280,13 +280,6 @@ def compute_probability_intervals_vec(args, model, partition, actions, batch_siz
     frs_ub = actions.frs_ub
     frs_idx_lb = actions.frs_idx_lb
 
-    # vmap to compute distributions for all actions in a state
-    # vmap_interval_distribution_per_dim = jax.jit(
-    #     jax.vmap(jax.vmap(interval_distribution_per_dim, in_axes=(None, None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0, 0)),
-    #                      in_axes=(None,None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None),
-    #                      out_axes=(0, 0, 0, 0, 0, 0)),
-    #     static_argnums=(0, 1, 2, 4))
-
     vmap_interval_distribution_per_dim = jax.jit(
             jax.vmap(interval_distribution_per_dim, in_axes=(None, None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0, 0)),
             static_argnums=(0, 1, 2, 4))
@@ -294,11 +287,6 @@ def compute_probability_intervals_vec(args, model, partition, actions, batch_siz
     pAbs_min = 0.0001
 
     max_successors = np.prod(np.array(actions.max_slice))
-    # prob           = np.zeros((len(partition.regions['idxs']), len(actions.inputs), max_successors, 2)) # Transition probability matrix (S x A x S' x [p_min, p_max])
-    # prob_id        = np.zeros((len(partition.regions['idxs']), len(actions.inputs), len(partition.regions['idxs']))) # Transition probability matrix (S x A x S')
-    # prob_nonzero   = np.zeros((len(partition.regions['idxs']), len(actions.inputs), len(partition.regions['idxs'])), dtype=bool) # Boolean matrix indicating which transitions have nonzero probability (S x A x S')
-    # prob_absorbing = np.zeros((len(partition.regions['idxs']), len(actions.inputs), 2)) # Probability of reaching absorbing state per state-action pair (S x A x [p_min, p_max])
-    # keep           = np.zeros((len(partition.regions['idxs']), len(actions.inputs)), dtype=bool) # Boolean matrix indicating which state-action pairs are kept based on the threshold on the probability of reaching the absorbing state
 
     state_indexes_ij = np.array([(s, a) for s in range(len(partition.regions['idxs'])) for a in range(len(actions.inputs))])
     # Create matrix of same number of rows, with 1 in first column and 0 in the second
@@ -312,9 +300,7 @@ def compute_probability_intervals_vec(args, model, partition, actions, batch_siz
     starts, ends = create_batches(len(frs_idx_lb_2D), batch_size=batch_size)
 
     for iter, (i, j) in tqdm(enumerate(zip(starts, ends)), total=len(starts)):
-        # print('- Compute probability intervals for states {} to {}... (out of {})'.format(i, j - 1, len(partition.regions['idxs'])))
 
-        # t = time.time()
         p, p_id, p_nonzero, pa, k, number_nonzero = vmap_interval_distribution_per_dim(model.n,
                                                                     actions.max_slice,
                                                                     tuple(np.array(model.wrap)),
@@ -331,36 +317,14 @@ def compute_probability_intervals_vec(args, model, partition, actions, batch_siz
                                                                     partition.boundary_ub,
                                                                     partition.region_idx_array,
                                                                     partition.critical['bools'])
-        # jnp.array([1]).block_until_ready() # Ensure all computations are finished before moving on to postprocessing
-        # print(f'-- Batch {iter} computed in {(time.time() - t):.3f} sec.')
+        jnp.array([1])
 
-        # t = time.time()
-
-        # Put the action dimension into the first dimension to get S x A rows
-        max_number_nonzero = jnp.max(number_nonzero) 
-        # print(f'0: {(time.time() - t):.3f} sec.')
-
-        # t = time.time()
+        max_number_nonzero = jnp.max(number_nonzero)
         p = p[k, :max_number_nonzero, :]
-        # print(f'1: {(time.time() - t):.3f} sec.')
-
-        # t = time.time()
         p_id = p_id[k, :max_number_nonzero]
-        # print(f'2: {(time.time() - t):.3f} sec.')
-
-        # t = time.time()
         p_nonzero = p_nonzero[k, :max_number_nonzero]
-        # print(f'3: {(time.time() - t):.3f} sec.')
-
-        # t = time.time()
         pa = pa[k]
-        # print(f'4: {(time.time() - t):.3f} sec.')
-
-        # t = time.time()
         state_action_indexes = state_indexes_ij[i:j][k]
-        # print(f'5: {(time.time() - t):.3f} sec.')
-
-        # print(f'-- Batch {iter} postprocessed in {(time.time() - t):.3f} sec. (kept {len(p)} state-action pairs)')
 
     print('-- Number of times function was compiled:', vmap_interval_distribution_per_dim._cache_size())
 

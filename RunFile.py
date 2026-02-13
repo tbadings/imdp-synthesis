@@ -29,7 +29,7 @@ import sys
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
+sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
@@ -112,16 +112,15 @@ if __name__ == '__main__':
 
     # assert False
 
-    t = time.time()
-    with jax.default_device(args.rvi_device):
-        P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=10000)
-    print(f'- V2 took: {(time.time() - t):.3f} sec.')
+    # t = time.time()
+    # P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=50000)
+    # print(f'- V2 took: {(time.time() - t):.3f} sec.')
 
     t = time.time()
     P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions)
     print(f'- V1 took: {(time.time() - t):.3f} sec.')
     
-    assert False
+    # assert False
     del actions
 
     imdp = IMDP(partition=partition,
@@ -138,23 +137,27 @@ if __name__ == '__main__':
 
     # %% Build and verify with JAX-based RVI
 
-    from core.imdp import RVI_JAX
+    from core.imdp import RVI_JAX, RVI
 
     print('Compute optimal policy via robust value iteration with JAX...')
 
     with jax.default_device(args.rvi_device):
-        t = time.time()
-        V, Q, policy, policy_inputs = RVI_JAX(args, imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000, policy_iteration=True)
-        print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
-        
-    # t = time.time()
-    # V2, Q2, policy2, policy_inputs2 = RVI_JAX(imdp, s0=partition.x2state(model.x0)[0], max_iterations=1000, epsilon=1e-6, RND_SWEEPS=True, BATCH_SIZE=1000)
-    # print (f'- RVI with JAX (synchronous) took: {(time.time() - t):.3f} sec.')
 
-    # print('Max. difference in value functions:', np.max(np.abs(V - V2)))
-    # print('Total difference in value functions:', np.sum(np.abs(V - V2)))
+        t = time.time()
+        V, _, policy, policy_inputs = RVI_JAX(
+            args=args, 
+            imdp=imdp, 
+            s0=partition.x2state(model.x0)[0], 
+            max_iterations=1000, 
+            epsilon=1e-6, 
+            RND_SWEEPS=True, 
+            BATCH_SIZE=1000, 
+            policy_iteration=True)
+        print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
 
     # %% Build interval MDP via Storm
+
+    assert False
 
     from core.storm import BuilderStorm
 
@@ -187,16 +190,13 @@ if __name__ == '__main__':
     from plotting.traces import plot_traces
     from plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=10000)
     print('Empirical satisfaction probability:', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
     heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_values, filename="heatmap_satprob")
-    if model.p >  1:
-        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
-    else:
-        heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs, filename="heatmap_inputs")
-
+    heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
+    
     if args.model == 'Pendulum':
         model.plot_trajectory_gif(np.array(sim.results['traces'][0]['x'])[:,0], filename=f'output/pendulum_{stamp}.gif')
 

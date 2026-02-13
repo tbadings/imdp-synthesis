@@ -6,6 +6,9 @@ from copy import copy, deepcopy
 import jax
 import jax.numpy as jnp
 import time
+import argparse
+from typing import Optional, Tuple
+from jaxtyping import Array, UInt8, Bool, Float32, PyTree
 
 class IMDP:
     """
@@ -49,7 +52,7 @@ class IMDP:
         for s in self.states:
             self.A_idx2lab[s] = {idx: a for idx, a in enumerate(self.P_id[s].keys())} 
 
-def robust_value_iteration(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
+def RVI(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
     """
     Robust value iteration for interval MDPs.
     
@@ -124,14 +127,31 @@ def robust_value_iteration(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
     
     return V
 
-def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=False, BATCH_SIZE=2000, policy_iteration=False):
+def RVI_JAX(
+    args: argparse.Namespace, 
+    imdp: IMDP, 
+    s0: Optional[int] = None, 
+    max_iterations: int = 1000, 
+    epsilon: float = 1e-6, 
+    RND_SWEEPS: bool = False, 
+    BATCH_SIZE: int = 2000, 
+    policy_iteration: bool = False,
+    return_Q_values: bool = False
+) -> Tuple[Float32[Array, "nr_states"], Bool, UInt8[Array, "nr_states"], Float32[Array, "nr_states p"]]:
+
     """
     Robust value iteration for interval MDPs.
     
+    :param args: Argument namespace
     :param imdp: Instance of IMDP class
+    :param s0: Initial state for tracking
     :param max_iterations: Maximum number of iterations
     :param epsilon: Convergence threshold
-    :return: Tuple of (lower_bounds, upper_bounds) for all states
+    :param RND_SWEEPS: Whether to use random state sweeps
+    :param BATCH_SIZE: Batch size for state updates
+    :param policy_iteration: Whether to use policy iteration instead of value iteration
+    :param return_Q_values: Whether to return Q-values for all state-action pairs
+    :return: Tuple of (values, Q-values, policy_labels, policy_inputs)
     """
 
     iterations_phase1 = 100
@@ -141,7 +161,20 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
 
     #####
 
-    def compute_lower_val(prob_lb, prob_ub, successor_values):
+    def compute_lower_val(
+        prob_lb: Float32[Array, "nr_successors"], 
+        prob_ub: Float32[Array, "nr_successors"], 
+        successor_values: Float32[Array, "nr_successors"]
+    ) -> Float32:
+
+        """
+        Compute the robust value for a given action based on the probability intervals and successor values.
+
+        :param prob_lb: Lower bounds of transition probabilities for the successor states
+        :param prob_ub: Upper bounds of transition probabilities for the successor states
+        :param successor_values: Values of the successor states
+        :return: The robust value for the action
+        """
         
         # Budget is the total probability mass we can assign to the successors
         budget = 1.0 - jnp.sum(prob_lb)
@@ -163,7 +196,22 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
 
     vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0), out_axes=0))
 
-    def state_policy_improvement(successors_slice, prob_lb_slice, prob_ub_slice, V):
+    def state_policy_improvement(
+        successors_slice: UInt8[Array, "nr_actions nr_successors"],
+        prob_lb_slice: Float32[Array, "nr_actions nr_successors"],
+        prob_ub_slice: Float32[Array, "nr_actions nr_successors"],
+        V: Float32[Array, "nr_states"]
+    ) -> Tuple[Float32, UInt8]:
+
+        """
+        Perform policy improvement for a given state by computing the robust values for all actions.
+
+        :param successors_slice: Slice of successor states for all actions
+        :param prob_lb_slice: Slice of lower bounds of transition probabilities for all actions
+        :param prob_ub_slice: Slice of upper bounds of transition probabilities for all actions
+        :param V: Current value function
+        :return: Tuple of (maximum robust value, index of the action with maximum robust value)
+        """
 
         # Retrieve the values for the successor states, including absorbing state
         successor_values = V[successors_slice]
@@ -175,7 +223,22 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
 
     vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0)))
 
-    def state_policy_evaluation(successors_slice, prob_lb_slice, prob_ub_slice, V):
+    def state_policy_evaluation(
+        successors_slice: UInt8[Array, "nr_actions nr_successors"],
+        prob_lb_slice: Float32[Array, "nr_actions nr_successors"],
+        prob_ub_slice: Float32[Array, "nr_actions nr_successors"],
+        V: Float32[Array, "nr_states"]
+    ) -> Float32:
+
+        """
+        Perform policy evaluation for a given state by computing the robust value for the action specified by the current policy.
+
+        :param successors_slice: Slice of successor states for the action specified by the current policy
+        :param prob_lb_slice: Slice of lower bounds of transition probabilities for the action specified by the current policy
+        :param prob_ub_slice: Slice of upper bounds of transition probabilities for the action specified by the current policy
+        :param V: Current value function
+        :return: The robust value for the action specified by the current policy
+        """
 
         # Retrieve the values for the successor states, including absorbing state
         successor_values = V[successors_slice]
@@ -205,6 +268,7 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
     print(f'- Max actions per state: {max_actions}')
     print(f'- Max successors per action: {max_successors}')
 
+    # Filling the following arrays is faster with NumPy
     JAX_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
     JAX_prob_lb_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=np.float32)
     JAX_prob_ub_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=np.float32)
@@ -215,42 +279,35 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
             JAX_prob_lb_array[s, a_idx, :len(successors)] = P_full_plusAbs[s][a_idx][:, 0]
             JAX_prob_ub_array[s, a_idx, :len(successors)] = P_full_plusAbs[s][a_idx][:, 1]
 
-    # print(f'- Padding successors_array to shape: {JAX_successors_array.shape}')
-    # print(f'- Padding prob_lb_array to shape: {JAX_prob_lb_array.shape}')
+    print(f'- Padding and array construction done')
 
     #####
 
-    states_to_update = [s for s in imdp.states 
+    states_to_update = np.array([s for s in imdp.states 
                             if s not in imdp.goal_regions and 
                                s not in imdp.critical_regions and 
                                s != imdp.absorbing_state and
-                               len(imdp.P_id[s]) > 0]
+                               len(imdp.P_id[s]) > 0])
     
-    states_not_to_update = [s for s in imdp.states 
+    states_not_to_update = np.array([s for s in imdp.states 
                             if s in imdp.goal_regions or 
                                s in imdp.critical_regions or 
                                s == imdp.absorbing_state or
-                               len(imdp.P_id[s]) == 0]
+                               len(imdp.P_id[s]) == 0])
     
     # Initialize value function and policy
-    V = np.zeros(imdp.nr_states)
+    V = np.zeros(imdp.nr_states, dtype=np.float32)
     if len(imdp.goal_regions) > 0:
-        V[imdp.goal_regions] = 1
-    # if len(imdp.critical_regions) > 0:
-    #     V[imdp.critical_regions] = 0
-    # for s in imdp.states:
-    #     if len(imdp.P_id[s]) == 0:
-    #         V[s] = 0
-    # V[imdp.absorbing_state] = 0 # Absorbing state
+        V[imdp.goal_regions] = 1.0
+
     policy = np.zeros(imdp.nr_states, dtype=int)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
-
     pbar = tqdm(range(max_iterations), desc='Iteration')
 
     if RND_SWEEPS:
         # Shuffle and batch states_to_update
-        np.random.shuffle(states_to_update)
+        states_to_update = np.random.permutation(states_to_update)
         state_batches = [states_to_update[i:i + BATCH_SIZE] for i in range(0, len(states_to_update), BATCH_SIZE)]
     else:
         state_batches = [states_to_update]
@@ -267,10 +324,13 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
                 
             # Policy evaluation + improvement
             for state_batch in state_batches:
-                V[state_batch], policy[state_batch] = vmap_state_policy_improvement(JAX_successors_array[state_batch], 
-                                        JAX_prob_lb_array[state_batch], 
-                                        JAX_prob_ub_array[state_batch], 
-                                        V)
+                V_batch, policy_batch = vmap_state_policy_improvement(
+                                            JAX_successors_array[state_batch], 
+                                            JAX_prob_lb_array[state_batch], 
+                                            JAX_prob_ub_array[state_batch], 
+                                            V)
+                V[state_batch] = np.array(V_batch, dtype=np.float32)
+                policy[state_batch] = np.array(policy_batch, dtype=int)
             
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
@@ -295,10 +355,11 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
                 
                 # Policy evaluation only
                 for state_batch in state_batches:
-                    V[state_batch] = vmap_state_policy_evaluation(JAX_successors_array[state_batch, policy[state_batch]], 
-                                            JAX_prob_lb_array[state_batch, policy[state_batch]], 
-                                            JAX_prob_ub_array[state_batch, policy[state_batch]], 
-                                            V)
+                    V[state_batch] = vmap_state_policy_evaluation(
+                                                JAX_successors_array[state_batch, policy[state_batch]], 
+                                                JAX_prob_lb_array[state_batch, policy[state_batch]], 
+                                                JAX_prob_ub_array[state_batch, policy[state_batch]], 
+                                                V)
                 
                 if np.max(np.abs(V - V_old)) < epsilon or (bool is False and i > iterations_phase1):
                     break
@@ -311,10 +372,11 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
             policy_old = policy.copy()
 
             for state_batch in state_batches:
-                V[state_batch], policy[state_batch] = vmap_state_policy_improvement(JAX_successors_array[state_batch], 
-                                        JAX_prob_lb_array[state_batch], 
-                                        JAX_prob_ub_array[state_batch], 
-                                        V)
+                V[state_batch], policy[state_batch] = vmap_state_policy_improvement(
+                                            JAX_successors_array[state_batch], 
+                                            JAX_prob_lb_array[state_batch], 
+                                            JAX_prob_ub_array[state_batch], 
+                                            V)
                 
             # print(f'- Policy improvement took: {time.time() - t:.3f} sec')
             
@@ -330,22 +392,19 @@ def RVI_JAX(args, imdp, s0=None, max_iterations=1000, epsilon=1e-6, RND_SWEEPS=F
     # Extract policy inputs from policy
     policy_labels = np.full_like(policy, fill_value=-1)
     for s in imdp.states:
-        policy_labels[s] = imdp.A_idx2lab[s][policy[s]] if policy[s] != -1 else -1
+        policy_labels[s] = imdp.A_idx2lab[s][int(policy[s])] if policy[s] != -1 else -1
 
     policy_inputs = imdp.actions_inputs[policy_labels]
 
     # Extract Q-values
-    # Q = {}
-    # for s in states_to_update:
-    #     Q[s] = {}
-    #     for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
-    #         prob_lb = P_full_plusAbs[s][a_idx][:, 0]
-    #         prob_ub = P_full_plusAbs[s][a_idx][:, 1]
-    #         successor_values = V[successors]
-    #         Q[s][a_label] = compute_lower_val(prob_lb, prob_ub, successor_values)
+    Q = {}
+    if return_Q_values:
+        for s in states_to_update:
+            Q[s] = {}
+            for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
+                prob_lb = P_full_plusAbs[s][a_idx][:, 0]
+                prob_ub = P_full_plusAbs[s][a_idx][:, 1]
+                successor_values = V[successors]
+                Q[s][a_label] = compute_lower_val(prob_lb, prob_ub, successor_values)
 
-    return V, False, policy_labels, policy_inputs
-
-def test():
-
-    print('hi2')
+    return V, Q, policy_labels, policy_inputs

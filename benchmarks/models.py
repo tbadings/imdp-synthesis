@@ -18,6 +18,7 @@ def wrap_theta(theta):
 class DubinsSmallDynamics:
     def __init__(self, args):
         self.linear = False
+        self.independent_dimensions = None
 
         # Discretization step size
         self.tau = 1
@@ -76,6 +77,7 @@ class DubinsSmallDynamics:
 class DubinsDynamics:
     def __init__(self, args):
         self.linear = False
+        self.independent_dimensions = None
 
         # Discretization step size
         # self.tau = 0.5 # MODIFIED THIS LINE
@@ -172,6 +174,7 @@ class DroneDynamics:
             assert False
 
         self.linear = False
+        self.independent_dimensions = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
 
         if dim == 2:
             self.n = 4
@@ -259,6 +262,7 @@ class DroneDynamics:
 class PendulumDynamics:
     def __init__(self, args):
         self.linear = False
+        self.independent_dimensions = None
 
         self.n = 2
         self.p = 1
@@ -318,6 +322,7 @@ class PendulumDynamics:
 class MountainCarDynamics:
     def __init__(self, args):
         self.linear = False
+        self.independent_dimensions = None
 
         self.n = 2
         self.p = 1
@@ -377,6 +382,7 @@ class MountainCarDynamics:
 class DoubleIntegratorDynamics:
     def __init__(self, args):
         self.linear = False
+        self.independent_dimensions = None
 
         self.n = 2
         self.p = 1
