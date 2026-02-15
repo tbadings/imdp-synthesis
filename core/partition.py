@@ -3,8 +3,10 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
+from tqdm import tqdm
 
 from .polytope import hyperrectangles_isdisjoint_multi
+from core.Gaussian_probabilities import minmax_Gauss
 
 EPS = 1e-3
 
@@ -83,10 +85,8 @@ def check_if_region_in_goal(goals_A, goals_b, points):
     # If any goal region is contained in the polytope, then set current polytope as goal
     return jnp.any(all_points_contained)
 
-
 # Vectorized function over different sets of points
 vmap_check_if_region_in_goal = jax.jit(jax.vmap(check_if_region_in_goal, in_axes=(None, None, 0), out_axes=0))
-
 
 @jax.jit
 def get_vertices_from_bounds(lb, ub):
@@ -108,17 +108,18 @@ class RectangularPartition(object):
     and the entirety of these regions form a structured grid within the state space.
     """
 
-    def __init__(self, model):
-        print('Define rectangular partition...')
+    def __init__(self, model, x_dims, verbose=False):
         t_total = time.time()
 
+        self.x_dims = x_dims
+        self.dimension = len(x_dims)
+        print(f'Define rectangular partition for dimensions {x_dims}...')
+
         # Retrieve necessary data from the model object
-        self.number_per_dim = model.partition['number_per_dim']
-        partition_boundary = model.partition['boundary']
+        self.number_per_dim = model.partition['number_per_dim'][x_dims]
+        partition_boundary = model.partition['boundary_jnp'][:,x_dims]
         self.boundary_lb = partition_boundary[0]
         self.boundary_ub = partition_boundary[1]
-        goal_regions = model.goal
-        critical_regions = model.critical
 
         # Set partition as being (hyper)rectangula
         self.rectangular = True
@@ -135,8 +136,8 @@ class RectangularPartition(object):
         centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
 
         # TODO: Check how to avoid this step
-        from .utils import lexsort4d
-        centers_unit = lexsort4d(centers_unit)
+        # from .utils import lexsort4d
+        # centers_unit = lexsort4d(centers_unit)
 
         # Define n-dimensional array (n = dimension of state space) to index elements of the partition
         centers = jnp.array(centers_unit, dtype=int)
@@ -156,13 +157,15 @@ class RectangularPartition(object):
         # Determine the vertices of all partition elements
         vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
         all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
-        print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         t = time.time()
         # Determine halfspace (Ax <= b) inequalities
         vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
-        print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
@@ -177,9 +180,9 @@ class RectangularPartition(object):
 
         # Also store the partition bounds per dimension
         elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
-        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(model.n)]
-        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(model.n)]
-        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(model.n)]
+        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
+        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(self.dimension)]
+        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(self.dimension)]
 
         self.regions_per_dim = {
             'centers': centers_per_dim,
@@ -188,64 +191,70 @@ class RectangularPartition(object):
             'upper_bounds': upper_bounds_per_dim,
         }
 
-        t = time.time()
-        if len(goal_regions) > 0:
-            # Compute halfspace representation of the goal regions
-            goal_centers = np.zeros((len(goal_regions), len(self.number_per_dim)))
-            goal_widths = np.zeros((len(goal_regions), len(self.number_per_dim)))
-            for i, goal in enumerate(goal_regions):
-                goal_centers[i] = (goal[1] + goal[0]) / 2
-                goal_widths[i] = (goal[1] - goal[0]) + EPS
-
-            goal_centers = jnp.array(goal_centers, dtype=float)
-            goal_widths = jnp.array(goal_widths, dtype=float)
-
-            vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
-            goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
-
-            # Determine goal regions
-            goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
-            goal_regions_idxs = region_idxs[goal_regions_bools]
-            goal_regions_centers = centers[goal_regions_bools]
+        # Only in non-compositional mode, we can directly compute the goal and unsafe regions (otherwise, this is only possible after composition)
+        if model.n != len(x_dims):
+            # If in compositional mode, set no goal and critical states at this point
+            self.goal = {
+                'bools': np.zeros(self.size, dtype=bool),
+                'idxs': np.array([], dtype=int),
+            }
+            self.critical = {
+                'bools': np.zeros(self.size, dtype=bool),
+                'idxs': np.array([], dtype=int),
+            }
         else:
-            goal_regions_bools = jnp.full(self.size, False, dtype=bool)
-            goal_regions_idxs = jnp.array([], dtype=int)
-            goal_regions_centers = jnp.array([], dtype=float)
-        print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
+            t = time.time()
+            if len(model.goal) > 0:
+                # Compute halfspace representation of the goal regions
+                goal_centers = np.zeros((len(model.goal), len(self.number_per_dim)))
+                goal_widths = np.zeros((len(model.goal), len(self.number_per_dim)))
+                for i, goal in enumerate(model.goal):
+                    goal_centers[i] = (goal[1] + goal[0]) / 2
+                    goal_widths[i] = (goal[1] - goal[0]) + EPS
 
-        self.goal = {
-            'bools': goal_regions_bools,
-            'idxs': goal_regions_idxs.tolist(),
-            'centers': goal_regions_centers
-        }
-        print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+                goal_centers = jnp.array(goal_centers, dtype=float)
+                goal_widths = jnp.array(goal_widths, dtype=float)
 
-        t = time.time()
-        if len(critical_regions) > 0:
-            # Check which regions (hyperrectangles) are *not* disjoint from the critical regions (also hyperrectangles)
-            critical_lbs = critical_regions[:, 0, :]
-            critical_ubs = critical_regions[:, 1, :]
+                vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
+                goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
 
-            vfun = jax.jit(jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0))
-            critical_regions_bools = ~vfun(self.regions['lower_bounds'], self.regions['upper_bounds'],
-                                           critical_lbs + EPS, critical_ubs - EPS)
-            critical_regions_idxs = region_idxs[critical_regions_bools]
-            critical_regions_centers = centers[critical_regions_bools]
-        else:
-            critical_regions_bools = jnp.full(self.size, False, dtype=bool)
-            critical_regions_idxs = jnp.array([], dtype=int)
-            critical_regions_centers = jnp.array([], dtype=float)
-        print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+                # Determine goal regions
+                goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
+                goal_regions_idxs = region_idxs[goal_regions_bools]
+            else:
+                goal_regions_bools = jnp.full(self.size, False, dtype=bool)
+                goal_regions_idxs = jnp.array([], dtype=int)
+            print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
 
-        self.critical = {
-            'bools': critical_regions_bools,
-            'idxs': critical_regions_idxs.tolist(),
-            'centers': critical_regions_centers
-        }
-        print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+            self.goal = {
+                'bools': goal_regions_bools,
+                'idxs': goal_regions_idxs.tolist(),
+            }
+            print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
 
-        print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
-        print('')
+            t = time.time()
+            if len(model.critical) > 0:
+                # Check which regions (hyperrectangles) are *not* disjoint from the critical regions (also hyperrectangles)
+                critical_lbs = model.critical[:, 0, :]
+                critical_ubs = model.critical[:, 1, :]
+
+                vfun = jax.jit(jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0))
+                critical_regions_bools = ~vfun(self.regions['lower_bounds'], self.regions['upper_bounds'],
+                                            critical_lbs + EPS, critical_ubs - EPS)
+                critical_regions_idxs = region_idxs[critical_regions_bools]
+            else:
+                critical_regions_bools = jnp.full(self.size, False, dtype=bool)
+                critical_regions_idxs = jnp.array([], dtype=int)
+            print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+
+            self.critical = {
+                'bools': critical_regions_bools,
+                'idxs': critical_regions_idxs.tolist(),
+            }
+            print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+
+        if verbose:
+            print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
         return
 
     def x2state(self, x):

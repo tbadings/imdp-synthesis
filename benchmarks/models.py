@@ -174,7 +174,8 @@ class DroneDynamics:
             assert False
 
         self.linear = False
-        self.independent_dimensions = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
+        self.independent_dimensions_x = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
+        self.independent_dimensions_u = [[0],[1]] if dim == 2 else [[0],[1],[2]]
 
         if dim == 2:
             self.n = 4

@@ -48,7 +48,7 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
 
 class RectangularForward(object):
 
-    def __init__(self, partition, model):
+    def __init__(self, partition, model, x_dims, u_dims):
         print('Define target points and forward reachable sets...')
         t_total = time.time()
 
@@ -56,13 +56,30 @@ class RectangularForward(object):
         vmap_forward_reach = jax.jit(jax.vmap(forward_reach, in_axes=(None, None, None, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0,)),
                                      static_argnums=(0))
 
-        discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in range(len(model.num_actions))]
+        discrete_per_dimension = [np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i]) for i in u_dims]
         self.inputs = jnp.array(list(itertools.product(*discrete_per_dimension)))
 
         t = time.time()
 
-        pbar = tqdm(enumerate(zip(partition.regions['lower_bounds'], partition.regions['upper_bounds'])), total=len(partition.regions['lower_bounds']))
-        self.max_slice = jnp.zeros(model.n)
+        # Pad the omitted dimensions with zeros (to use the step_set function of the full model)
+        inputs = jnp.zeros((len(self.inputs), model.p))
+        inputs = inputs.at[:, u_dims].set(self.inputs)
+        lower_bounds = jnp.zeros((len(partition.regions['lower_bounds']), model.n))
+        upper_bounds = jnp.zeros((len(partition.regions['upper_bounds']), model.n))
+        lower_bounds = lower_bounds.at[:, x_dims].set(partition.regions['lower_bounds'])
+        upper_bounds = upper_bounds.at[:, x_dims].set(partition.regions['upper_bounds'])
+        # Also pad the partition parameters with zeros (to use the step_set function of the full model)
+        number_per_dim = jnp.ones(model.n)
+        number_per_dim = number_per_dim.at[x_dims].set(partition.number_per_dim)
+        cell_width = jnp.ones(model.n)
+        cell_width = cell_width.at[x_dims].set(partition.cell_width)
+        boundary_lb = jnp.full(model.n, -0.5)
+        boundary_lb = boundary_lb.at[x_dims].set(partition.boundary_lb)
+        boundary_ub = jnp.full(model.n, 0.5)
+        boundary_ub = boundary_ub.at[x_dims].set(partition.boundary_ub)
+
+        pbar = tqdm(enumerate(zip(lower_bounds, upper_bounds)), total=len(lower_bounds))
+        self.max_slice = jnp.zeros(partition.dimension)
         
         # Pre-compute all inputs on device
         # discrete_inputs_jax = jax.device_put(self.inputs)
@@ -72,22 +89,37 @@ class RectangularForward(object):
         # boundary_lb = jax.device_put(partition.boundary_lb)
         # boundary_ub = jax.device_put(partition.boundary_ub)
                 
-        self.frs_lb = np.zeros((len(partition.regions['lower_bounds']), len(self.inputs), model.n))
+        self.frs_lb = np.zeros((len(lower_bounds), len(inputs), partition.dimension))
         self.frs_ub = np.zeros_like(self.frs_lb)
         self.frs_idx_lb = np.zeros_like(self.frs_lb)
         self.frs_idx_ub = np.zeros_like(self.frs_lb)
 
         for i, (lb, ub) in pbar:
             # Batch compute forward reachable sets for all actions
-            flb, fub, _, fil, fiu = vmap_forward_reach(model.step_set, lb, ub, self.inputs, 
-                     model.noise['cov_diag'], partition.number_per_dim, partition.cell_width, partition.boundary_lb, partition.boundary_ub)
+            flb, fub, _, fil, fiu = vmap_forward_reach(
+                    model.step_set, 
+                    lb, 
+                    ub, 
+                    inputs, 
+                    model.noise['cov_diag'], 
+                    number_per_dim, 
+                    cell_width, 
+                    boundary_lb, 
+                    boundary_ub)
 
-            self.frs_lb[i] = flb
-            self.frs_ub[i] = fub
-            self.frs_idx_lb[i] = fil
-            self.frs_idx_ub[i] = fiu
-
-        self.max_slice = jnp.maximum(self.max_slice, jnp.max(fiu + 1 - fil, axis=0))
+            if len(x_dims) != model.n:
+                self.frs_lb[i] = flb[:, x_dims]
+                self.frs_ub[i] = fub[:, x_dims]
+                self.frs_idx_lb[i] = fil[:, x_dims]
+                self.frs_idx_ub[i] = fiu[:, x_dims]
+            else:
+                self.frs_lb[i] = flb
+                self.frs_ub[i] = fub
+                self.frs_idx_lb[i] = fil
+                self.frs_idx_ub[i] = fiu
+                
+        # Compute max_slice after all forward reachable sets are computed
+        self.max_slice = jnp.max(self.frs_idx_ub - self.frs_idx_lb + 1, axis=(0, 1))
         self.max_slice = tuple(np.astype(np.array(self.max_slice), int).tolist())
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
