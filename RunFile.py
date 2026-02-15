@@ -11,9 +11,9 @@ import datetime
 import os
 import time
 from pathlib import Path
-
 import jax
 import numpy as np
+import sys
 
 import benchmarks
 from core.Gaussian_probabilities import compute_probability_intervals
@@ -23,10 +23,11 @@ from core.options import parse_arguments
 from core.partition import RectangularPartition
 from core.imdp import IMDP
 
-import sys
-sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
+# Uncomment one of the following lines to run an example benchmark.
+# If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
+# sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
-# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '2000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D', '--batch_size', '1000', '--plot_title']
