@@ -9,7 +9,7 @@ class MonteCarloSim():
 
     def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True, **kwargs):
 
-        print('Starting Monte Carlo simulations...')
+        print('\nStarting Monte Carlo simulations...')
 
         self.verbose = verbose
 

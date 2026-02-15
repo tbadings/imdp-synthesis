@@ -15,7 +15,7 @@ class IMDP:
     Class to construct the IMDP abstraction.
     """
 
-    def __init__(self, partition, states, actions_inputs, x0, goal_regions, critical_regions, P_full, P_id, P_absorbing):
+    def __init__(self, partition, states, actions_inputs, x0, goal_regions, critical_regions, P_full, S_id, A_id, P_absorbing):
         '''
         Generate the IMDP abstraction
 
@@ -26,7 +26,8 @@ class IMDP:
         :param goal_regions:
         :param critical_regions:
         :param P_full:
-        :param P_id:
+        :param S_id:
+        :param A_id:
         :param P_absorbing:
         '''
         self.actions_inputs = actions_inputs
@@ -35,7 +36,8 @@ class IMDP:
         self.goal_regions = goal_regions
         self.critical_regions = critical_regions
         self.P_full = P_full
-        self.P_id = P_id
+        self.S_id = S_id
+        self.A_id = A_id
         self.P_absorbing = P_absorbing
 
         # Define initial state
@@ -46,11 +48,6 @@ class IMDP:
 
         # Number of states
         self.nr_states = len(self.states) + 1
-
-        # Create map from action index to action labels
-        self.A_idx2lab = {}
-        for s in self.states:
-            self.A_idx2lab[s] = {idx: a for idx, a in enumerate(self.P_id[s].keys())} 
 
 def RVI(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
     """
@@ -80,13 +77,13 @@ def RVI(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
             if s in imdp.goal_regions or s in imdp.critical_regions or s == imdp.absorbing_state:
                 continue
             
-            if len(imdp.P_id[s]) == 0:
+            if len(imdp.A_id[s]) == 0:
                 V[s] = 0
                 continue
             
             lower_vals = []
 
-            for a_idx, (_, successors) in enumerate(imdp.P_id[s].items()):
+            for a_idx, (_, successors) in enumerate(imdp.A_id[s].items()):
                 # Add absorbing state as successor
                 successors_plus_abs = np.append(successors, imdp.absorbing_state)
                 probabilities_plus_abs = np.vstack((imdp.P_full[s][a_idx], imdp.P_absorbing[s][a_idx]))
@@ -155,9 +152,6 @@ def RVI_JAX(
     """
 
     iterations_phase1 = 100
-    
-    P_id_plusAbs = {}
-    P_full_plusAbs = {}
 
     #####
 
@@ -250,57 +244,49 @@ def RVI_JAX(
 
     vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
 
-    ######
-
-    # Append the absorbing state to the IMDP object
-    for s in imdp.states:
-        P_id_plusAbs[s] = {}
-        P_full_plusAbs[s] = {}
-        for a_idx, (a_label, successors) in enumerate(imdp.P_id[s].items()):
-            P_id_plusAbs[s][a_label] = np.append(successors, imdp.absorbing_state)
-            P_full_plusAbs[s][a_idx] = np.vstack((imdp.P_full[s][a_idx], imdp.P_absorbing[s][a_idx]))
-
     #####
     # Padding the probability intervals and successor values for JAX vectorization
-    max_actions = max([len(P_id_plusAbs[s]) for s in imdp.states])
-    max_successors = max([len(P_id_plusAbs[s][a]) + 1 for s in imdp.states for a in P_id_plusAbs[s].keys()])
+    max_actions = max([len(imdp.A_id[s]) for s in imdp.states if s in imdp.A_id])
+    max_successors = max([imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]) # +1 for absorbing state
 
     print(f'- Max actions per state: {max_actions}')
     print(f'- Max successors per action: {max_successors}')
 
     # Filling the following arrays is faster with NumPy
     JAX_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
-    JAX_prob_lb_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=np.float32)
-    JAX_prob_ub_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=np.float32)
+    JAX_prob_lb_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
+    JAX_prob_ub_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
 
     for s in imdp.states:
-        for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
-            JAX_successors_array[s, a_idx, :len(successors)] = successors
-            JAX_prob_lb_array[s, a_idx, :len(successors)] = P_full_plusAbs[s][a_idx][:, 0]
-            JAX_prob_ub_array[s, a_idx, :len(successors)] = P_full_plusAbs[s][a_idx][:, 1]
+        if s not in imdp.A_id:
+            continue
+        # Fill in the dense array
+        successors = imdp.S_id[s]
+        num_actions, num_successors = successors.shape
+        JAX_successors_array[s, :num_actions, :num_successors] = successors
+        JAX_prob_lb_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 0]
+        JAX_prob_ub_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 1]
+        # Add the absorbing state as a successor in the final column (max_successors-1) for all actions
+        JAX_successors_array[s, :num_actions, max_successors-1] = imdp.absorbing_state
+        JAX_prob_lb_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 0]
+        JAX_prob_ub_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 1]
 
     print(f'- Padding and array construction done')
 
     #####
 
-    states_to_update = np.array([s for s in imdp.states 
-                            if s not in imdp.goal_regions and 
-                               s not in imdp.critical_regions and 
-                               s != imdp.absorbing_state and
-                               len(imdp.P_id[s]) > 0])
-    
-    states_not_to_update = np.array([s for s in imdp.states 
-                            if s in imdp.goal_regions or 
-                               s in imdp.critical_regions or 
-                               s == imdp.absorbing_state or
-                               len(imdp.P_id[s]) == 0])
+    print('- Set states to update...')
+    states_with_enabled_actions = np.array([True if s in imdp.A_id and len(imdp.A_id[s]) > 0 else False for s in imdp.states])
+    update_mask = ~imdp.goal_regions & ~imdp.critical_regions & (imdp.states != imdp.absorbing_state) & states_with_enabled_actions
+    states_to_update = imdp.states[update_mask]
+    states_not_to_update = imdp.states[~update_mask]
     
     # Initialize value function and policy
-    V = np.zeros(imdp.nr_states, dtype=np.float32)
+    V = np.zeros(imdp.nr_states, dtype=args.floatprecision)
     if len(imdp.goal_regions) > 0:
-        V[imdp.goal_regions] = 1.0
+        V[:-1][imdp.goal_regions] = 1.0 # [:-1] to exclude the absorbing state
 
-    policy = np.zeros(imdp.nr_states, dtype=int)
+    policy = np.zeros(imdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
     pbar = tqdm(range(max_iterations), desc='Iteration')
@@ -329,8 +315,8 @@ def RVI_JAX(
                                             JAX_prob_lb_array[state_batch], 
                                             JAX_prob_ub_array[state_batch], 
                                             V)
-                V[state_batch] = np.array(V_batch, dtype=np.float32)
-                policy[state_batch] = np.array(policy_batch, dtype=int)
+                V[state_batch] = np.array(V_batch, dtype=args.floatprecision)
+                policy[state_batch] = np.array(policy_batch, dtype=np.int32)
             
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
@@ -392,19 +378,19 @@ def RVI_JAX(
     # Extract policy inputs from policy
     policy_labels = np.full_like(policy, fill_value=-1)
     for s in imdp.states:
-        policy_labels[s] = imdp.A_idx2lab[s][int(policy[s])] if policy[s] != -1 else -1
+        policy_labels[s] = imdp.A_id[s][int(policy[s])] if policy[s] != -1 and s in imdp.A_id else -1
 
     policy_inputs = imdp.actions_inputs[policy_labels]
 
     # Extract Q-values
     Q = {}
-    if return_Q_values:
-        for s in states_to_update:
-            Q[s] = {}
-            for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
-                prob_lb = P_full_plusAbs[s][a_idx][:, 0]
-                prob_ub = P_full_plusAbs[s][a_idx][:, 1]
-                successor_values = V[successors]
-                Q[s][a_label] = compute_lower_val(prob_lb, prob_ub, successor_values)
+    # if return_Q_values:
+    #     for s in states_to_update:
+    #         Q[s] = {}
+    #         for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
+    #             prob_lb = P_full_plusAbs[s][a_idx][:, 0]
+    #             prob_ub = P_full_plusAbs[s][a_idx][:, 1]
+    #             successor_values = V[successors]
+    #             Q[s][a_label] = compute_lower_val(prob_lb, prob_ub, successor_values)
 
     return V, Q, policy_labels, policy_inputs

@@ -108,9 +108,11 @@ class RectangularPartition(object):
     and the entirety of these regions form a structured grid within the state space.
     """
 
-    def __init__(self, model):
+    def __init__(self, model, verbose=False):
         print('Define rectangular partition...')
         t_total = time.time()
+
+        self.dimension = model.n
 
         # Retrieve necessary data from the model object
         self.number_per_dim = model.partition['number_per_dim']
@@ -156,13 +158,15 @@ class RectangularPartition(object):
         # Determine the vertices of all partition elements
         vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
         all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
-        print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         t = time.time()
         # Determine halfspace (Ax <= b) inequalities
         vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
-        print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
@@ -177,9 +181,9 @@ class RectangularPartition(object):
 
         # Also store the partition bounds per dimension
         elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
-        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(model.n)]
-        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(model.n)]
-        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(model.n)]
+        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
+        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(self.dimension)]
+        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(self.dimension)]
 
         self.regions_per_dim = {
             'centers': centers_per_dim,
@@ -206,19 +210,18 @@ class RectangularPartition(object):
             # Determine goal regions
             goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
             goal_regions_idxs = region_idxs[goal_regions_bools]
-            goal_regions_centers = centers[goal_regions_bools]
         else:
             goal_regions_bools = jnp.full(self.size, False, dtype=bool)
             goal_regions_idxs = jnp.array([], dtype=int)
-            goal_regions_centers = jnp.array([], dtype=float)
-        print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.goal = {
             'bools': goal_regions_bools,
-            'idxs': goal_regions_idxs.tolist(),
-            'centers': goal_regions_centers
+            'idxs': goal_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+        if verbose:
+            print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
 
         t = time.time()
         if len(critical_regions) > 0:
@@ -230,21 +233,23 @@ class RectangularPartition(object):
             critical_regions_bools = ~vfun(self.regions['lower_bounds'], self.regions['upper_bounds'],
                                            critical_lbs + EPS, critical_ubs - EPS)
             critical_regions_idxs = region_idxs[critical_regions_bools]
-            critical_regions_centers = centers[critical_regions_bools]
         else:
             critical_regions_bools = jnp.full(self.size, False, dtype=bool)
             critical_regions_idxs = jnp.array([], dtype=int)
-            critical_regions_centers = jnp.array([], dtype=float)
-        print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+        if verbose:
+            print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.critical = {
             'bools': critical_regions_bools,
-            'idxs': critical_regions_idxs.tolist(),
-            'centers': critical_regions_centers
+            'idxs': critical_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+        if verbose:
+            print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
 
-        print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
+        if verbose:
+            print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
+
+        print(f"(Number of states: {len(self.regions['idxs'])})")
         print('')
         return
 

@@ -16,7 +16,7 @@ import jax
 import numpy as np
 
 import benchmarks
-from core.Gaussian_probabilities import compute_probability_intervals, compute_probability_intervals_vec
+from core.Gaussian_probabilities import compute_probability_intervals
 from core.actions_forward import RectangularForward
 from core.model import parse_linear_model, parse_nonlinear_model
 from core.options import parse_arguments
@@ -24,17 +24,19 @@ from core.partition import RectangularPartition
 from core.imdp import IMDP
 
 import sys
-# sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
+sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
-sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '10000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone3D', '--batch_size', '1000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '1000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
 
     args = parse_arguments()
+    args.floatprecision = np.float64
     if args.gpu:
         jax.config.update('jax_platform_name', 'gpu')
         print('- Requested to run on GPU')
@@ -104,22 +106,13 @@ if __name__ == '__main__':
 
     # Create partition of the continuous state space into convex polytope
     partition = RectangularPartition(model=model)
-    print(f"(Number of states: {len(partition.regions['idxs'])})\n")
-
-    # Create actions based on forward reachable sets
-    actions = RectangularForward(partition=partition, model=model)
-    actions_inputs = actions.inputs
-
-    # assert False
-
-    # t = time.time()
-    # P_full, P_id, P_absorbing = compute_probability_intervals_vec(args, model, partition, actions, batch_size=50000)
-    # print(f'- V2 took: {(time.time() - t):.3f} sec.')
-
-    t = time.time()
-    P_full, P_id, P_absorbing = compute_probability_intervals(args, model, partition, actions)
-    print(f'- V1 took: {(time.time() - t):.3f} sec.')
     
+    # Create actions based on forward reachable sets
+    actions = RectangularForward(args=args, partition=partition, model=model)
+    actions_inputs = actions.id_to_input
+    
+    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args, model=model, partition=partition, actions=actions)
+
     # assert False
     del actions
 
@@ -127,10 +120,11 @@ if __name__ == '__main__':
                 states=np.array(partition.regions['idxs']),
                 actions_inputs=actions_inputs,
                 x0=model.x0,
-                goal_regions=np.array(partition.goal['idxs']),
-                critical_regions=np.array(partition.critical['idxs']),
+                goal_regions=np.array(partition.goal['bools']),
+                critical_regions=np.array(partition.critical['bools']),
                 P_full=P_full,
-                P_id=P_id,
+                S_id=S_id,
+                A_id=A_id,
                 P_absorbing=P_absorbing)
 
     print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
@@ -148,33 +142,33 @@ if __name__ == '__main__':
             args=args, 
             imdp=imdp, 
             s0=partition.x2state(model.x0)[0], 
-            max_iterations=1000, 
+            max_iterations=10000, 
             epsilon=1e-6, 
             RND_SWEEPS=True, 
-            BATCH_SIZE=1000, 
+            BATCH_SIZE=100, 
             policy_iteration=True)
         print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
 
     # %% Build interval MDP via Storm
 
-    assert False
+    # TODO: Make the new data structures again compatible with Storm.
 
-    from core.storm import BuilderStorm
+    # from core.storm import BuilderStorm
 
-    print('Compute optimal policy via robust value iteration with Storm')
+    # print('Compute optimal policy via robust value iteration with Storm')
 
-    print('\n- Create iMDP using storm...')
-    t = time.time()
-    builderS = BuilderStorm(imdp)
+    # print('\n- Create iMDP using storm...')
+    # t = time.time()
+    # builderS = BuilderStorm(imdp)
 
-    print(builderS.imdp)
+    # print(builderS.imdp)
 
-    result = builderS.compute_reach_avoid()
-    V_storm = builderS.results
-    policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
-    print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
-    print('Total sum of reach probs:', np.sum(builderS.results))
-    print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
+    # result = builderS.compute_reach_avoid()
+    # V_storm = builderS.results
+    # policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
+    # print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
+    # print('Total sum of reach probs:', np.sum(builderS.results))
+    # print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
 
     # %% Simulations and plot
 
@@ -182,15 +176,11 @@ if __name__ == '__main__':
     sim_policy_inputs = policy_inputs
     sim_values = V
 
-    # sim_policy = policy_storm
-    # sim_policy_inputs = policy_inputs_storm
-    # sim_values = V_storm
-
     from core.simulate import MonteCarloSim
     from plotting.traces import plot_traces
     from plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=10000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
     print('Empirical satisfaction probability:', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)

@@ -16,6 +16,8 @@ def parse_arguments():
                         help="Seed for random number generators (Jax, Numpy)")
     parser.add_argument('--decimals', type=int, default=4,
                         help="Number of decimals to work with for storing probabilities")
+    parser.add_argument('--pAbs_min', type=float, default=0.0001,
+                        help="Minimum probability for absorbing states")
 
     parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run on GPU. Otherwise, run on CPU")
