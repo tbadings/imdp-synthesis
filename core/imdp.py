@@ -246,11 +246,14 @@ def RVI_JAX(
 
     #####
     # Padding the probability intervals and successor values for JAX vectorization
-    max_actions = max([len(imdp.A_id[s]) for s in imdp.states if s in imdp.A_id])
+    total_actions = np.array([len(imdp.A_id[s]) for s in imdp.states if s in imdp.A_id])
+    max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
     max_successors = max([imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]) # +1 for absorbing state
 
-    print(f'- Max actions per state: {max_actions}')
-    print(f'- Max successors per action: {max_successors}')
+    print(f'- Number of states: {len(imdp.states)}')
+    print(f'- Total number of choices: {np.sum(total_actions)} (total number of state-action pairs)')
+    print(f'- Max number of actions per state: {max_actions}')
+    print(f'- Max number of successor states per action: {max_successors}')
 
     # Filling the following arrays is faster with NumPy
     JAX_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
@@ -298,6 +301,10 @@ def RVI_JAX(
     else:
         state_batches = [states_to_update]
 
+    JAX_successors_array = jax.device_put(JAX_successors_array, args.rvi_device)
+    JAX_prob_lb_array = jax.device_put(JAX_prob_lb_array, args.rvi_device)
+    JAX_prob_ub_array = jax.device_put(JAX_prob_ub_array, args.rvi_device)
+
     if not policy_iteration:
         # Value iteration
         for iteration in pbar:
@@ -336,7 +343,8 @@ def RVI_JAX(
             # Policy evaluation
             i = 0
             t = time.time()
-            while True:
+            while True: # TODO: Remove this hardcoding
+                # print(f'- Policy evaluation iteration {i + 1}...')
                 V_old = V.copy()
                 
                 # Policy evaluation only

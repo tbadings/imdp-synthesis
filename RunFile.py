@@ -27,17 +27,17 @@ from core.imdp import IMDP
 # If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
 # sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
-# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '2000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '1000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone3D', '--batch_size', '1000', '--plot_title']
-# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '1000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '100', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone3D', '--batch_size', '10000', '--plot_title']
+sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '1000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
 
     args = parse_arguments()
-    args.floatprecision = np.float64
+    args.floatprecision = np.float32
     if args.gpu:
         jax.config.update('jax_platform_name', 'gpu')
         print('- Requested to run on GPU')
@@ -112,7 +112,11 @@ if __name__ == '__main__':
     actions = RectangularForward(args=args, partition=partition, model=model)
     actions_inputs = actions.id_to_input
     
-    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args, model=model, partition=partition, actions=actions)
+    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args, 
+                                                                    model=model, 
+                                                                    partition=partition, 
+                                                                    actions=actions,
+                                                                    vectorized=True)
 
     # assert False
     del actions
@@ -146,7 +150,7 @@ if __name__ == '__main__':
             max_iterations=10000, 
             epsilon=1e-6, 
             RND_SWEEPS=True, 
-            BATCH_SIZE=100, 
+            BATCH_SIZE=1000, 
             policy_iteration=True)
         print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
 

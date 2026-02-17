@@ -40,7 +40,7 @@ class Drone3D(DroneDynamics):
         v_min = -3.5
         v_max = 3.5
 
-        self.partition['boundary'] = np.array([[-15, v_min, -9, v_min, 0, v_min], 
+        self.partition['boundary'] = np.array([[-15, v_min, -9, v_min, -7, v_min], 
                                                [15, v_max, 9, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = np.array([30, 7, 18, 7, 14, 7])
@@ -52,34 +52,34 @@ class Drone3D(DroneDynamics):
 
         self.critical = np.array([
             # Hole 1
-            # [[-11, v_min, -1, v_min, -7, v_min], [-5, v_max, 9, v_max, -5, v_max]],
-            # [[-11, v_min, 5, v_min, -5, v_min], [-5, v_max, 9, v_max, 5, v_max]],
-            # [[-11, v_min, -1, v_min, -5, v_min], [-5, v_max, 3, v_max, 3, v_max]],
+            [[-11, v_min, -1, v_min, -7, v_min], [-5, v_max, 9, v_max, -5, v_max]],
+            [[-11, v_min, 5, v_min, -5, v_min], [-5, v_max, 9, v_max, 5, v_max]],
+            [[-11, v_min, -1, v_min, -5, v_min], [-5, v_max, 3, v_max, 3, v_max]],
 
-            # # Hole 2
-            # [[-1, v_min, 1, v_min, -7, v_min], [3, v_max, 9, v_max, -1, v_max]],
-            # [[-1, v_min, 1, v_min, 3, v_min], [3, v_max, 9, v_max, 5, v_max]],
-            # [[-1, v_min, 1, v_min, -1, v_min], [3, v_max, 3, v_max, 3, v_max]],
-            # [[-1, v_min, 7, v_min, -1, v_min], [3, v_max, 9, v_max, 3, v_max]],
+            # Hole 2
+            [[-1, v_min, 1, v_min, -7, v_min], [3, v_max, 9, v_max, -1, v_max]],
+            [[-1, v_min, 1, v_min, 3, v_min], [3, v_max, 9, v_max, 5, v_max]],
+            [[-1, v_min, 1, v_min, -1, v_min], [3, v_max, 3, v_max, 3, v_max]],
+            [[-1, v_min, 7, v_min, -1, v_min], [3, v_max, 9, v_max, 3, v_max]],
 
-            # # Tower
-            # [[-1, v_min, -3, v_min, -7, v_min], [3, v_max, 1, v_max, 7, v_max]],
+            # Tower
+            [[-1, v_min, -3, v_min, -7, v_min], [3, v_max, 1, v_max, 7, v_max]],
 
-            # # Wall between routes
-            # [[3, v_min, -3, v_min, -7, v_min], [9, v_max, 1, v_max, -1, v_max]],
+            # Wall between routes
+            [[3, v_min, -3, v_min, -7, v_min], [9, v_max, 1, v_max, -1, v_max]],
 
-            # # Long route obstacles
-            # [[-11, v_min, -5, v_min, -7, v_min], [-7, v_max, -1, v_max, 1, v_max]],
-            # [[-1, v_min, -9, v_min, -7, v_min], [3, v_max, -3, v_max, -5, v_max]],
+            # Long route obstacles
+            [[-11, v_min, -5, v_min, -7, v_min], [-7, v_max, -1, v_max, 1, v_max]],
+            [[-1, v_min, -9, v_min, -7, v_min], [3, v_max, -3, v_max, -5, v_max]],
 
-            # # Overhanging
-            # [[-1, v_min, -9, v_min, 3, v_min], [3, v_max, -3, v_max, 7, v_max]],
+            # Overhanging
+            [[-1, v_min, -9, v_min, 3, v_min], [3, v_max, -3, v_max, 7, v_max]],
 
-            # # Small last obstacle
-            # [[11, v_min, -9, v_min, -7, v_min], [15, v_max, -5, v_max, -5, v_max]],
+            # Small last obstacle
+            [[11, v_min, -9, v_min, -7, v_min], [15, v_max, -5, v_max, -5, v_max]],
 
             # Obstacle next to goal
-            # [[9, v_min, 5, v_min, -7, v_min], [15, v_max, 9, v_max, 1, v_max]],
+            [[9, v_min, 5, v_min, -7, v_min], [15, v_max, 9, v_max, 1, v_max]],
         ], dtype=float)
 
         self.x0 = np.array([-14.5, 0, 6, 0, 2, 0])

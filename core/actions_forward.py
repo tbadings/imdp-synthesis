@@ -49,6 +49,8 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
     state_min_norm = (frs_min - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
     lb_contained_in = state_min_norm // 1
 
+    # TODO: Make a rigorous implementation of how to handle noise here. The current implementation is a heuristic that expands the reachable set by a fixed number of cells in dimensions with noise. A more principled approach would consider the actual distribution of the noise and how it affects the reachable set.
+
     # Compute lower grid indices (clipped to valid range)
     # For dimensions with noise (cov_diag != 0), the index is set to 0
     idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (cov_diag == 0)).astype(int)
@@ -56,6 +58,17 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
     # Compute upper grid indices (clipped to valid range)
     # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
     idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (cov_diag == 0) + (number_per_dim - 1) * (cov_diag != 0)).astype(int)
+
+    '''
+    # Compute lower grid indices (clipped to valid range)
+    # For dimensions with noise (cov_diag != 0), the index is set to 0
+    q = 5 # Maximum number of cells the noise can "add" to the span of the reachable set
+    idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) - q * (cov_diag != 0)).astype(int)
+    
+    # Compute upper grid indices (clipped to valid range)
+    # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
+    idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) + (2*q) * (cov_diag != 0)).astype(int)
+    '''
 
     return frs_min, frs_max, frs_span, idx_low, idx_upp
 

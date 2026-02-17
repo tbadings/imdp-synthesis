@@ -216,7 +216,7 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0], [0], [0]])
 
             # Covariance of the process noise
-            cov = [0.15, 0, 0.15, 0, 0.15, 0] #[0.15, 0, 0.15, 0, 0.15, 0]
+            cov = [0.15, 0, 0.15, 0, 0.15, 0]
 
         self.noise = {
             'cov': np.diag(cov),
