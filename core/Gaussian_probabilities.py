@@ -214,6 +214,13 @@ def interval_distribution_per_dim(n, max_slice, wrap, wrap_array, decimals, numb
     prob = prob[sorted_idx]
     prob_id = prob_id[sorted_idx]
     prob_nonzero = prob_nonzero[sorted_idx]
+
+    # Old method.
+    # TODO: Find out which one to use.
+    # sorted_idx = jnp.argsort(prob_nonzero, axis=0)[::-1]
+    # prob = prob[sorted_idx]
+    # prob_id = prob_id[sorted_idx]
+    # prob_nonzero = prob_nonzero[sorted_idx]
     
     return prob, prob_id, prob_nonzero, prob_absorbing, keep, number_nonzero
 
