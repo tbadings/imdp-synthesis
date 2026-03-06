@@ -55,14 +55,6 @@ pip install jax==0.8.0
 
 > We have also tested running with JAX on METAL. However, performance on Apple Silicon chips currently seems better on an up-to-date version of JAX+JAXlib (running on CPU) than on JAX on METAL.
 
-### 3. Install Storm and Stormpy
-
-We use the probabilistic model checker Storm (via its Python bindings provided by Stormpy) to compute optimal policies on interval MDP (IMDP) abstractions.
-Install the following
-
-1. Install Storm 1.11.0 (Make sure to install the required dependencies first: https://www.stormchecker.org/documentation/obtain-storm/build.html).
-2. Install Stormpy 1.11.0 within the conda environment (https://moves-rwth.github.io/stormpy/).
-
 # Reproducing experiments
 
 The experiments presented in the paper can be reproduced by running the following commands:
