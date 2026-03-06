@@ -25,13 +25,13 @@ from core.imdp import IMDP
 
 # Uncomment one of the following lines to run an example benchmark.
 # If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
-# sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '30000']
-# sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '30000']
+# sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '1000']
+# sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D_small', '--batch_size', '100', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'Drone3D', '--batch_size', '10000', '--plot_title']
-sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '1000', '--plot_title']
+# sys.argv = ['RunFile.py', '--model', 'Drone2D', '--batch_size', '1000', '--plot_title']
 
 if __name__ == '__main__':
     jax.config.update("jax_default_matmul_precision", "high")
@@ -153,27 +153,6 @@ if __name__ == '__main__':
             BATCH_SIZE=1000, 
             policy_iteration=True)
         print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
-
-    # %% Build interval MDP via Storm
-
-    # TODO: Make the new data structures again compatible with Storm.
-
-    # from core.storm import BuilderStorm
-
-    # print('Compute optimal policy via robust value iteration with Storm')
-
-    # print('\n- Create iMDP using storm...')
-    # t = time.time()
-    # builderS = BuilderStorm(imdp)
-
-    # print(builderS.imdp)
-
-    # result = builderS.compute_reach_avoid()
-    # V_storm = builderS.results
-    # policy_storm, policy_inputs_storm = builderS.get_policy(actions_inputs)
-    # print(f'- Build and verify with storm took: {(time.time() - t):.3f} sec.')
-    # print('Total sum of reach probs:', np.sum(builderS.results))
-    # print('Value in state {}: {}'.format(model.x0, builderS.get_value_from_tuple(model.x0, partition)))
 
     # %% Simulations and plot
 
