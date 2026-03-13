@@ -1,3 +1,7 @@
+# %%
+%load_ext autoreload
+%autoreload 2
+
 '''
 This is the main Python file for DynAbs-JAX.
 The file can be run from the terminal as
@@ -25,7 +29,7 @@ from core.imdp import IMDP
 
 # Uncomment one of the following lines to run an example benchmark.
 # If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
-# sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '1000']
+sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']

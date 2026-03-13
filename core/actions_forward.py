@@ -36,7 +36,7 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
     """
 
     # Small epsilon for numerical stability (currently set to zero)
-    epsilon = 0.0
+    epsilon = jnp.array([jnp.pi*0.25, 0.25])
 
     # Compute the continuous bounds of the forward reachable set
     frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
