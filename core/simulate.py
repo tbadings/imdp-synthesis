@@ -101,7 +101,7 @@ class MonteCarloSim():
                 x_tuple[k] = -1
 
                 if self.verbose or True:
-                    print(f'- Absorbing state reached at k = {k} (x = {x[k]}), so abort')
+                    print(f'- Absorbing state reached at k = {k} (x = {x[k]}, s_id = {s[k]})')
                 return trace, success
 
             # If current region is the goal state ...
@@ -109,14 +109,14 @@ class MonteCarloSim():
                 # Then abort the current iteration, as we have achieved the goal
                 success = True
                 if self.verbose:
-                    print(f'- Goal state reached (x = {x[k]})')
+                    print(f'- Goal state reached at k = {k} (x = {x[k]}, s_id = {s[k]})')
                 return trace, success
 
             # If current region is in critical states...
             elif s[k] in self.partition.critical['idxs']:
                 # Then abort current iteration
                 if self.verbose or True:
-                    print('- Critical state reached, so abort')
+                    print(f'- Critical state reached at k = {k} (x = {x[k]}, s_id = {s[k]})')
                 return trace, success
 
             # Check if we can still perform another action within the horizon

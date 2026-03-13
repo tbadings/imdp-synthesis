@@ -42,9 +42,9 @@ class Dubins_small(DubinsSmallDynamics):
         self.uMax = [0.50 * np.pi, 3]
         self.num_actions = [7, 5]
 
-        self.partition['boundary'] = np.array([[-15, -10, -np.pi], [10, 10, np.pi]])
+        self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 40, 31])
+        self.partition['number_per_dim'] = np.array([40, 40, 21])
 
         # self.goal = np.array([
         #     [[-10, 5, -np.pi], [-5, 10, np.pi]]
@@ -68,6 +68,6 @@ class Dubins_small(DubinsSmallDynamics):
 
         # self.x0 = np.array([-7.5, -7.5, 0])
 
-        self.x0 = np.array([-10, 0, 0])
+        self.x0 = np.array([-9, 0, 0])
 
         return
