@@ -43,7 +43,9 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
 
     # Calculate how many grid cells the forward reachable set spans in each dimension
     # Note: When covariance is zero, this gives the exact discrete span
-    frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width), int)
+    # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
+    # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
+    frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width) + 1, int)
 
     # Normalize the minimum bound to grid coordinates
     state_min_norm = (frs_min - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
