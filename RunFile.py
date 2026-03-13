@@ -123,7 +123,7 @@ if __name__ == '__main__':
                                                                     vectorized=True)
 
     # assert False
-    # del actions
+    del actions
 
     imdp = IMDP(partition=partition,
                 states=np.array(partition.regions['idxs']),
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     from plotting.traces import plot_traces
     from plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=True, iterations=1000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
     print('Empirical satisfaction probability:', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
