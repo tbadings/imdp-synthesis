@@ -35,8 +35,8 @@ def parse_arguments():
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
-    parser.add_argument('--batch_size', type=int, default=100_000,
-                        help="Batch size for functions vectorized with Jax")
+    parser.add_argument('--batch_size', type=int, default=100,
+                        help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
 
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,

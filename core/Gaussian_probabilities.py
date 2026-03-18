@@ -250,8 +250,6 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         jax.vmap(interval_distribution_per_dim, in_axes=(None, None, None, None, None, None, None, None, 0, 0, 0, None, None, None, None, None), out_axes=(0, 0, 0, 0, 0, 0)),
         static_argnums=(0, 1, 2, 4))
 
-    starts, ends = create_batches(len(partition.regions['idxs']), batch_size=args.batch_size)
-
     action_labels = {}
     interval_matrix = {}
     successor_id = {}
@@ -266,8 +264,11 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
     JAX_unsafe_states = jax.device_put(partition.critical['bools'])
 
     nrA = len(actions.id)
-    for iter, (i, j) in tqdm(enumerate(zip(starts, ends)), total=len(starts)):
-        if vectorized:
+    if vectorized:
+
+        starts, ends = create_batches(len(partition.regions['idxs']), batch_size=args.batch_size)
+
+        for iter, (i, j) in tqdm(enumerate(zip(starts, ends)), total=len(starts)):
 
             # t = time.time()
 
@@ -351,51 +352,52 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
             # print(f'- Assignment of probability intervals for batch {iter + 1}/{len(starts)} took: {(time.time() - t):.3f} sec.')
 
-        else:
+    else:
 
-            #####
+        #####
 
-            # For all states
-            for s in tqdm(range(i,j), total=j-i):
-                p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution_per_dim(model.n,
-                                                                                    actions.max_slice,
-                                                                                    tuple(np.array(model.wrap)),
-                                                                                    model.wrap,
-                                                                                    args.decimals,
-                                                                                    partition.number_per_dim,
-                                                                                    partition.regions_per_dim['lower_bounds'],
-                                                                                    partition.regions_per_dim['upper_bounds'],
-                                                                                    frs_idx_lb[s],
-                                                                                    frs_lb[s],
-                                                                                    frs_ub[s],
-                                                                                    model.noise['cov'],
-                                                                                    partition.boundary_lb,
-                                                                                    partition.boundary_ub,
-                                                                                    partition.region_idx_array,
-                                                                                    partition.critical['bools'])
+        # For all states
+        for s in tqdm(range(len(partition.regions['idxs']))):
+
+            p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution_per_dim(model.n,
+                                                                                actions.max_slice,
+                                                                                tuple(np.array(model.wrap)),
+                                                                                model.wrap,
+                                                                                args.decimals,
+                                                                                partition.number_per_dim,
+                                                                                partition.regions_per_dim['lower_bounds'],
+                                                                                partition.regions_per_dim['upper_bounds'],
+                                                                                frs_idx_lb[s].reshape(-1, model.n),
+                                                                                frs_lb[s].reshape(-1, model.n),
+                                                                                frs_ub[s].reshape(-1, model.n),
+                                                                                model.noise['cov_diag'],
+                                                                                JAX_boundary_lb,
+                                                                                JAX_boundary_ub,
+                                                                                JAX_region_idx_array,
+                                                                                JAX_unsafe_states)
+            
+            # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
+            # p_nonzero=True means that the upper bound of the probability interval is greater than the minimum probability threshold
+            # Evaluate p_nonzero over each columns to get the successor states that we should keep
+            if any(keep_actions):
+
+                p = np.array(p)
+                s_id = np.array(s_id)
+                p_abs = np.array(p_abs)
+                keep_actions = np.array(keep_actions)
+                number_nonzero = np.array(number_nonzero)
+
+                action_labels[s] = actions.id[keep_actions]
+                interval_matrix[s] = p[keep_actions][:, :max(number_nonzero)]
+                successor_id[s] = s_id[keep_actions][:, :max(number_nonzero)]
+                interval_absorbing[s] = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
                 
-                # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
-                # p_nonzero=True means that the upper bound of the probability interval is greater than the minimum probability threshold
-                # Evaluate p_nonzero over each columns to get the successor states that we should keep
-                if any(keep_actions):
+                # nans = np.where(np.any(np.isnan(interval_matrix[s]), axis=0))[0]
+                # if len(nans) > 0:
+                #     print('NaN probabilities in state {} at position {}'.format(s, len(nans)))
 
-                    p = np.array(p)
-                    s_id = np.array(s_id)
-                    p_abs = np.array(p_abs)
-                    keep_actions = np.array(keep_actions)
-                    number_nonzero = np.array(number_nonzero)
-
-                    action_labels[s] = actions.id[keep_actions]
-                    interval_matrix[s] = p[keep_actions][:, :max(number_nonzero)]
-                    successor_id[s] = s_id[keep_actions][:, :max(number_nonzero)]
-                    interval_absorbing[s] = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
-                    
-                    # nans = np.where(np.any(np.isnan(interval_matrix[s]), axis=0))[0]
-                    # if len(nans) > 0:
-                    #     print('NaN probabilities in state {} at position {}'.format(s, len(nans)))
-
-                    # if np.any(np.sum(interval_matrix[s], axis=1)) > 1:
-                    #     print('Probabilities sum to more than 1 in state {} at position {}'.format(s, np.where(np.sum(interval_matrix[s], axis=0) > 1)))
+                # if np.any(np.sum(interval_matrix[s], axis=1)) > 1:
+                #     print('Probabilities sum to more than 1 in state {} at position {}'.format(s, np.where(np.sum(interval_matrix[s], axis=0) > 1)))
 
     print('-- Number of times function was compiled:', vmap_interval_distribution_per_dim._cache_size())
     print('')
