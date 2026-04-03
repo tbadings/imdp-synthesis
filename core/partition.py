@@ -260,11 +260,11 @@ class RectangularPartition(object):
         :param x: Point in the continuous state space.
         :return: State ID.
         '''
-        # Discard samples outside of partition
+        # Discard points outside of partition
         in_partition = np.all((x >= self.boundary_lb) * (x <= self.boundary_ub))
 
         if in_partition:
-            # Normalize samples
+            # Normalize points
             x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
             state = int(self.region_idx_array[tuple(x_norm)])
             return state, True

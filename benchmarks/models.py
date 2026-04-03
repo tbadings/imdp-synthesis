@@ -9,7 +9,8 @@ import jax.numpy as jnp
 import numpy as np
 import scipy
 
-from core import setmath
+from benchmarks.dynamics.distributions import GaussianDiagonalCov
+from benchmarks.dynamics import setmath
 
 
 def wrap_theta(theta):
@@ -33,11 +34,7 @@ class DubinsSmallDynamics:
         self.alpha = 0.85
 
         # Covariance of the process noise
-        cov = [0, 0, 0.1]
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }
+        self.noise = GaussianDiagonalCov(np.array([0, 0, 0.1])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
         [x, y, theta] = state
@@ -80,7 +77,6 @@ class DubinsDynamics:
         self.independent_dimensions = None
 
         # Discretization step size
-        # self.tau = 0.5 # MODIFIED THIS LINE
         self.tau = 0.5
 
         self.n = 4
@@ -120,11 +116,7 @@ class DubinsDynamics:
             self.beta = 0.85
 
         # Covariance of the process noise
-        cov = [0, 0, 0.1, 0]
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }    
+        self.noise = GaussianDiagonalCov(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
         [x, y, theta, V] = state
@@ -206,7 +198,7 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0]])
 
             # Covariance of the process noise
-            cov = [0.15, 0, 0.15, 0] #[0.15, 0.15, 0.15, 0.15]
+            cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
 
         else:
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
@@ -216,12 +208,9 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0], [0], [0]])
 
             # Covariance of the process noise
-            cov = [0.15, 0, 0.15, 0, 0.15, 0]
+            cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
 
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }
+        self.noise = GaussianDiagonalCov(cov)
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -279,11 +268,7 @@ class PendulumDynamics:
         self.b = 0.0 # Gymnasium pendulum does not have damping
 
         # Covariance of the process noise
-        cov = [0.03, 0.1]
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }
+        self.noise = GaussianDiagonalCov(np.array([0.03, 0.1])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
 
@@ -338,11 +323,7 @@ class MountainCarDynamics:
         self.power = 0.0015
 
         # Covariance of the process noise
-        cov = [0.005,0.0005] #[0.01, 0.001]
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }
+        self.noise = GaussianDiagonalCov(np.array([0.005,0.0005])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
 
@@ -404,11 +385,7 @@ class DoubleIntegratorDynamics:
         self.Q  = np.array([[0],[0],])
 
         # Covariance of the process noise
-        cov = [0.15, 0.15]
-        self.noise = {
-            'cov': np.diag(cov),
-            'cov_diag': np.array(cov)
-        }
+        self.noise = GaussianDiagonalCov(np.array([0.15, 0.15])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise

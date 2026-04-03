@@ -4,7 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import scipy 
-from core import setmath
+from benchmarks.dynamics import setmath
 
 
 class Drone3D(DroneDynamics):

@@ -3,7 +3,7 @@ from benchmarks.models import MountainCarDynamics
 import jax
 import jax.numpy as jnp
 import numpy as np
-from core import setmath
+from benchmarks.dynamics import setmath
 from matplotlib import animation
 import numpy as onp
 from matplotlib.patches import Polygon, Circle

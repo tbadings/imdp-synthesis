@@ -17,7 +17,7 @@ import sys
 
 import benchmarks
 from core.Gaussian_probabilities import compute_probability_intervals
-from core.actions_forward import RectangularForward
+from core.forward_reachability import RectangularForward
 from core.model import parse_linear_model, parse_nonlinear_model
 from core.options import parse_arguments
 from core.partition import RectangularPartition
@@ -26,6 +26,7 @@ from core.imdp import IMDP
 # Uncomment one of the following lines to run an example benchmark.
 # If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
 # sys.argv = ['RunFile.py', '--model', 'Dubins_small', '--batch_size', '1000']
+# sys.argv = ['RunFile.py', '--model', 'Dubins', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '1000', '--plot_title']
 # sys.argv = ['RunFile.py', '--model', 'DoubleIntegrator', '--batch_size', '30000', '--plot_title']
@@ -136,14 +137,14 @@ if __name__ == '__main__':
 
     # %% Build and verify with JAX-based RVI
 
-    from core.imdp import RVI_JAX, RVI
+    from core.imdp import RVI_JAX
 
     print('Compute optimal policy via robust value iteration with JAX...')
 
     with jax.default_device(args.rvi_device):
 
         t = time.time()
-        V, _, policy, policy_inputs = RVI_JAX(
+        V, policy, policy_inputs = RVI_JAX(
             args=args, 
             imdp=imdp, 
             s0=partition.x2state(model.x0)[0], 
@@ -151,7 +152,7 @@ if __name__ == '__main__':
             epsilon=1e-6, 
             RND_SWEEPS=True, 
             BATCH_SIZE=1000, 
-            policy_iteration=True)
+            policy_iteration=args.policy_iteration)
         print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
 
     # %% Simulations and plot

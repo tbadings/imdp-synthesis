@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from core import setmath
+from benchmarks.dynamics import setmath
 
 
 def wrap_theta(theta):

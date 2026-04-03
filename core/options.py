@@ -19,19 +19,18 @@ def parse_arguments():
     parser.add_argument('--pAbs_min', type=float, default=0.0001,
                         help="Minimum probability for absorbing states")
 
-    parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
-                        help="If true, run on GPU. Otherwise, run on CPU")
-    parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
-                        help="If true, run RVI on GPU. Otherwise, run on CPU")
-
     parser.add_argument('--model', type=str, default='Drone2D',
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,
                         help="Version of the model to use (optinal; 0 by default)")
-    parser.add_argument('--checker', type=str, default='storm',
-                        help="Model checker to use (prism or storm)")
-    parser.add_argument('--prism_dir', type=str, default='~/Documents/Tools/prism/prism/bin/prism',
-                        help="Directory where Prism is located")
+
+    parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
+                        help="If true, run on GPU. Otherwise, run on CPU")
+    parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
+                        help="If true, run RVI on GPU. Otherwise, run on CPU")
+    
+    parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=False,
+                        help="If true, run policy iteration. Otherwise, run value iteration")
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")

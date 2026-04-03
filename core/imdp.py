@@ -49,81 +49,6 @@ class IMDP:
         # Number of states
         self.nr_states = len(self.states) + 1
 
-def RVI(imdp, s0=None, max_iterations=1000, epsilon=1e-6):
-    """
-    Robust value iteration for interval MDPs.
-    
-    :param imdp: Instance of IMDP class
-    :param max_iterations: Maximum number of iterations
-    :param epsilon: Convergence threshold
-    :return: Tuple of (lower_bounds, upper_bounds) for all states
-    """
-    n_states = imdp.nr_states
-    V = np.zeros(n_states)
-    
-    # Mark goal and absorbing states
-    for s in imdp.goal_regions:
-        V[s] = 1
-    
-    pbar = tqdm(range(max_iterations), desc='Iteration')
-    for iteration in pbar:
-        postfix_dict = {}
-        if s0 is not None:
-            postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-        pbar.set_postfix(postfix_dict)
-        
-        V_old = V.copy()
-        for s in imdp.states:
-            if s in imdp.goal_regions or s in imdp.critical_regions or s == imdp.absorbing_state:
-                continue
-            
-            if len(imdp.A_id[s]) == 0:
-                V[s] = 0
-                continue
-            
-            lower_vals = []
-
-            for a_idx, (_, successors) in enumerate(imdp.A_id[s].items()):
-                # Add absorbing state as successor
-                successors_plus_abs = np.append(successors, imdp.absorbing_state)
-                probabilities_plus_abs = np.vstack((imdp.P_full[s][a_idx], imdp.P_absorbing[s][a_idx]))
-                prob_lb = probabilities_plus_abs[:, 0]
-                prob_ub = probabilities_plus_abs[:, 1]
-
-                # Retrieve the values for the successor states, including absorbing state
-                successor_values = V[successors_plus_abs]
-
-                # Budget is the total probability mass we can assign to the successors, which is 1 minus the sum 
-                # of the lower bounds of the probability intervals for all successors (including absorbing state).
-                budget = 1 - np.sum(prob_lb)
-
-                # Sort the values for these successor states
-                sort = np.argsort(successor_values)
-
-                lower_val = 0
-
-                for pos in sort:
-                    # The extra probability mass we can assign to this successor is the difference between the 
-                    # upper and lower bound of the probability interval, but we cannot exceed the remaining budget.
-                    extra_prob = min(prob_ub[pos] - prob_lb[pos], budget)
-                    prob = prob_lb[pos] + extra_prob
-                    lower_val += prob * successor_values[pos]
-
-                    # Decrease budget
-                    budget -= extra_prob
-
-                lower_vals.append(lower_val)
-                
-            
-            V[s] = max(lower_vals) if lower_vals else 0
-        
-        # Check convergence
-        if np.max(np.abs(V - V_old)) < epsilon:
-            print(f'Converged after {iteration + 1} iterations')
-            break
-    
-    return V
-
 def RVI_JAX(
     args: argparse.Namespace, 
     imdp: IMDP, 
@@ -311,6 +236,7 @@ def RVI_JAX(
             postfix_dict = {}
             if s0 is not None:
                 postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
             pbar.set_postfix(postfix_dict)
             
             V_old = V.copy()
@@ -338,6 +264,7 @@ def RVI_JAX(
             postfix_dict = {}
             if s0 is not None:
                 postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
             pbar.set_postfix(postfix_dict)
 
             # Policy evaluation
@@ -371,8 +298,6 @@ def RVI_JAX(
                                             JAX_prob_lb_array[state_batch], 
                                             JAX_prob_ub_array[state_batch], 
                                             V)
-                
-            # print(f'- Policy improvement took: {time.time() - t:.3f} sec')
             
             # Check convergence
             if np.all(policy == policy_old):
@@ -390,15 +315,4 @@ def RVI_JAX(
 
     policy_inputs = imdp.actions_inputs[policy_labels]
 
-    # Extract Q-values
-    Q = {}
-    # if return_Q_values:
-    #     for s in states_to_update:
-    #         Q[s] = {}
-    #         for a_idx, (a_label, successors) in enumerate(P_id_plusAbs[s].items()):
-    #             prob_lb = P_full_plusAbs[s][a_idx][:, 0]
-    #             prob_ub = P_full_plusAbs[s][a_idx][:, 1]
-    #             successor_values = V[successors]
-    #             Q[s][a_label] = compute_lower_val(prob_lb, prob_ub, successor_values)
-
-    return V, Q, policy_labels, policy_inputs
+    return V, policy_labels, policy_inputs
