@@ -16,7 +16,7 @@ from benchmarks.dynamics import setmath
 def wrap_theta(theta):
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
-class DubinsSmallDynamics:
+class DubinsDynamics3D:
     def __init__(self, args):
         self.linear = False
         self.independent_dimensions = None
@@ -71,7 +71,7 @@ class DubinsSmallDynamics:
 
         return state_next_min, state_next_max
 
-class DubinsDynamics:
+class DubinsDynamics4D:
     def __init__(self, args):
         self.linear = False
         self.independent_dimensions = None

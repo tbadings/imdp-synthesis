@@ -29,7 +29,7 @@ def parse_arguments():
     parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run RVI on GPU. Otherwise, run on CPU")
     
-    parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=False,
+    parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=True,
                         help="If true, run policy iteration. Otherwise, run value iteration")
 
     parser.add_argument('--mode', type=str, default='fori_loop',

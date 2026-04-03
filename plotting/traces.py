@@ -88,7 +88,7 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         if i > num_traces:
             break
 
-        state_trace = remove_consecutive_duplicates(state_trace)
+        # state_trace = remove_consecutive_duplicates(state_trace)
 
         # Plot precise points
         plt.plot(*state_trace.T, 'o', markersize=1, color="black");

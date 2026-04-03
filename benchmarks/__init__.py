@@ -1,6 +1,6 @@
 # Load the benchmarks from the subfiles
-from .Dubins import Dubins
-from .Dubins_small import Dubins_small
+from .Dubins3D import Dubins3D
+from .Dubins4D import Dubins4D
 from .Drone2D import Drone2D
 from .Drone3D import Drone3D, Drone3D_small
 from .Pendulum import Pendulum
