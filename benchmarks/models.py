@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 import scipy
 
-from benchmarks.dynamics.distributions import GaussianDiagonalCov
+from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr
 from benchmarks.dynamics import setmath
 
 
@@ -34,7 +34,12 @@ class DubinsDynamics3D:
         self.alpha = 0.85
 
         # Covariance of the process noise
-        self.noise = GaussianDiagonalCov(np.array([0, 0, 0.1])**2) # From stdev to covariance
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0, 0, 0.1])**2) # From stdev to covariance
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0, 0, 0.2])) # Halfwidth
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
         [x, y, theta] = state
@@ -116,7 +121,7 @@ class DubinsDynamics4D:
             self.beta = 0.85
 
         # Covariance of the process noise
-        self.noise = GaussianDiagonalCov(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
+        self.noise = GaussianDistr(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
         [x, y, theta, V] = state
@@ -198,7 +203,12 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0]])
 
             # Covariance of the process noise
-            cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
+            if args.noise_distr == 'gaussian':
+                cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
+                self.noise = GaussianDistr(cov)
+            elif args.noise_distr == 'triangular':
+                cov = np.array([0.15, 0, 0.15, 0]) # Halfwidth
+                self.noise = TriangularDistr(cov)
 
         else:
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
@@ -208,9 +218,14 @@ class DroneDynamics:
             self.Q  = np.array([[0],[0],[0],[0], [0], [0]])
 
             # Covariance of the process noise
-            cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
+            if args.noise_distr == 'gaussian':
+                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
+                self.noise = GaussianDistr(cov)
+            elif args.noise_distr == 'triangular':
+                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0]) # Halfwidth
+                self.noise = TriangularDistr(cov)
 
-        self.noise = GaussianDiagonalCov(cov)
+        self.noise = GaussianDistr(cov)
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -268,7 +283,7 @@ class PendulumDynamics:
         self.b = 0.0 # Gymnasium pendulum does not have damping
 
         # Covariance of the process noise
-        self.noise = GaussianDiagonalCov(np.array([0.03, 0.1])**2) # From stdev to covariance
+        self.noise = GaussianDistr(np.array([0.03, 0.1])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
 
@@ -323,7 +338,7 @@ class MountainCarDynamics:
         self.power = 0.0015
 
         # Covariance of the process noise
-        self.noise = GaussianDiagonalCov(np.array([0.005,0.0005])**2) # From stdev to covariance
+        self.noise = GaussianDistr(np.array([0.005,0.0005])**2) # From stdev to covariance
 
     def step(self, state, action, noise):
 
@@ -385,7 +400,56 @@ class DoubleIntegratorDynamics:
         self.Q  = np.array([[0],[0],])
 
         # Covariance of the process noise
-        self.noise = GaussianDiagonalCov(np.array([0.15, 0.15])**2) # From stdev to covariance
+        self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
+
+    def step(self, state, action, noise):
+        state_next = self.A @ state + self.B @ action + noise
+
+        return state_next
+
+    @partial(jax.jit, static_argnums=(0))
+    def step_set(self, state_min, state_max, action_min, action_max):
+
+        action_min = jnp.maximum(action_min, self.uMin)
+        action_max = jnp.minimum(action_max, self.uMax)
+
+        # Get vertices of the state and action boxes
+        state_vertices = setmath.box2vertices(state_min, state_max)
+        action_vertices = setmath.box2vertices(action_min, action_max)
+        
+        # Propogate dynamics for all vertices
+        Ax = jnp.dot(self.A, state_vertices.T).T  # Shape (2^n, n)
+        Bu = jnp.dot(self.B, action_vertices.T).T  # Shape (2^p, n)
+
+        # Combine min/max to get the reachable set
+        state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
+        state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
+
+        return state_next_min, state_next_max
+    
+class Test1DDynamics:
+    def __init__(self, args):
+        self.linear = False
+        self.independent_dimensions = None
+
+        self.n = 1
+        self.p = 1
+        self.state_variables = ['position']
+        self.wrap = jnp.array([True], dtype=bool)
+
+        # State transition matrix
+        self.A  = np.array([[1]])
+        
+        # Input matrix
+        self.B  = np.array([[1]])
+
+        # Covariance of the process noise
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.2])**2) # From stdev to covariance
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([1])) # Halfwidth
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise

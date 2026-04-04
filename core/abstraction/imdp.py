@@ -175,6 +175,11 @@ def RVI_JAX(
     max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
     max_successors = max([imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]) # +1 for absorbing state
 
+    if policy_iteration:
+        print(f'=== Run robust policy iteration ===')
+    else:
+        print(f'=== Run robust value iteration ===')
+
     print(f'- Number of states: {len(imdp.states)}')
     print(f'- Total number of choices: {np.sum(total_actions)} (total number of state-action pairs)')
     print(f'- Max number of actions per state: {max_actions}')

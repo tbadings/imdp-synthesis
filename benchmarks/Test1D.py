@@ -1,21 +1,20 @@
 from functools import partial
-from benchmarks.models import DroneDynamics
+from benchmarks.models import Test1DDynamics
 import jax
 import jax.numpy as jnp
 import numpy as np
-import scipy 
 from benchmarks.dynamics import setmath
 
 
-class Drone2D(DroneDynamics):
+class Test1D(Test1DDynamics):
     '''
-    Drone benchmark, with a 4D state space and a 2D control input space.
+    Dubin's vehicle benchmark, with a 4D state space and a 2D control input space.
     '''
 
     def __init__(self, args):
-        DroneDynamics.__init__(self, args)
+        Test1DDynamics.__init__(self, args)
 
-        self.plot_dimensions = [0, 2]
+        self.plot_dimensions = [0]
 
         # Set value of delta (how many time steps are grouped together)
         # Used to make the model fully actuated
@@ -28,31 +27,26 @@ class Drone2D(DroneDynamics):
         '''
         Set the abstraction parameters and the reach-avoid specification.
         '''
-
+        
         self.partition = {}
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-3, -3]
-        self.uMax = [3 ,3]
-        self.num_actions = [5, 5]
+        self.uMin = [-1]
+        self.uMax = [1]
+        self.num_actions = [3]
 
-        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 3.5
-
-        self.partition['boundary'] = np.array([[-7, v_min, -7, v_min], [7, v_max, 7, v_max]])
+        self.partition['boundary'] = np.array([[-5], [5]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([21, 7, 21, 7]) # 7 not enough
+        self.partition['number_per_dim'] = np.array([10])
 
         self.goal = np.array([
-            [[3, v_min, 3, v_min], [7, v_max, 7, v_max]]
+            [[-1], [1]]
         ], dtype=float)
 
         self.critical = np.array([
-            [[-7, v_min, 1, v_min], [-1, v_max, 3, v_max]],
-            [[3, v_min, -7, v_min], [7, v_max, -3, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-5.5, 0, -5.5, 0])
+        self.x0 = np.array([-2.5])
 
         return

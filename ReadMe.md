@@ -55,39 +55,59 @@ pip install jax==0.8.0
 
 > We have also tested running with JAX on METAL. However, performance on Apple Silicon chips currently seems better on an up-to-date version of JAX+JAXlib (running on CPU) than on JAX on METAL.
 
-# Reproducing experiments
+# Running benchmarks
 
-The experiments presented in the paper can be reproduced by running the following commands:
+The following benchmarks are implemented and available to run:
+
+- **Dubins3D**: 3D Dubins vehicle with 2D control input
+- **Dubins4D**: 4D Dubins vehicle with 2D control input
+- **Drone2D**: 2D quadrotor model
+- **Drone3D**: 3D quadrotor model
+- **Drone3D_small**: Smaller version of the 3D quadrotor (useful for faster debugging)
+- **Pendulum**: Inverted pendulum system
+- **MountainCar**: Mountain car benchmark
+- **DoubleIntegrator**: Double integrator system
+- **Test1D**: Simple 1D test model
+
+To run a benchmark, use:
 
 ```
-python RunFile.py --model Dubins --model_version 0
-python RunFile.py --model Dubins --model_version 1
-python RunFile.py --model Dubins --model_version 2
+python RunFile.py --model <model_name>
 ```
 
-These commands run the Dubin's vehicle benchmark with no, 10%, and 20% parameter uncertainty, respectively.
-
-A smaller version of the Dubin's benchmark is also available (this can be useful for faster debugging purposes):
+For example:
 
 ```
-python RunFile.py --model Dubins_small
+python RunFile.py --model Dubins3D
+python RunFile.py --model Drone2D
+python RunFile.py --model MountainCar
 ```
 
 Created figures will be stored in the `output/` folder. The runtimes and model sizes can be read from the terminal output.
 
-## Other benchmarks
+## Noise distribution options
 
-Currently, the following benchmarks are implemented and have been tested:
+The tool supports different noise distribution types via the `--noise_distr` argument:
 
-- Dubins
-- Dubins_small
-- Drone2D
-- MountainCar
-- Pendulum
+- **gaussian** (default): Gaussian (normal) distribution. A good choice for models with additive Gaussian noise.
+- **triangular**: Symmetric triangular distribution. Useful for models with bounded, symmetric noise around a mean value.
 
-To run one of these benchmarks, simply replace the `--model ...` argument above with the respective benchmark name.
+Example usage:
 
-## Debugging
+```
+python RunFile.py --model Dubins3D --noise_distr triangular
+python RunFile.py --model Pendulum --noise_distr gaussian
+```
 
-In case you run into memory issues, place try changing the `--batch_size` argument, which is set to 100,000 by default. A reasonable setting might be 30,000 or even 10,000.
+## Additional options
+
+- `--batch_size`: Number of states to process in a vectorized fashion when computing transition probability intervals. Default is 100. Increase for faster computation (but higher memory usage), or decrease if encountering memory issues. For example: `--batch_size 1000` or `--batch_size 10000`.
+- `--policy_iteration`: Run policy iteration (default: True) or value iteration (False).
+- `--gpu`: Run computations on GPU (requires CUDA-compatible hardware).
+- `--seed`: Random seed for reproducibility (default: 0).
+- `--plot_title`, `--plot_grid`, `--plot_ticks`: Toggle various plotting options.
+
+## Memory troubleshooting
+
+In case you run into memory issues, try decreasing the `--batch_size` argument. Good starting values are 30,000 or 10,000 for large models, and 1,000 for smaller models.
 

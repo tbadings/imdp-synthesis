@@ -16,16 +16,16 @@ import numpy as np
 import sys
 
 import benchmarks
-from core.Gaussian_probabilities import compute_probability_intervals
-from core.forward_reachability import RectangularForward
-from core.model import parse_linear_model, parse_nonlinear_model
+from core.abstraction.probability_intervals import compute_probability_intervals
+from core.abstraction.forward_reachability import RectangularForward
 from core.options import parse_arguments
-from core.partition import RectangularPartition
-from core.imdp import IMDP
+from core.abstraction.partition import RectangularPartition
+from core.abstraction.imdp import IMDP
+from core.abstraction.imdp import RVI_JAX
 
 # Uncomment one of the following lines to run an example benchmark.
 # If it seems to be 'stuck' when computing the transition probabilities, consider decreasing the batch size (e.g., to 1000).
-sys.argv = ['RunFile.py', '--model', 'Dubins3D', '--batch_size', '1000']
+sys.argv = ['RunFile.py', '--model', 'Dubins3D', '--batch_size', '1000', '--noise_distr', 'normal']
 # sys.argv = ['RunFile.py', '--model', 'Dubins4D', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'Pendulum', '--batch_size', '1000']
 # sys.argv = ['RunFile.py', '--model', 'MountainCar', '--batch_size', '1000', '--plot_title']
@@ -79,32 +79,9 @@ if __name__ == '__main__':
     print('\n==============================\n')
 
     # Define and parse model
-    if args.model == 'Dubins3D':
-        base_model = benchmarks.Dubins3D(args)
-    elif args.model == 'Dubins4D':
-        base_model = benchmarks.Dubins4D(args)
-    elif args.model == 'Drone2D':
-        base_model = benchmarks.Drone2D(args)
-    elif args.model == 'Drone3D':
-        base_model = benchmarks.Drone3D(args)
-    elif args.model == 'Drone3D_small':
-        base_model = benchmarks.Drone3D_small(args)
-    elif args.model == 'Pendulum':
-        base_model = benchmarks.Pendulum(args)
-    elif args.model == 'MountainCar':
-        base_model = benchmarks.MountainCar(args)
-    elif args.model == 'DoubleIntegrator':
-        base_model = benchmarks.DoubleIntegrator(args)
-    else:
-        assert False, f"The passed model '{args.model}' could not be found"
+    model = benchmarks.create_model(args)
 
     t = time.time()
-
-    # Parse given model
-    if base_model.linear:
-        model = parse_linear_model(base_model)
-    else:
-        model = parse_nonlinear_model(base_model)
 
     # Create partition of the continuous state space into convex polytope
     partition = RectangularPartition(model=model)
@@ -135,14 +112,10 @@ if __name__ == '__main__':
 
     print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
 
-    # %% Build and verify with JAX-based RVI
-
-    from core.imdp import RVI_JAX
-
-    print('Compute optimal policy via robust value iteration with JAX...')
+    # %% Run dynamic programming to compute optimal policy
 
     with jax.default_device(args.rvi_device):
-
+        print('\nCompute optimal policy via robust dynamic programming...')
         t = time.time()
         V, policy, policy_inputs = RVI_JAX(
             args=args, 
@@ -161,9 +134,9 @@ if __name__ == '__main__':
     sim_policy_inputs = policy_inputs
     sim_values = V
 
-    from core.simulate import MonteCarloSim
-    from plotting.traces import plot_traces
-    from plotting.heatmap import heatmap
+    from core.validate.simulate import MonteCarloSim
+    from core.plotting.traces import plot_traces
+    from core.plotting.heatmap import heatmap
 
     sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
     print('Empirical satisfaction probability:', sim.results['satprob'])

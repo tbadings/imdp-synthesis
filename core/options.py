@@ -23,7 +23,9 @@ def parse_arguments():
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,
                         help="Version of the model to use (optinal; 0 by default)")
-
+    parser.add_argument('--noise_distr', type=str, default='gaussian', choices=['gaussian', 'normal', 'triangular'], # 'normal' is alias for 'gaussian'
+                        help="Noise distribution type to use")
+    
     parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run on GPU. Otherwise, run on CPU")
     parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
@@ -47,5 +49,9 @@ def parse_arguments():
 
     # Parse arguments
     args = parser.parse_args()
+
+    # Canonicalize alias.
+    if args.noise_distr == 'normal':
+        args.noise_distr = 'gaussian'
 
     return args

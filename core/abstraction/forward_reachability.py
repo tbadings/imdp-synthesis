@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 
 @partial(jax.jit, static_argnums=(0))
-def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_dim, cell_width, boundary_lb, boundary_ub):
+def forward_reach(step_set, state_min, state_max, input, state_wrap, support_radius, number_per_dim, cell_width, boundary_lb, boundary_ub):
     """
     Computes the forward reachable set for a given state region and control input.
 
@@ -22,7 +22,8 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
     :param state_min: Lower bound of the state box to propagate (shape: [state_dim])
     :param state_max: Upper bound of the state box to propagate (shape: [state_dim])
     :param input: Control input for the dynamical system (shape: [input_dim])
-    :param cov_diag: Diagonal entries of the noise covariance matrix (shape: [state_dim])
+    :param state_wrap: Boolean indicating whether the state space is wrapped (shape: [state_dim])
+    :param support_radius: Radius of the support of the noise distribution (shape: [state_dim])
     :param number_per_dim: Number of grid cells per dimension in the state space discretization (shape: [state_dim])
     :param cell_width: Width of grid cells along each dimension (shape: [state_dim])
     :param boundary_lb: Lower bound of the state space grid (shape: [state_dim])
@@ -35,42 +36,59 @@ def forward_reach(step_set, state_min, state_max, input, cov_diag, number_per_di
         - idx_upp: Upper grid index bounds of the forward reachable set (shape: [state_dim])
     """
 
+    V2 = True
+
     # Small epsilon for numerical stability (currently set to zero)
     epsilon = 0.0
 
     # Compute the continuous bounds of the forward reachable set
     frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
 
-    # Calculate how many grid cells the forward reachable set spans in each dimension
-    # Note: When covariance is zero, this gives the exact discrete span
-    # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
-    # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
-    frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width) + 1, int)
+    # TODO: Finish this improved implementation
+    if V2:
 
-    # Normalize the minimum bound to grid coordinates
-    state_min_norm = (frs_min - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
-    lb_contained_in = state_min_norm // 1
+        frs_min_plus_noise = frs_min - support_radius
+        frs_max_plus_noise = frs_max + support_radius
 
-    # TODO: Make a rigorous implementation of how to handle noise here. The current implementation is a heuristic that expands the reachable set by a fixed number of cells in dimensions with noise. A more principled approach would consider the actual distribution of the noise and how it affects the reachable set.
+        # Calculate how many grid cells the forward reachable set spans in each dimension
+        # Note: When covariance is zero, this gives the exact discrete span
+        # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
+        # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
+        frs_span = jnp.astype(jnp.ceil((frs_max_plus_noise - frs_min_plus_noise) / cell_width) + 1, int)
 
-    # Compute lower grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index is set to 0
-    idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (cov_diag == 0)).astype(int)
-    
-    # Compute upper grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
-    idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (cov_diag == 0) + (number_per_dim - 1) * (cov_diag != 0)).astype(int)
+        # Normalize the minimum bound to grid coordinates
+        state_min_norm = (frs_min_plus_noise - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
+        lb_contained_in = state_min_norm // 1
 
-    '''
-    # Compute lower grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index is set to 0
-    q = 5 # Maximum number of cells the noise can "add" to the span of the reachable set
-    idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) - q * (cov_diag != 0)).astype(int)
-    
-    # Compute upper grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
-    idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) + (2*q) * (cov_diag != 0)).astype(int)
-    '''
+        # Compute lower grid indices (clipped to valid range)
+        # For dimensions with noise (cov_diag != 0), the index is set to 0
+        idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (~state_wrap)).astype(int)
+        
+        # Compute upper grid indices (clipped to valid range)
+        # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
+        idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (~state_wrap) + (number_per_dim - 1) * (state_wrap)).astype(int)
+
+    else:
+
+        # Calculate how many grid cells the forward reachable set spans in each dimension
+        # Note: When covariance is zero, this gives the exact discrete span
+        # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
+        # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
+        frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width) + 1, int)
+
+        # Normalize the minimum bound to grid coordinates
+        state_min_norm = (frs_min - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
+        lb_contained_in = state_min_norm // 1
+
+        # TODO: Make a rigorous implementation of how to handle noise here. The current implementation is a heuristic that expands the reachable set by a fixed number of cells in dimensions with noise. A more principled approach would consider the actual distribution of the noise and how it affects the reachable set.
+
+        # Compute lower grid indices (clipped to valid range)
+        # For dimensions with noise (cov_diag != 0), the index is set to 0
+        idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (support_radius == 0)).astype(int)
+        
+        # Compute upper grid indices (clipped to valid range)
+        # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
+        idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (support_radius == 0) + (number_per_dim - 1) * (support_radius != 0)).astype(int)
 
     return frs_min, frs_max, frs_span, idx_low, idx_upp
 
@@ -108,7 +126,7 @@ class RectangularForward(object):
         vmap_forward_reach = jax.jit(
             jax.vmap(
                 forward_reach,
-                in_axes=(None, None, None, 0, None, None, None, None, None),
+                in_axes=(None, None, None, 0, None, None, None, None, None, None),
                 out_axes=(0, 0, 0, 0, 0)
             ),
             static_argnums=(0)
@@ -148,7 +166,6 @@ class RectangularForward(object):
         self.frs_idx_ub = np.zeros_like(self.frs_lb, dtype=args.floatprecision)
 
         # Iterate through all state regions and compute forward reachable sets
-        max_span = np.zeros(partition.dimension)
         for i, (lb, ub) in pbar:
             # Batch compute forward reachable sets for all actions using vectorized function
             flb, fub, _, fil, fiu = vmap_forward_reach(
@@ -156,7 +173,8 @@ class RectangularForward(object):
                 lb,
                 ub,
                 self.id_to_input,
-                model.noise['cov_diag'],
+                model.wrap,
+                model.noise['support_radius'],
                 partition.number_per_dim,
                 partition.cell_width,
                 partition.boundary_lb,
@@ -168,14 +186,11 @@ class RectangularForward(object):
             self.frs_ub[i] = np.array(fub)
             self.frs_idx_lb[i] = np.array(fil)
             self.frs_idx_ub[i] = np.array(fiu)
-            
-            # Incrementally update max span
-            span = np.array(fiu) - np.array(fil) + 1
-            max_span = np.maximum(max_span, np.max(span, axis=0))
 
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations
-        self.max_slice = tuple(max_span.astype(int).tolist())
+        span = self.frs_idx_ub - self.frs_idx_lb + 1
+        self.max_slice = tuple(np.max(span, axis=(0, 1)).astype(int).tolist())
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
         # Create array of action indices for efficient indexing        

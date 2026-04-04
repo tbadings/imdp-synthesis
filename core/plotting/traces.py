@@ -8,7 +8,7 @@ from matplotlib.patches import Rectangle
 from scipy.interpolate import CubicSpline
 
 from core.utils import cm2inch, remove_consecutive_duplicates
-from plotting.utils import plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
+from core.plotting.utils import plot_boxes, plot_grid, set_plot_lims, set_plot_ticks
 
 mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42

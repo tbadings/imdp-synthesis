@@ -4,7 +4,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib as mpl
 
-from plotting.utils import set_plot_ticks
+from core.plotting.utils import set_plot_ticks
 
 def heatmap(args, stamp, idx_show, slice_values, partition, results, filename="heatmap"):
     '''

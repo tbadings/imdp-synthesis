@@ -137,16 +137,12 @@ class MonteCarloSim():
                 a[k] = self.policy[k, s[k]]
                 u[k] = self.policy_inputs[k, s[k]]
 
-            # if a[k] == -1:
-            #     if self.verbose:
-            #         print('No policy known, so abort')
-            #     return trace, success
-
             ###
 
             # If loop was not aborted, we have a valid action
             if self.verbose:
                 print(f'In state {s[k]} (x = {x[k]}), take action {a[k]} (u = {u[k]})')
+                print(f'- w = {self.noise[m, k]}')
 
             x[k + 1] = self.model.step(x[k], u[k], self.noise[m, k])
 

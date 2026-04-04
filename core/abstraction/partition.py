@@ -137,7 +137,7 @@ class RectangularPartition(object):
         centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
 
         # TODO: Check how to avoid this step
-        from .utils import lexsort4d
+        from ..utils import lexsort4d
         centers_unit = lexsort4d(centers_unit)
 
         # Define n-dimensional array (n = dimension of state space) to index elements of the partition

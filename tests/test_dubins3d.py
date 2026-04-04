@@ -6,11 +6,11 @@ import jax
 import numpy as np
 
 import benchmarks
-from core.Gaussian_probabilities import compute_probability_intervals
-from core.forward_reachability import RectangularForward
-from core.imdp import IMDP, RVI_JAX
-from core.model import parse_nonlinear_model
-from core.partition import RectangularPartition
+from core.abstraction.probability_intervals import compute_probability_intervals
+from core.abstraction.forward_reachability import RectangularForward
+from core.abstraction.imdp import IMDP, RVI_JAX
+from core.abstraction.model import parse_nonlinear_model
+from core.abstraction.partition import RectangularPartition
 
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")

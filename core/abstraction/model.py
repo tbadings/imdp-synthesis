@@ -16,6 +16,10 @@ def parse_linear_model(base_model):
     print('Parse linear dynamical model...')
     t = time.time()
 
+    # Only supports Gaussian distribution for now
+    if base_model.noise['type'] != 'Gaussian':
+        raise ValueError(f'Unsupported noise distribution: {base_model.noise["type"]}. Expected "Gaussian".')
+
     # If independent_dimensions is not defined, then assume all dimensions are dependent
     if model.independent_dimensions is None:
         model.independent_dimensions = [jnp.arange(model.n)]
@@ -92,10 +96,6 @@ def parse_nonlinear_model(model):
     # Control limitations
     model.uMin = jnp.array(model.uMin, dtype=float)
     model.uMax = jnp.array(model.uMax, dtype=float)
-
-    # Convert from np to jnp
-    model.noise['cov'] = jnp.array(model.noise['cov'])
-    model.noise['cov_diag'] = jnp.array(model.noise['cov_diag'])
 
     # Determine vertices of the control input space
     stacked = np.vstack((model.uMin, model.uMax))
