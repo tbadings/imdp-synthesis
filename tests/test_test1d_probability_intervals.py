@@ -69,28 +69,28 @@ class TestTest1DProbabilityIntervals(unittest.TestCase):
     def test_state_action_probability_intervals_for_both_noise_models(self) -> None:
         expected_by_noise = {
             "triangular": {
-                "successors": np.array([0, 1, 2], dtype=int),
+                "successors": np.array([0, 1, 9], dtype=int),
                 "intervals": np.array(
                     [
                         [0.5, 0.75],
                         [0.0001, 0.5],
-                        [0.0, 0.0],
+                        [0.0001, 0.5],
                     ],
                     dtype=np.float32,
                 ),
-                "absorbing": np.array([0.0001, 0.5], dtype=np.float32),
+                "absorbing": np.array([0.0001, 0.0001], dtype=np.float32),
             },
             "gaussian": {
-                "successors": np.array([0, 1, 2], dtype=int),
+                "successors": np.array([0, 1, 9], dtype=int),
                 "intervals": np.array(
                     [
                         [0.4998, 0.9876],
                         [0.0001, 0.5002],
-                        [0.0, 0.0],
+                        [0.0001, 0.4998],
                     ],
                     dtype=np.float32,
                 ),
-                "absorbing": np.array([0.0001, 0.4998], dtype=np.float32),
+                "absorbing": np.array([0.0001, 0.0001], dtype=np.float32),
             },
         }
 

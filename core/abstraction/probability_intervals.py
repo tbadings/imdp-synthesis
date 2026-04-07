@@ -153,16 +153,11 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         starts, ends = create_batches(len(partition.regions['idxs']), batch_size=args.batch_size)
 
         for iter, (i, j) in tqdm(enumerate(zip(starts, ends)), total=len(starts)):
-
-            t = time.time()
-
+            
             # Reshape frs_idx_lb from S x A x n to (S x A) rows and n columns
             frs_idx_lb_2D = frs_idx_lb[i:j].reshape(-1, model.n)
             frs_lb_2D = frs_lb[i:j].reshape(-1, model.n)
             frs_ub_2D = frs_ub[i:j].reshape(-1, model.n)
-
-            print(f'Reshape took {time.time() - t:.3f} sec.')
-            t = time.time()
 
             p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution_per_dim(model.n,
                                                                                     actions.max_slice,
@@ -180,16 +175,10 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                                                                                     JAX_region_idx_array,
                                                                                     JAX_unsafe_states)
 
-            block_until_ready = p.block_until_ready()  # Ensure computation is finished before timing and transferring data. This is necessary because JAX operations are asynchronous.
-            print(f'Block until ready took {time.time() - t:.3f} sec.')
-            t = time.time()
-
             # Transfer outputs from device in one call to reduce synchronization overhead.
             # jax.device_get already returns numpy arrays, so np.asarray is not needed.
             p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
             max_nonzero = int(np.max(number_nonzero))
-
-            
 
             # Reshape once to avoid expensive global masking/cumsum splitting.
             batch_states = j - i
@@ -198,9 +187,6 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
             s_id = s_id[:, :max_nonzero].reshape(batch_states, nrA, max_nonzero)
             p_abs = np.maximum(args.pAbs_min, np.round(p_abs, args.decimals)).reshape(batch_states, nrA, 2)
 
-            print(f'Post-processing took {time.time() - t:.3f} sec.')
-            t = time.time()
-
             for idx, s in enumerate(range(i, j)):
                 keep_mask = keep_actions[idx]
                 action_labels[s] = actions_id[keep_mask]
@@ -208,9 +194,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                 successor_id[s] = s_id[idx, keep_mask]
                 interval_absorbing[s] = p_abs[idx, keep_mask]
 
-            print(f'Loop post-processing took {time.time() - t:.3f} sec.')
-
-            # del p, s_id, p_abs, keep_actions, number_nonzero
+            del p, s_id, p_abs, keep_actions, number_nonzero
 
     else:
 
