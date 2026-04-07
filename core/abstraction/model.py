@@ -27,9 +27,11 @@ def parse_linear_model(base_model):
     # Work on a local reference for consistency with the nonlinear parser.
     model = base_model
 
-    # If independent_dimensions is not defined, then assume all dimensions are dependent
-    if model.independent_dimensions is None:
-        model.independent_dimensions = [jnp.arange(model.n)]
+    # If independent_state_dims is not defined, then assume all dimensions are dependent
+    if model.independent_state_dims is None:
+        model.independent_state_dims = [jnp.arange(model.n)]
+    if model.independent_input_dims is None:
+        model.independent_input_dims = [jnp.arange(model.p)]
 
     model.partition['boundary'] = jnp.array(model.partition['boundary']).astype(float)
     model.partition['number_per_dim'] = jnp.array(model.partition['number_per_dim']).astype(int)
@@ -92,9 +94,11 @@ def parse_nonlinear_model(model):
     logger.info('Parse nonlinear dynamical model...')
     t = time.time()
 
-    # If independent_dimensions is not defined, then assume all dimensions are dependent
-    if model.independent_dimensions is None:
-        model.independent_dimensions = [jnp.arange(model.n)]
+    # If independent_state_dims is not defined, then assume all dimensions are dependent
+    if model.independent_state_dims is None:
+        model.independent_state_dims = [jnp.arange(model.n)]
+    if model.independent_input_dims is None:
+        model.independent_input_dims = [jnp.arange(model.p)]
 
     model.partition['boundary'] = jnp.array(model.partition['boundary']).astype(float)
     model.partition['number_per_dim'] = jnp.array(model.partition['number_per_dim']).astype(int)

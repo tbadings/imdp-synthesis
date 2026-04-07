@@ -19,7 +19,8 @@ def wrap_theta(theta):
 class DubinsDynamics3D:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         # Discretization step size
         self.tau = 1
@@ -79,7 +80,8 @@ class DubinsDynamics3D:
 class DubinsDynamics4D:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         # Discretization step size
         self.tau = 0.5
@@ -171,7 +173,8 @@ class DroneDynamics:
             assert False
 
         self.linear = False
-        self.independent_dimensions = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
+        self.independent_state_dims = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
+        self.independent_input_dims = [[0],[1]] if dim == 2 else [[0],[1],[2]]
 
         if dim == 2:
             self.n = 4
@@ -266,7 +269,8 @@ class DroneDynamics:
 class PendulumDynamics:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         self.n = 2
         self.p = 1
@@ -322,7 +326,8 @@ class PendulumDynamics:
 class MountainCarDynamics:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         self.n = 2
         self.p = 1
@@ -378,7 +383,8 @@ class MountainCarDynamics:
 class DoubleIntegratorDynamics:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         self.n = 2
         self.p = 1
@@ -430,7 +436,8 @@ class DoubleIntegratorDynamics:
 class Test1DDynamics:
     def __init__(self, args):
         self.linear = False
-        self.independent_dimensions = None
+        self.independent_state_dims = None
+        self.independent_input_dims = None
 
         self.n = 1
         self.p = 1

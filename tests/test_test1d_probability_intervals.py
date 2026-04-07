@@ -55,7 +55,6 @@ class TestTest1DProbabilityIntervals(unittest.TestCase):
         print(actions.frs_lb[0,1])
         print(actions.frs_ub[0,1])
         print(actions.frs_idx_lb[0,1])
-        print(actions.frs_idx_ub[0,1])
         print(actions.max_slice)
 
         P_full, S_id, A_id, P_absorbing = compute_probability_intervals(

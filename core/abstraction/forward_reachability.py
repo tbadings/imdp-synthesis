@@ -107,8 +107,7 @@ class RectangularForward(object):
         inputs (jnp.ndarray): Discrete control actions, shape [num_actions, input_dim]
         frs_lb (np.ndarray): Lower bounds of forward reachable sets, shape [num_regions, num_actions, state_dim]
         frs_ub (np.ndarray): Upper bounds of forward reachable sets, shape [num_regions, num_actions, state_dim]
-        frs_idx_lb (np.ndarray): Lower grid indices of forward reachable sets, shape [num_regions, num_actions, state_dim]
-        frs_idx_ub (np.ndarray): Upper grid indices of forward reachable sets, shape [num_regions, num_actions, state_dim]
+        frs_idx_lb (np.ndarray): Lower grid indices of forward reachable sets, shape [num_regions, num_actions, state_dim], dtype int16
         max_slice (tuple): Maximum span of forward reachable sets across all regions and actions per dimension
         idxs (np.ndarray): Indices of all actions, shape [num_actions]
     """
@@ -153,8 +152,9 @@ class RectangularForward(object):
         num_actions = len(self.id_to_input)
         self.frs_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=args.floatprecision)
         self.frs_ub = np.zeros_like(self.frs_lb)
-        self.frs_idx_lb = np.zeros_like(self.frs_lb)
-        self.frs_idx_ub = np.zeros_like(self.frs_lb)
+        self.frs_idx_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=np.int16)
+        # max_slice is computed incrementally per batch to avoid storing frs_idx_ub
+        max_span = np.zeros(partition.dimension, dtype=int)
 
         # Pre-load shared (non-batched) tensors to device once to avoid repeated transfers
         inputs_dev = jax.device_put(self.id_to_input)
@@ -185,13 +185,14 @@ class RectangularForward(object):
             flb, fub, fil, fiu = jax.device_get((flb, fub, fil, fiu))
             self.frs_lb[batch_start:batch_end] = flb
             self.frs_ub[batch_start:batch_end] = fub
-            self.frs_idx_lb[batch_start:batch_end] = fil
-            self.frs_idx_ub[batch_start:batch_end] = fiu
+            self.frs_idx_lb[batch_start:batch_end] = fil.astype(np.int16)
+            # Update max span incrementally to avoid storing full frs_idx_ub array
+            batch_span = fiu - fil + 1
+            np.maximum(max_span, np.max(batch_span, axis=(0, 1)).astype(int), out=max_span)
 
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations
-        span = self.frs_idx_ub - self.frs_idx_lb + 1
-        self.max_slice = tuple(np.max(span, axis=(0, 1)).astype(int).tolist())
+        self.max_slice = tuple(max_span.tolist())
 
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
         # Create array of action indices for efficient indexing        
