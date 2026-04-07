@@ -20,24 +20,27 @@ def parse_linear_model(base_model):
     if base_model.noise['type'] != 'Gaussian':
         raise ValueError(f'Unsupported noise distribution: {base_model.noise["type"]}. Expected "Gaussian".')
 
+    # Work on a local reference for consistency with the nonlinear parser.
+    model = base_model
+
     # If independent_dimensions is not defined, then assume all dimensions are dependent
     if model.independent_dimensions is None:
         model.independent_dimensions = [jnp.arange(model.n)]
 
-    base_model.partition['boundary'] = jnp.array(base_model.partition['boundary']).astype(float)
-    base_model.partition['number_per_dim'] = jnp.array(base_model.partition['number_per_dim']).astype(int)
+    model.partition['boundary'] = jnp.array(model.partition['boundary']).astype(float)
+    model.partition['number_per_dim'] = jnp.array(model.partition['number_per_dim']).astype(int)
 
     # Control limitations
-    base_model.uMin = jnp.array(base_model.uMin).astype(float)
-    base_model.uMax = jnp.array(base_model.uMax).astype(float)
+    model.uMin = jnp.array(model.uMin).astype(float)
+    model.uMax = jnp.array(model.uMax).astype(float)
 
-    lump = base_model.lump
+    lump = model.lump
 
     if lump == 0:
-        model = make_fully_actuated(base_model,
+        model = make_fully_actuated(model,
                                     manualDimension='auto')
     else:
-        model = make_fully_actuated(base_model,
+        model = make_fully_actuated(model,
                                     manualDimension=lump)
 
     # Determine vertices of the control input space

@@ -126,6 +126,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
     frs_lb = actions.frs_lb
     frs_ub = actions.frs_ub
     frs_idx_lb = actions.frs_idx_lb
+    model_wrap_tuple = tuple(np.array(model.wrap))
 
     interval_distribution_per_dim_noise = partial(interval_distribution_per_dim, noise=model.noise)
 
@@ -161,7 +162,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
             p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution_per_dim(model.n,
                                                                                     actions.max_slice,
-                                                                                    tuple(np.array(model.wrap)),
+                                                                                    model_wrap_tuple,
                                                                                     model.wrap,
                                                                                     args.decimals,
                                                                                     partition.number_per_dim,
@@ -174,14 +175,15 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                                                                                     JAX_boundary_ub,
                                                                                     JAX_region_idx_array,
                                                                                     JAX_unsafe_states)
-            
-            # TODO: Conversion from JAX to NumPy array here is the bottleneck.
-            p = np.array(p)
-            
-            s_id = np.array(s_id)
-            p_abs = np.array(p_abs)
-            keep_actions = np.array(keep_actions)
-            number_nonzero = np.array(number_nonzero)
+
+            # Transfer outputs from device in one call to reduce synchronization overhead.
+            p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
+            p = np.asarray(p)
+            s_id = np.asarray(s_id)
+            p_abs = np.asarray(p_abs)
+            keep_actions = np.asarray(keep_actions)
+            number_nonzero = np.asarray(number_nonzero)
+            max_nonzero = int(np.max(number_nonzero))
 
             # If not final iteration
             if iter < len(starts) - 1:
@@ -189,8 +191,8 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
             else:
                 batch_action_labels = np.tile(actions.id, j-i)[keep_actions]
 
-            batch_interval_matrix = p[keep_actions][:, :max(number_nonzero)]
-            batch_successor_id = s_id[keep_actions][:, :max(number_nonzero)]
+            batch_interval_matrix = p[keep_actions][:, :max_nonzero]
+            batch_successor_id = s_id[keep_actions][:, :max_nonzero]
             batch_interval_absorbing = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
 
             # Take cumsum of actions to know where to split the batch results for each state
@@ -215,7 +217,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
             p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution_per_dim(model.n,
                                                                                 actions.max_slice,
-                                                                                tuple(np.array(model.wrap)),
+                                                                                model_wrap_tuple,
                                                                                 model.wrap,
                                                                                 args.decimals,
                                                                                 partition.number_per_dim,
@@ -228,21 +230,22 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                                                                                 JAX_boundary_ub,
                                                                                 JAX_region_idx_array,
                                                                                 JAX_unsafe_states)
+
+            p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
+            p = np.asarray(p)
+            s_id = np.asarray(s_id)
+            p_abs = np.asarray(p_abs)
+            keep_actions = np.asarray(keep_actions)
+            number_nonzero = np.asarray(number_nonzero)
+            max_nonzero = int(np.max(number_nonzero))
             
             # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
             # p_nonzero=True means that the upper bound of the probability interval is greater than the minimum probability threshold
             # Evaluate p_nonzero over each columns to get the successor states that we should keep
-            if any(keep_actions):
-
-                p = np.array(p)
-                s_id = np.array(s_id)
-                p_abs = np.array(p_abs)
-                keep_actions = np.array(keep_actions)
-                number_nonzero = np.array(number_nonzero)
-
+            if np.any(keep_actions):
                 action_labels[s] = actions.id[keep_actions]
-                interval_matrix[s] = p[keep_actions][:, :max(number_nonzero)]
-                successor_id[s] = s_id[keep_actions][:, :max(number_nonzero)]
+                interval_matrix[s] = p[keep_actions][:, :max_nonzero]
+                successor_id[s] = s_id[keep_actions][:, :max_nonzero]
                 interval_absorbing[s] = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
                 
                 # nans = np.where(np.any(np.isnan(interval_matrix[s]), axis=0))[0]

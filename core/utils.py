@@ -55,7 +55,7 @@ def remove_consecutive_duplicates(trace):
             done = True
         else:
             if np.all(trace[i] == trace[i + 1]):
-                trace = trace[i + 1:]
+                trace = np.delete(trace, i + 1, axis=0)
             else:
                 i += 1
 

@@ -253,8 +253,9 @@ def RVI_JAX(
                                             JAX_prob_lb_array[state_batch], 
                                             JAX_prob_ub_array[state_batch], 
                                             V)
-                V[state_batch] = np.array(V_batch, dtype=args.floatprecision)
-                policy[state_batch] = np.array(policy_batch, dtype=np.int32)
+                V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
+                V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
+                policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
             
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
@@ -281,11 +282,12 @@ def RVI_JAX(
                 
                 # Policy evaluation only
                 for state_batch in state_batches:
-                    V[state_batch] = vmap_state_policy_evaluation(
+                    V_eval = vmap_state_policy_evaluation(
                                                 JAX_successors_array[state_batch, policy[state_batch]], 
                                                 JAX_prob_lb_array[state_batch, policy[state_batch]], 
                                                 JAX_prob_ub_array[state_batch, policy[state_batch]], 
                                                 V)
+                    V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
                 
                 if np.max(np.abs(V - V_old)) < epsilon or (bool is False and i > iterations_phase1):
                     break
@@ -298,11 +300,14 @@ def RVI_JAX(
             policy_old = policy.copy()
 
             for state_batch in state_batches:
-                V[state_batch], policy[state_batch] = vmap_state_policy_improvement(
+                V_batch, policy_batch = vmap_state_policy_improvement(
                                             JAX_successors_array[state_batch], 
                                             JAX_prob_lb_array[state_batch], 
                                             JAX_prob_ub_array[state_batch], 
                                             V)
+                V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
+                V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
+                policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
             
             # Check convergence
             if np.all(policy == policy_old):
