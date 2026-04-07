@@ -177,12 +177,8 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                                                                                     JAX_unsafe_states)
 
             # Transfer outputs from device in one call to reduce synchronization overhead.
+            # jax.device_get already returns numpy arrays, so np.asarray is not needed.
             p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
-            p = np.asarray(p)
-            s_id = np.asarray(s_id)
-            p_abs = np.asarray(p_abs)
-            keep_actions = np.asarray(keep_actions)
-            number_nonzero = np.asarray(number_nonzero)
             max_nonzero = int(np.max(number_nonzero))
 
             # If not final iteration
@@ -191,9 +187,14 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
             else:
                 batch_action_labels = np.tile(actions.id, j-i)[keep_actions]
 
-            batch_interval_matrix = p[keep_actions][:, :max_nonzero]
-            batch_successor_id = s_id[keep_actions][:, :max_nonzero]
+            # Trim the trailing dimension before fancy-indexing to avoid a large intermediate copy.
+            # p[:, :max_nonzero] is a free view; the copy is only (kept, max_nonzero, 2) instead of (kept, total_cells, 2).
+            batch_interval_matrix = p[:, :max_nonzero][keep_actions]
+            del p
+            batch_successor_id = s_id[:, :max_nonzero][keep_actions]
+            del s_id
             batch_interval_absorbing = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
+            del p_abs
 
             # Take cumsum of actions to know where to split the batch results for each state
             keep_actions_cumsum = np.cumsum(keep_actions)
@@ -232,11 +233,6 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                                                                                 JAX_unsafe_states)
 
             p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
-            p = np.asarray(p)
-            s_id = np.asarray(s_id)
-            p_abs = np.asarray(p_abs)
-            keep_actions = np.asarray(keep_actions)
-            number_nonzero = np.asarray(number_nonzero)
             max_nonzero = int(np.max(number_nonzero))
             
             # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
@@ -244,16 +240,11 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
             # Evaluate p_nonzero over each columns to get the successor states that we should keep
             if np.any(keep_actions):
                 action_labels[s] = actions.id[keep_actions]
-                interval_matrix[s] = p[keep_actions][:, :max_nonzero]
-                successor_id[s] = s_id[keep_actions][:, :max_nonzero]
+                # Trim the trailing dimension before fancy-indexing to avoid a large intermediate copy.
+                interval_matrix[s] = p[:, :max_nonzero][keep_actions]
+                successor_id[s] = s_id[:, :max_nonzero][keep_actions]
                 interval_absorbing[s] = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
-                
-                # nans = np.where(np.any(np.isnan(interval_matrix[s]), axis=0))[0]
-                # if len(nans) > 0:
-                #     print('NaN probabilities in state {} at position {}'.format(s, len(nans)))
-
-                # if np.any(np.sum(interval_matrix[s], axis=1)) > 1:
-                #     print('Probabilities sum to more than 1 in state {} at position {}'.format(s, np.where(np.sum(interval_matrix[s], axis=0) > 1)))
+            del p, s_id, p_abs
 
     print('-- Number of times function was compiled:', vmap_interval_distribution_per_dim._cache_size())
     print('')
