@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import numpy as np
 from tqdm import tqdm
 
+from core.utils import create_batches
+
 
 @partial(jax.jit, static_argnums=(0))
 def forward_reach(step_set, state_min, state_max, input, state_wrap, support_radius, number_per_dim, cell_width, boundary_lb, boundary_ub):
@@ -121,15 +123,20 @@ class RectangularForward(object):
         print('Define target points and forward reachable sets...')
         t_total = time.time()
 
-        # Create vectorized function to compute forward reach for multiple actions in parallel
-        # vmap over axis 0 (different actions), keeping other parameters fixed
-        vmap_forward_reach = jax.jit(
+        # Inner vmap over control actions, outer vmap over a batch of state regions.
+        # This reduces Python–JAX round trips from num_regions to ceil(num_regions / frs_batch_size).
+        vmap_over_actions = jax.vmap(
+            forward_reach,
+            in_axes=(None, None, None, 0, None, None, None, None, None, None),
+            out_axes=(0, 0, 0, 0, 0),
+        )
+        batch_forward_reach = jax.jit(
             jax.vmap(
-                forward_reach,
-                in_axes=(None, None, None, 0, None, None, None, None, None, None),
-                out_axes=(0, 0, 0, 0, 0)
+                vmap_over_actions,
+                in_axes=(None, 0, 0, None, None, None, None, None, None, None),
+                out_axes=(0, 0, 0, 0, 0),
             ),
-            static_argnums=(0)
+            static_argnums=(0),
         )
 
         # Generate discrete action grid by taking Cartesian product of actions per dimension
@@ -141,51 +148,45 @@ class RectangularForward(object):
 
         t = time.time()
 
-        # Initialize progress bar for iterating through all state regions
-        pbar = tqdm(
-            enumerate(zip(partition.regions['lower_bounds'], partition.regions['upper_bounds'])),
-            total=len(partition.regions['lower_bounds'])
-        )
-        self.max_slice = jnp.zeros(partition.dimension)
-        
-        # Note: Pre-loading all inputs on device is possible but commented out
-        # This could improve performance for very large action spaces
-        # discrete_inputs_jax = jax.device_put(self.inputs)
-        # noise_cov = jax.device_put(model.noise['cov_diag'])
-        # number_per_dim = jax.device_put(partition.number_per_dim)
-        # cell_width = jax.device_put(partition.cell_width)
-        # boundary_lb = jax.device_put(partition.boundary_lb)
-        # boundary_ub = jax.device_put(partition.boundary_ub)
-        
-        # Allocate storage for forward reachable set information
+        # Allocate output arrays
         num_regions = len(partition.regions['lower_bounds'])
         num_actions = len(self.id_to_input)
         self.frs_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=args.floatprecision)
-        self.frs_ub = np.zeros_like(self.frs_lb, dtype=args.floatprecision)
-        self.frs_idx_lb = np.zeros_like(self.frs_lb, dtype=args.floatprecision)
-        self.frs_idx_ub = np.zeros_like(self.frs_lb, dtype=args.floatprecision)
+        self.frs_ub = np.zeros_like(self.frs_lb)
+        self.frs_idx_lb = np.zeros_like(self.frs_lb)
+        self.frs_idx_ub = np.zeros_like(self.frs_lb)
 
-        # Iterate through all state regions and compute forward reachable sets
-        for i, (lb, ub) in pbar:
-            # Batch compute forward reachable sets for all actions using vectorized function
-            flb, fub, _, fil, fiu = vmap_forward_reach(
+        # Pre-load shared (non-batched) tensors to device once to avoid repeated transfers
+        inputs_dev = jax.device_put(self.id_to_input)
+        wrap_dev = jax.device_put(model.wrap)
+        support_radius_dev = jax.device_put(model.noise['support_radius'])
+        npd_dev = jax.device_put(partition.number_per_dim)
+        cw_dev = jax.device_put(partition.cell_width)
+        blb_dev = jax.device_put(partition.boundary_lb)
+        bub_dev = jax.device_put(partition.boundary_ub)
+
+        # Process state regions in batches: each call handles a [batch, num_actions] computation
+        # instead of one [num_actions] computation, reducing Python–JAX round trips by frs_batch_size.
+        starts, ends = create_batches(num_regions, args.frs_batch_size)
+        pbar = tqdm(zip(starts, ends), total=len(starts))
+        for batch_start, batch_end in pbar:
+            flb, fub, _, fil, fiu = batch_forward_reach(
                 model.step_set,
-                lb,
-                ub,
-                self.id_to_input,
-                model.wrap,
-                model.noise['support_radius'],
-                partition.number_per_dim,
-                partition.cell_width,
-                partition.boundary_lb,
-                partition.boundary_ub
+                partition.regions['lower_bounds'][batch_start:batch_end],
+                partition.regions['upper_bounds'][batch_start:batch_end],
+                inputs_dev,
+                wrap_dev,
+                support_radius_dev,
+                npd_dev,
+                cw_dev,
+                blb_dev,
+                bub_dev,
             )
-
-            # Store the computed forward reachable set bounds and indices
-            self.frs_lb[i] = np.array(flb)
-            self.frs_ub[i] = np.array(fub)
-            self.frs_idx_lb[i] = np.array(fil)
-            self.frs_idx_ub[i] = np.array(fiu)
+            flb, fub, fil, fiu = jax.device_get((flb, fub, fil, fiu))
+            self.frs_lb[batch_start:batch_end] = flb
+            self.frs_ub[batch_start:batch_end] = fub
+            self.frs_idx_lb[batch_start:batch_end] = fil
+            self.frs_idx_ub[batch_start:batch_end] = fiu
 
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations

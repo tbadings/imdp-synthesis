@@ -35,6 +35,7 @@ def _make_hardcoded_args(model_name: str) -> argparse.Namespace:
         plot_grid=False,
         plot_title=False,
         plot_ticks=False,
+        frs_batch_size=1000,
     )
     args.floatprecision = np.float32
     args.rvi_device = jax.devices("cpu")[0]
@@ -93,6 +94,7 @@ class TestBenchmarkInitialValues(unittest.TestCase):
             "Test1D": (2, 0.999601),
             "DoubleIntegrator": (212, 0.998698),
             "MountainCar": (4235, 0.991068),
+            "Pendulum": (4975, 0.992158),
         }
 
         for model_name, (expected_s0, expected_value) in expected.items():

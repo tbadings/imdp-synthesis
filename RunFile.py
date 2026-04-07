@@ -8,6 +8,7 @@ For all available arguments, please see the function :func:`core.options.parse_a
 '''
 
 import datetime
+import logging
 import os
 import time
 from pathlib import Path
@@ -22,30 +23,55 @@ from core.abstraction.partition import RectangularPartition
 from core.abstraction.imdp import IMDP
 from core.abstraction.imdp import RVI_JAX
 
-if __name__ == '__main__':
-    jax.config.update("jax_default_matmul_precision", "high")
 
+class _CleanConsoleFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        if record.levelno >= logging.ERROR:
+            return f'ERROR: {message}'
+        if record.levelno >= logging.WARNING:
+            return f'WARN: {message}'
+        if record.levelno == logging.DEBUG:
+            return f'DEBUG: {message}'
+        return message
+
+
+def configure_logging(log_level: str) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(_CleanConsoleFormatter())
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+    logging.getLogger('jax._src.xla_bridge').setLevel(logging.WARNING)
+    logging.getLogger('fontTools').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+if __name__ == '__main__':
     args = parse_arguments()
+    configure_logging(args.log_level)
+    logger = logging.getLogger(__name__)
+
+    jax.config.update("jax_default_matmul_precision", "high")
     args.floatprecision = np.float32
+
     if args.gpu:
         jax.config.update('jax_platform_name', 'gpu')
-        print('- Requested to run on GPU')
+        logger.info('Requested to run on GPU')
     else:
         jax.config.update('jax_platform_name', 'cpu')
-        print('- Requested to run on CPU')
+        logger.info('Requested to run on CPU')
+
     if args.gpu_rvi:
         args.rvi_device = jax.devices('gpu')[0]
-        print('- Requested to run RVI on GPU')
+        logger.info('Requested to run RVI on GPU')
     else:
         args.rvi_device = jax.devices('cpu')[0]
-        print('- Requested to run RVI on CPU')
+        logger.info('Requested to run RVI on CPU')
 
-    print('=== JAX STATUS ===')
-    print(f'Devices available: {jax.devices()}')
-    from jax.extend.backend import get_backend
-
-    print(f'Jax runs on: {get_backend().platform}')
-    print('==================\n')
+    logger.info('JAX backend in use: %s', args.rvi_device.platform)
+    logger.debug('JAX devices (%s): %s', args.rvi_device.platform, jax.devices(args.rvi_device.platform))
 
     np.random.seed(args.seed)
     args.jax_key = jax.random.PRNGKey(args.seed)
@@ -61,10 +87,8 @@ if __name__ == '__main__':
     args.root_dir = Path(args.cwd)
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    print(f'Run started at {stamp} using arguments:')
-    for key, val in vars(args).items():
-        print(' - `' + str(key) + '`: ' + str(val))
-    print('\n==============================\n')
+    logger.info('Run %s | model=%s | noise=%s | batch=%d', stamp, args.model, args.noise_distr, args.batch_size)
+    logger.debug('Arguments: %s', vars(args))
 
     # Define and parse model
     model = benchmarks.create_model(args)
@@ -98,12 +122,12 @@ if __name__ == '__main__':
                 A_id=A_id,
                 P_absorbing=P_absorbing)
 
-    print(f'- Generating abstraction took: {(time.time() - t):.3f} sec.')
+    logger.info('Generating abstraction took %.3f sec.', (time.time() - t))
 
     # %% Run dynamic programming to compute optimal policy
 
     with jax.default_device(args.rvi_device):
-        print('\nCompute optimal policy via robust dynamic programming...')
+        logger.info('Computing optimal policy via robust dynamic programming...')
         t = time.time()
         V, policy, policy_inputs = RVI_JAX(
             args=args, 
@@ -114,7 +138,7 @@ if __name__ == '__main__':
             RND_SWEEPS=True, 
             BATCH_SIZE=1000, 
             policy_iteration=args.policy_iteration)
-        print (f'- RVI with JAX (random-batched asynchronous) took: {(time.time() - t):.3f} sec.')
+        logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
 
     # %% Simulations and plot
 
@@ -127,7 +151,7 @@ if __name__ == '__main__':
     from core.plotting.heatmap import heatmap
 
     sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
-    print('Empirical satisfaction probability:', sim.results['satprob'])
+    logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
     heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_values, filename="heatmap_satprob")

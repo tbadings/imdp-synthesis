@@ -1,8 +1,12 @@
 import itertools
+import logging
 import time
 
 import jax.numpy as jnp
 import numpy as np
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_linear_model(base_model):
@@ -13,7 +17,7 @@ def parse_linear_model(base_model):
     :return: Model object
     '''
 
-    print('Parse linear dynamical model...')
+    logger.info('Parse linear dynamical model...')
     t = time.time()
 
     # Only supports Gaussian distribution for now
@@ -73,8 +77,7 @@ def parse_linear_model(base_model):
     model.noise['cov'] = jnp.array(model.noise['cov'])
     model.noise['cov_diag'] = jnp.array(model.noise['cov_diag'])
 
-    print(f'- Model parsing done (took {(time.time() - t):.3f} sec.)')
-    print('')
+    logger.info('Model parsing done (took %.3f sec.)', (time.time() - t))
     return model
 
 
@@ -86,7 +89,7 @@ def parse_nonlinear_model(model):
     :return: Model object
     '''
 
-    print('Parse nonlinear dynamical model...')
+    logger.info('Parse nonlinear dynamical model...')
     t = time.time()
 
     # If independent_dimensions is not defined, then assume all dimensions are dependent
@@ -104,8 +107,7 @@ def parse_nonlinear_model(model):
     stacked = np.vstack((model.uMin, model.uMax))
     model.uVertices = jnp.array(list(itertools.product(*stacked.T)))
 
-    print(f'- Model parsing done (took {(time.time() - t):.3f} sec.)')
-    print('')
+    logger.info('Model parsing done (took %.3f sec.)', (time.time() - t))
     return model
 
 

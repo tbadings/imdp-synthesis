@@ -1,7 +1,28 @@
 import argparse
 
 
-def parse_arguments():
+def _nonnegative_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError('Expected a non-negative integer.')
+    return parsed
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError('Expected a positive integer.')
+    return parsed
+
+
+def _probability(value: str) -> float:
+    parsed = float(value)
+    if not 0.0 <= parsed <= 1.0:
+        raise argparse.ArgumentTypeError('Expected a value in [0, 1].')
+    return parsed
+
+
+def parse_arguments(argv=None):
     '''
     Function to parse arguments provided
 
@@ -9,14 +30,14 @@ def parse_arguments():
     '''
 
     # Options
-    parser = argparse.ArgumentParser(prefix_chars='--')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, perform additional checks to debug python")
     parser.add_argument('--seed', type=int, default=0,
                         help="Seed for random number generators (Jax, Numpy)")
-    parser.add_argument('--decimals', type=int, default=4,
+    parser.add_argument('--decimals', type=_nonnegative_int, default=4,
                         help="Number of decimals to work with for storing probabilities")
-    parser.add_argument('--pAbs_min', type=float, default=0.0001,
+    parser.add_argument('--pAbs_min', type=_probability, default=0.0001,
                         help="Minimum probability for absorbing states")
 
     parser.add_argument('--model', type=str, default='Drone2D',
@@ -24,7 +45,7 @@ def parse_arguments():
     parser.add_argument('--model_version', type=int, default=0,
                         help="Version of the model to use (optinal; 0 by default)")
     parser.add_argument('--noise_distr', type=str, default='gaussian', choices=['gaussian', 'normal', 'triangular'], # 'normal' is alias for 'gaussian'
-                        help="Noise distribution type to use")
+                        help="Noise distribution type to use ('normal' is treated as 'gaussian')")
     
     parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run on GPU. Otherwise, run on CPU")
@@ -36,8 +57,12 @@ def parse_arguments():
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
-    parser.add_argument('--batch_size', type=int, default=100,
+    parser.add_argument('--batch_size', type=_positive_int, default=100,
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
+    parser.add_argument('--frs_batch_size', type=_positive_int, default=1000,
+                        help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
+    parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+                        help='Logging verbosity level')
 
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
@@ -48,7 +73,7 @@ def parse_arguments():
                         help="If True, plot ticks in figures")
 
     # Parse arguments
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Canonicalize alias.
     if args.noise_distr == 'normal':

@@ -34,6 +34,7 @@ def _make_hardcoded_test1d_args(noise_distr: str) -> argparse.Namespace:
         plot_grid=False,
         plot_title=False,
         plot_ticks=False,
+        frs_batch_size=1000,
     )
     args.floatprecision = np.float32
     args.rvi_device = jax.devices("cpu")[0]
