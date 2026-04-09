@@ -38,59 +38,32 @@ def forward_reach(step_set, state_min, state_max, input, state_wrap, support_rad
         - idx_upp: Upper grid index bounds of the forward reachable set (shape: [state_dim])
     """
 
-    V2 = True
-
     # Small epsilon for numerical stability (currently set to zero)
     epsilon = 0.0
 
     # Compute the continuous bounds of the forward reachable set
     frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
 
-    # TODO: Finish this improved implementation
-    if V2:
+    frs_min_plus_noise = frs_min - support_radius
+    frs_max_plus_noise = frs_max + support_radius
 
-        frs_min_plus_noise = frs_min - support_radius
-        frs_max_plus_noise = frs_max + support_radius
+    # Calculate how many grid cells the forward reachable set spans in each dimension
+    # Note: When covariance is zero, this gives the exact discrete span
+    # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
+    # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
+    frs_span = jnp.astype(jnp.ceil((frs_max_plus_noise - frs_min_plus_noise) / cell_width) + 1, int)
 
-        # Calculate how many grid cells the forward reachable set spans in each dimension
-        # Note: When covariance is zero, this gives the exact discrete span
-        # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
-        # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
-        frs_span = jnp.astype(jnp.ceil((frs_max_plus_noise - frs_min_plus_noise) / cell_width) + 1, int)
+    # Normalize the minimum bound to grid coordinates
+    state_min_norm = (frs_min_plus_noise - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
+    lb_contained_in = state_min_norm // 1
 
-        # Normalize the minimum bound to grid coordinates
-        state_min_norm = (frs_min_plus_noise - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
-        lb_contained_in = state_min_norm // 1
-
-        # Compute lower grid indices (clipped to valid range)
-        # For dimensions with noise (cov_diag != 0), the index is set to 0
-        idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (~state_wrap)).astype(int)
-        
-        # Compute upper grid indices (clipped to valid range)
-        # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
-        idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (~state_wrap) + (number_per_dim - 1) * (state_wrap)).astype(int)
-
-    else:
-
-        # Calculate how many grid cells the forward reachable set spans in each dimension
-        # Note: When covariance is zero, this gives the exact discrete span
-        # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
-        # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
-        frs_span = jnp.astype(jnp.ceil((frs_max - frs_min) / cell_width) + 1, int)
-
-        # Normalize the minimum bound to grid coordinates
-        state_min_norm = (frs_min - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
-        lb_contained_in = state_min_norm // 1
-
-        # TODO: Make a rigorous implementation of how to handle noise here. The current implementation is a heuristic that expands the reachable set by a fixed number of cells in dimensions with noise. A more principled approach would consider the actual distribution of the noise and how it affects the reachable set.
-
-        # Compute lower grid indices (clipped to valid range)
-        # For dimensions with noise (cov_diag != 0), the index is set to 0
-        idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (support_radius == 0)).astype(int)
-        
-        # Compute upper grid indices (clipped to valid range)
-        # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
-        idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (support_radius == 0) + (number_per_dim - 1) * (support_radius != 0)).astype(int)
+    # Compute lower grid indices (clipped to valid range)
+    # For dimensions with noise (cov_diag != 0), the index is set to 0
+    idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (~state_wrap)).astype(int)
+    
+    # Compute upper grid indices (clipped to valid range)
+    # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
+    idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (~state_wrap) + (number_per_dim - 1) * (state_wrap)).astype(int)
 
     return frs_min, frs_max, frs_span, idx_low, idx_upp
 

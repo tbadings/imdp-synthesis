@@ -253,17 +253,6 @@ class DroneDynamics:
         state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
         state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
 
-        # state_next_min = jnp.clip(state_next_min, self.partition['boundary_jnp'][0] + jnp.array([1e-3]*self.n), self.partition['boundary_jnp'][1] - jnp.array([1e-3]*self.n))
-        # state_next_max = jnp.clip(state_next_max, self.partition['boundary_jnp'][0] + jnp.array([1e-3]*self.n), self.partition['boundary_jnp'][1] - jnp.array([1e-3]*self.n))
-
-        v_min = -3.5
-        v_max = 3.5
-
-        # state_next_min = jnp.clip(state_next_min, jnp.array([-1000, v_min, -1000, v_min, -1000, v_min]), 
-        #                                           jnp.array([1000, v_max, 1000, v_max, 1000, v_max]))
-        # state_next_max = jnp.clip(state_next_max, jnp.array([-1000, v_min, -1000, v_min, -1000, v_min]), 
-        #                                           jnp.array([1000, v_max, 1000, v_max, 1000, v_max]))
-
         return state_next_min, state_next_max
 
 class PendulumDynamics:

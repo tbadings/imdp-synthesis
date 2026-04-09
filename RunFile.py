@@ -21,7 +21,8 @@ from core.abstraction.forward_reachability import RectangularForward
 from core.options import parse_arguments
 from core.abstraction.partition import RectangularPartition
 from core.abstraction.imdp import IMDP
-from core.abstraction.imdp import RVI_JAX
+from core.abstraction.rvi_jax import RVI_JAX
+from core.abstraction.rvi_jax_v2 import RVI_JAX as RVI_JAX_v2
 
 
 class _CleanConsoleFormatter(logging.Formatter):
@@ -139,6 +140,19 @@ if __name__ == '__main__':
             BATCH_SIZE=1000, 
             policy_iteration=args.policy_iteration)
         logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
+
+        # logger.info('Computing optimal policy via robust dynamic programming (v2)...')
+        # t = time.time()
+        # V, policy, policy_inputs = RVI_JAX_v2(
+        #     args=args, 
+        #     imdp=imdp, 
+        #     s0=partition.x2state(model.x0)[0], 
+        #     max_iterations=10000, 
+        #     epsilon=1e-6, 
+        #     RND_SWEEPS=True, 
+        #     BATCH_SIZE=1000, 
+        #     policy_iteration=args.policy_iteration)
+        # logger.info('RVI with JAX v2 (fully jitted) took %.3f sec.', (time.time() - t))
 
     # %% Simulations and plot
 

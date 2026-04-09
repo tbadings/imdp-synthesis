@@ -23,9 +23,9 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "MountainCar",
+        "Drone2D",
         "--batch_size",
-        "1000",
+        "10000",
         "--noise_distr",
         "normal",
     ]

@@ -60,3 +60,14 @@ def remove_consecutive_duplicates(trace):
                 i += 1
 
     return trace
+
+
+def jit_compile_count(jitted_function) -> int | None:
+    """Return JIT cache size if available, else ``None``."""
+    cache_size_fn = getattr(jitted_function, "_cache_size", None)
+    if cache_size_fn is None:
+        return None
+    try:
+        return int(cache_size_fn())
+    except Exception:
+        return None
