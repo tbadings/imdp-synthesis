@@ -23,21 +23,12 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Drone2D",
+        "Dubins4D",
         "--batch_size",
         "10000",
         "--noise_distr",
         "normal",
     ]
-
-    # fixed_args = [
-    #     "--model",
-    #     "Dubins4D",
-    #     "--batch_size",
-    #     "1000",
-    #     "--noise_distr",
-    #     "normal",
-    # ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]
     subprocess.run(cmd, check=True, cwd=root)

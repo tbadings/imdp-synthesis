@@ -11,7 +11,7 @@ from jaxtyping import Array, UInt8, Bool, Float32, PyTree
 from core.abstraction.imdp import IMDP
 from core.utils import jit_compile_count
 
-def RVI_JAX(
+def RVI_JAX_jaxsort(
     args: argparse.Namespace, 
     imdp: IMDP, 
     s0: Optional[int] = None, 
@@ -38,17 +38,14 @@ def RVI_JAX(
     :return: Tuple of (values, Q-values, policy_labels, policy_inputs)
     """
 
-    phase1_initial_it = 100
-    phase1_increment_it = 1
-    phase1_max_it = 100
+    iterations_phase1 = 100
 
     #####
 
     def compute_lower_val(
         prob_lb: Float32[Array, "nr_successors"], 
         prob_ub: Float32[Array, "nr_successors"], 
-        successor_values: Float32[Array, "nr_successors"],
-        sort: UInt8[Array, "nr_successors"]
+        successor_values: Float32[Array, "nr_successors"]
     ) -> Float32:
 
         """
@@ -57,12 +54,14 @@ def RVI_JAX(
         :param prob_lb: Lower bounds of transition probabilities for the successor states
         :param prob_ub: Upper bounds of transition probabilities for the successor states
         :param successor_values: Values of the successor states
-        :param sort: Precomputed argsort indices for successor values
         :return: The robust value for the action
         """
         
         # Budget is the total probability mass we can assign to the successors
         budget = 1.0 - jnp.sum(prob_lb)
+        
+        # Sort the values for these successor states
+        sort = jnp.argsort(successor_values)
         sorted_lb = prob_lb[sort]
         sorted_ub = prob_ub[sort]
         
@@ -76,14 +75,13 @@ def RVI_JAX(
         
         return lower_val
 
-    vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0, 0), out_axes=0))
+    vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0), out_axes=0))
 
     def state_policy_improvement(
         successors_slice: UInt8[Array, "nr_actions nr_successors"],
         prob_lb_slice: Float32[Array, "nr_actions nr_successors"],
         prob_ub_slice: Float32[Array, "nr_actions nr_successors"],
-        V: Float32[Array, "nr_states"],
-        sort_indices: UInt8[Array, "nr_actions nr_successors"]
+        V: Float32[Array, "nr_states"]
     ) -> Tuple[Float32, UInt8]:
 
         """
@@ -93,7 +91,6 @@ def RVI_JAX(
         :param prob_lb_slice: Slice of lower bounds of transition probabilities for all actions
         :param prob_ub_slice: Slice of upper bounds of transition probabilities for all actions
         :param V: Current value function
-        :param sort_indices: Precomputed argsort indices for successor values
         :return: Tuple of (maximum robust value, index of the action with maximum robust value)
         """
 
@@ -101,18 +98,17 @@ def RVI_JAX(
         successor_values = V[successors_slice]
 
         # Compute lower value for all actions in parallel using JAX vectorization
-        lower_vals = vmap_compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values, sort_indices)
+        lower_vals = vmap_compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
 
         return jnp.max(lower_vals), jnp.argmax(lower_vals)
 
-    vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None, 0), out_axes=(0, 0)))
+    vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0)))
 
     def state_policy_evaluation(
         successors_slice: UInt8[Array, "nr_actions nr_successors"],
         prob_lb_slice: Float32[Array, "nr_actions nr_successors"],
         prob_ub_slice: Float32[Array, "nr_actions nr_successors"],
-        V: Float32[Array, "nr_states"],
-        sort_indices: UInt8[Array, "nr_successors"]
+        V: Float32[Array, "nr_states"]
     ) -> Float32:
 
         """
@@ -122,7 +118,6 @@ def RVI_JAX(
         :param prob_lb_slice: Slice of lower bounds of transition probabilities for the action specified by the current policy
         :param prob_ub_slice: Slice of upper bounds of transition probabilities for the action specified by the current policy
         :param V: Current value function
-        :param sort_indices: Precomputed argsort indices for successor values
         :return: The robust value for the action specified by the current policy
         """
 
@@ -130,11 +125,11 @@ def RVI_JAX(
         successor_values = V[successors_slice]
 
         # Compute lower value for the action specified by the current policy
-        lower_val = compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values, sort_indices)
+        lower_val = compute_lower_val(prob_lb_slice, prob_ub_slice, successor_values)
 
         return lower_val
 
-    vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None, 0), out_axes=(0)))
+    vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
 
     #####
     # Padding the probability intervals and successor values for JAX vectorization
@@ -153,9 +148,9 @@ def RVI_JAX(
     print(f'- Max number of successor states per action: {max_successors}')
 
     # Filling the following arrays is faster with NumPy
-    full_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
-    full_prob_lb_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
-    full_prob_ub_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
+    JAX_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
+    JAX_prob_lb_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
+    JAX_prob_ub_array = np.zeros((len(imdp.states), max_actions, max_successors), dtype=args.floatprecision)
 
     for s in imdp.states:
         if s not in imdp.A_id:
@@ -163,13 +158,13 @@ def RVI_JAX(
         # Fill in the dense array
         successors = imdp.S_id[s]
         num_actions, num_successors = successors.shape
-        full_successors_array[s, :num_actions, :num_successors] = successors
-        full_prob_lb_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 0]
-        full_prob_ub_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 1]
+        JAX_successors_array[s, :num_actions, :num_successors] = successors
+        JAX_prob_lb_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 0]
+        JAX_prob_ub_array[s, :num_actions, :num_successors] = imdp.P_full[s][:, :, 1]
         # Add the absorbing state as a successor in the final column (max_successors-1) for all actions
-        full_successors_array[s, :num_actions, max_successors-1] = imdp.absorbing_state
-        full_prob_lb_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 0]
-        full_prob_ub_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 1]
+        JAX_successors_array[s, :num_actions, max_successors-1] = imdp.absorbing_state
+        JAX_prob_lb_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 0]
+        JAX_prob_ub_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 1]
 
     print(f'- Padding and array construction done')
 
@@ -198,6 +193,10 @@ def RVI_JAX(
     else:
         state_batches = [states_to_update]
 
+    JAX_successors_array = jax.device_put(JAX_successors_array, args.rvi_device)
+    JAX_prob_lb_array = jax.device_put(JAX_prob_lb_array, args.rvi_device)
+    JAX_prob_ub_array = jax.device_put(JAX_prob_ub_array, args.rvi_device)
+
     if not policy_iteration:
         # Value iteration
         for iteration in pbar:
@@ -211,13 +210,11 @@ def RVI_JAX(
                 
             # Policy evaluation + improvement
             for state_batch in state_batches:
-                sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
                 V_batch, policy_batch = vmap_state_policy_improvement(
-                                            jax.device_put(full_successors_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_lb_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_ub_array[state_batch], args.rvi_device), 
-                                            V,
-                                            sort_indices)
+                                            JAX_successors_array[state_batch], 
+                                            JAX_prob_lb_array[state_batch], 
+                                            JAX_prob_ub_array[state_batch], 
+                                            V)
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
@@ -240,52 +237,39 @@ def RVI_JAX(
 
             # Policy evaluation
             i = 0
+            t = time.time()
             while True: # TODO: Remove this hardcoding
                 # print(f'- Policy evaluation iteration {i + 1}...')
                 V_old = V.copy()
                 
                 # Policy evaluation only
                 for state_batch in state_batches:
-                    policy_actions = policy[state_batch]
-                    # t = time.time()
-                    np_succ_slice = full_successors_array[state_batch, policy_actions]
-                    sort_indices = np.argsort(V[np_succ_slice], axis=-1)
-                    # print(f'- Sort indices took: {time.time() - t:.6f} sec')
-                    # t = time.time()
-                    # print(f'- Data preparation took: {time.time() - t:.6f} sec')
-                    # t = time.time()
                     V_eval = vmap_state_policy_evaluation(
-                                                jax.device_put(np_succ_slice, args.rvi_device), 
-                                                jax.device_put(full_prob_lb_array[state_batch, policy_actions], args.rvi_device), 
-                                                jax.device_put(full_prob_ub_array[state_batch, policy_actions], args.rvi_device), 
-                                                V,
-                                                sort_indices)
+                                                JAX_successors_array[state_batch, policy[state_batch]], 
+                                                JAX_prob_lb_array[state_batch, policy[state_batch]], 
+                                                JAX_prob_ub_array[state_batch, policy[state_batch]], 
+                                                V)
                     V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
-                    # print(f'- Policy evaluation batch took: {time.time() - t:.6f} sec')
                 
-                if np.max(np.abs(V - V_old)) < epsilon or (bool is False and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)):
+                if np.max(np.abs(V - V_old)) < epsilon or (bool is False and i > iterations_phase1):
                     break
 
                 i += 1
+            # print(f'- Policy evaluation took: {time.time() - t:.3f} sec')
 
             # Policy evaluation + improvement
+            t = time.time()
             policy_old = policy.copy()
 
             for state_batch in state_batches:
-                # t = time.time()
-                sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
-                # print(f'- Sort indices took: {time.time() - t:.6f} sec')
-                # t = time.time()
                 V_batch, policy_batch = vmap_state_policy_improvement(
-                                            jax.device_put(full_successors_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_lb_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_ub_array[state_batch], args.rvi_device), 
-                                            V,
-                                            sort_indices)
+                                            JAX_successors_array[state_batch], 
+                                            JAX_prob_lb_array[state_batch], 
+                                            JAX_prob_ub_array[state_batch], 
+                                            V)
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
-                # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
             
             # Check convergence
             if np.all(policy == policy_old):
