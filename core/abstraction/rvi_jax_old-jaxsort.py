@@ -11,7 +11,7 @@ from jaxtyping import Array, UInt8, Bool, Float32, PyTree
 from core.abstraction.imdp import IMDP
 from core.utils import jit_compile_count
 
-def RVI_JAX_jaxsort(
+def RVI_JAX(
     args: argparse.Namespace, 
     imdp: IMDP, 
     s0: Optional[int] = None, 

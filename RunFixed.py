@@ -25,7 +25,7 @@ def main() -> None:
         "--model",
         "Dubins4D",
         "--batch_size",
-        "10000",
+        "1000",
         "--noise_distr",
         "normal",
     ]

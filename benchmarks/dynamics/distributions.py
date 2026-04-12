@@ -2,9 +2,6 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-# TODO: 
-# - Use support_radius to determine FRS and indices
-
 def _integ_Gauss(x_lb, x_ub, x, stdev):
 	'''
 	Integrate a univariate Gaussian distribution over a given interval.

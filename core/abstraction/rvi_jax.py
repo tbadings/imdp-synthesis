@@ -38,9 +38,9 @@ def RVI_JAX(
     :return: Tuple of (values, Q-values, policy_labels, policy_inputs)
     """
 
-    phase1_initial_it = 100
+    phase1_initial_it = 10
     phase1_increment_it = 1
-    phase1_max_it = 100
+    phase1_max_it = 10
 
     #####
 
