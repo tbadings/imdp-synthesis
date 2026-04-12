@@ -18,7 +18,7 @@ from tqdm import tqdm
 from typing import Optional, Tuple
 from jaxtyping import Array, Float32, UInt8
 
-from core.abstraction.imdp import IMDP
+from core.abstraction.imdp.imdp import IMDP
 
 
 def RVI_JAX(

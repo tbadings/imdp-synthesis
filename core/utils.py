@@ -1,4 +1,31 @@
+import logging
+
 import numpy as np
+
+
+class _CleanConsoleFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        if record.levelno >= logging.ERROR:
+            return f'ERROR: {message}'
+        if record.levelno >= logging.WARNING:
+            return f'WARN: {message}'
+        if record.levelno == logging.DEBUG:
+            return f'DEBUG: {message}'
+        return message
+
+
+def configure_logging(log_level: str) -> None:
+    handler = logging.StreamHandler()
+    handler.setFormatter(_CleanConsoleFormatter())
+
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+    logging.getLogger('jax._src.xla_bridge').setLevel(logging.WARNING)
+    logging.getLogger('fontTools').setLevel(logging.WARNING)
+    logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
 def create_batches(data_length, batch_size):

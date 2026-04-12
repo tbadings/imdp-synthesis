@@ -19,11 +19,11 @@ from pathlib import Path
 
 def main() -> None:
     root = Path(__file__).resolve().parent
-    runfile = root / "RunFile.py"
+    runfile = root / "RunIMDP.py"
 
     fixed_args = [
         "--model",
-        "Dubins4D",
+        "Dubins3D",
         "--batch_size",
         "1000",
         "--noise_distr",

@@ -1,12 +1,3 @@
-'''
-This is the main Python file for DynAbs-JAX.
-The file can be run from the terminal as
-
-```Python3 RunFile.py --model <model-name> ...```
-
-For all available arguments, please see the function :func:`core.options.parse_arguments`.
-'''
-
 import datetime
 import logging
 import os
@@ -16,70 +7,24 @@ import jax
 import numpy as np
 
 import benchmarks
-from core.abstraction.probability_intervals import compute_probability_intervals
-from core.abstraction.forward_reachability import RectangularForward
+from core.abstraction.imdp.probability_intervals import compute_probability_intervals
+from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.options import parse_arguments
 from core.abstraction.partition import RectangularPartition
-from core.abstraction.imdp import IMDP
-from core.abstraction.rvi_jax import RVI_JAX
-
-class _CleanConsoleFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        message = record.getMessage()
-        if record.levelno >= logging.ERROR:
-            return f'ERROR: {message}'
-        if record.levelno >= logging.WARNING:
-            return f'WARN: {message}'
-        if record.levelno == logging.DEBUG:
-            return f'DEBUG: {message}'
-        return message
-
-
-def configure_logging(log_level: str) -> None:
-    handler = logging.StreamHandler()
-    handler.setFormatter(_CleanConsoleFormatter())
-
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
-    root_logger.setLevel(getattr(logging, log_level.upper()))
-    logging.getLogger('jax._src.xla_bridge').setLevel(logging.WARNING)
-    logging.getLogger('fontTools').setLevel(logging.WARNING)
-    logging.getLogger('matplotlib').setLevel(logging.WARNING)
+from core.abstraction.imdp.imdp import IMDP
+from core.abstraction.imdp.rvi_jax import RVI_JAX
+from core.jax_config import configure_jax
+from core.utils import configure_logging
 
 if __name__ == '__main__':
     args = parse_arguments()
     configure_logging(args.log_level)
     logger = logging.getLogger(__name__)
 
-    jax.config.update("jax_default_matmul_precision", "high")
-    args.floatprecision = np.float32
-
-    if args.gpu:
-        jax.config.update('jax_platform_name', 'gpu')
-        logger.info('Requested to run on GPU')
-    else:
-        jax.config.update('jax_platform_name', 'cpu')
-        logger.info('Requested to run on CPU')
-
-    if args.gpu_rvi:
-        args.rvi_device = jax.devices('gpu')[0]
-        logger.info('Requested to run RVI on GPU')
-    else:
-        args.rvi_device = jax.devices('cpu')[0]
-        logger.info('Requested to run RVI on CPU')
-
-    logger.info('JAX backend in use: %s', args.rvi_device.platform)
-    logger.debug('JAX devices (%s): %s', args.rvi_device.platform, jax.devices(args.rvi_device.platform))
+    configure_jax(args)
 
     np.random.seed(args.seed)
     args.jax_key = jax.random.PRNGKey(args.seed)
-
-    # In debug mode, configure jax to use Float64 (for more accurate computations)
-    if args.debug:
-        from jax import config
-
-        config.update("jax_enable_x64", True)
 
     # Set current working directory
     args.cwd = os.path.dirname(os.path.abspath(__file__))
@@ -135,7 +80,7 @@ if __name__ == '__main__':
             max_iterations=10000, 
             epsilon=1e-6, 
             RND_SWEEPS=True, 
-            BATCH_SIZE=10000, 
+            BATCH_SIZE=1000, 
             policy_iteration=args.policy_iteration)
         logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
 

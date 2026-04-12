@@ -19,7 +19,7 @@ def meshgrid_jax(points, size):
     :return: Grid as 2D array.
     '''
 
-    meshgrid = jnp.asarray(jnp.meshgrid(*points))
+    meshgrid = jnp.asarray(jnp.meshgrid(*points, indexing='ij'))
     grid = jnp.reshape(meshgrid, (len(size), -1)).T
 
     return grid
@@ -135,10 +135,6 @@ class RectangularPartition(object):
         lb_unit = jnp.zeros(len(lb_center), dtype=int)
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
         centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
-
-        # TODO: Check how to avoid this step
-        from ..utils import lexsort4d
-        centers_unit = lexsort4d(centers_unit)
 
         # Define n-dimensional array (n = dimension of state space) to index elements of the partition
         centers = jnp.array(centers_unit, dtype=int)

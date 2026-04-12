@@ -6,9 +6,10 @@ import jax
 import numpy as np
 
 import benchmarks
-from core.abstraction.probability_intervals import compute_probability_intervals
-from core.abstraction.forward_reachability import RectangularForward
-from core.abstraction.imdp import IMDP, RVI_JAX
+from core.abstraction.imdp.probability_intervals import compute_probability_intervals
+from core.abstraction.imdp.forward_reachability import RectangularForward
+from core.abstraction.imdp.imdp import IMDP
+from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.model import parse_nonlinear_model
 from core.abstraction.partition import RectangularPartition
 
