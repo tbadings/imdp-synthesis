@@ -41,6 +41,7 @@ if __name__ == '__main__':
 
     # Create partition of the continuous state space into convex polytope
     partition = RectangularPartition(model=model)
+    partition.sparse = True
     
     # Create actions based on forward reachable sets
     actions = RectangularForward(args=args, partition=partition, model=model)
