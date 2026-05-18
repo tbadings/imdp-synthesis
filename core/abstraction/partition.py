@@ -122,7 +122,7 @@ class RectangularPartition(object):
         goal_regions = model.goal
         critical_regions = model.critical
 
-        # Set partition as being (hyper)rectangula
+        # Set partition as being (hyper)rectangular and nonsparse
         self.rectangular = True
 
         t = time.time()
@@ -263,6 +263,186 @@ class RectangularPartition(object):
             # Normalize points
             x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
             state = int(self.region_idx_array[tuple(x_norm)])
+            return state, True
+
+        else:
+            return self.size, False
+
+
+class SparsePartition(object):
+
+    """
+    Represents a rectangular partitioning of a state space into hyperrectangular regions.
+
+    This class is used to define and manage a partition of a state space, where the space is divided
+    into hyperrectangular regions (or cells). Each cell is defined by its center, bounds, and vertices,
+    and the entirety of these regions form a structured grid within the state space.
+    """
+
+    def __init__(self, model, remove_cells=10, verbose=False):
+        print('Define non-rectangular (sparse) partition...')
+        t_total = time.time()
+
+        self.dimension = model.n
+
+        # Retrieve necessary data from the model object
+        self.number_per_dim = model.partition['number_per_dim']
+        partition_boundary = model.partition['boundary']
+        self.boundary_lb = partition_boundary[0]
+        self.boundary_ub = partition_boundary[1]
+        goal_regions = model.goal
+        critical_regions = model.critical
+
+        # Set partition as being (hyper)rectangular and nonsparse
+        self.rectangular = True
+
+        t = time.time()
+        # From the partition boundary, determine where the first grid centers are placed
+        self.cell_width = (partition_boundary[1] - partition_boundary[0]) / self.number_per_dim
+        lb_center = partition_boundary[0] + self.cell_width * 0.5
+        ub_center = partition_boundary[1] - self.cell_width * 0.5
+
+        # First define a grid where each region is a unit cube
+        lb_unit = jnp.zeros(len(lb_center), dtype=int)
+        ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
+        centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
+
+        # Randomly remove cells to make partition sparse
+        centers_unit = np.array(centers_unit)
+        remove_idxs = np.random.choice(len(centers_unit), size=remove_cells, replace=False)
+        centers_unit = jnp.array(np.delete(centers_unit, remove_idxs, axis=0))
+
+        # Define n-dimensional array (n = dimension of state space) to index elements of the partition
+        # Use -1 as sentinel for removed/missing cells
+        centers = jnp.array(centers_unit, dtype=int)
+        self.region_idx_array = np.full(self.number_per_dim, -1, dtype=int)
+        self.region_idx_array[tuple(centers.T)] = np.arange(len(centers))
+        self.region_idx_array = jnp.array(self.region_idx_array)
+        # Define list with each element containing its index elements
+        self.region_idx_inv = centers
+
+        # Now scale the unit-cube partition appropriately
+        centers = centers_unit * self.cell_width + lb_center
+
+        region_idxs = jnp.arange(len(centers))
+        lower_bounds = centers - self.cell_width / 2
+        upper_bounds = centers + self.cell_width / 2
+
+        # Determine the vertices of all partition elements
+        vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
+        all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
+        if verbose:
+            print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+
+        t = time.time()
+        # Determine halfspace (Ax <= b) inequalities
+        vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
+        all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
+        if verbose:
+            print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
+
+        self.regions = {
+            'centers': jnp.array(centers, dtype=float),
+            'idxs': region_idxs,
+            'lower_bounds': lower_bounds,
+            'upper_bounds': upper_bounds,
+            'all_vertices': all_vertices,
+            'A': all_A,
+            'b': all_b
+        }
+        self.size = len(centers)
+
+        # Also store the partition bounds per dimension
+        elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
+        centers_per_dim = [elems_per_dim[i] * self.cell_width[i] + lb_center[i] for i in range(self.dimension)]
+        lower_bounds_per_dim = [jnp.array(centers_per_dim[i] - self.cell_width[i] / 2) for i in range(self.dimension)]
+        upper_bounds_per_dim = [jnp.array(centers_per_dim[i] + self.cell_width[i] / 2) for i in range(self.dimension)]
+
+        self.regions_per_dim = {
+            'centers': centers_per_dim,
+            'idxs': elems_per_dim,
+            'lower_bounds': lower_bounds_per_dim,
+            'upper_bounds': upper_bounds_per_dim,
+        }
+
+        t = time.time()
+        if len(goal_regions) > 0:
+            # Compute halfspace representation of the goal regions
+            goal_centers = np.zeros((len(goal_regions), len(self.number_per_dim)))
+            goal_widths = np.zeros((len(goal_regions), len(self.number_per_dim)))
+            for i, goal in enumerate(goal_regions):
+                goal_centers[i] = (goal[1] + goal[0]) / 2
+                goal_widths[i] = (goal[1] - goal[0]) + EPS
+
+            goal_centers = jnp.array(goal_centers, dtype=float)
+            goal_widths = jnp.array(goal_widths, dtype=float)
+
+            vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
+            goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
+
+            # Determine goal regions
+            goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
+            goal_regions_idxs = region_idxs[goal_regions_bools]
+        else:
+            goal_regions_bools = jnp.full(self.size, False, dtype=bool)
+            goal_regions_idxs = jnp.array([], dtype=int)
+        if verbose:
+            print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
+
+        self.goal = {
+            'bools': goal_regions_bools,
+            'idxs': goal_regions_idxs.tolist(), # TODO: Set should be more efficient here
+        }
+        if verbose:
+            print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+
+        t = time.time()
+        if len(critical_regions) > 0:
+            # Check which regions (hyperrectangles) are *not* disjoint from the critical regions (also hyperrectangles)
+            critical_lbs = critical_regions[:, 0, :]
+            critical_ubs = critical_regions[:, 1, :]
+
+            vfun = jax.jit(jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0))
+            critical_regions_bools = ~vfun(self.regions['lower_bounds'], self.regions['upper_bounds'],
+                                           critical_lbs + EPS, critical_ubs - EPS)
+            critical_regions_idxs = region_idxs[critical_regions_bools]
+        else:
+            critical_regions_bools = jnp.full(self.size, False, dtype=bool)
+            critical_regions_idxs = jnp.array([], dtype=int)
+        if verbose:
+            print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+
+        self.critical = {
+            'bools': critical_regions_bools,
+            'idxs': critical_regions_idxs.tolist(), # TODO: Set should be more efficient here
+        }
+        if verbose:
+            print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+
+        if verbose:
+            print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
+
+        print(f"(Number of states: {len(self.regions['idxs'])})")
+        print('')
+        return
+
+    def x2state(self, x):
+        '''
+        Return the state ID for a given point x in the continuous state space.
+
+        :param x: Point in the continuous state space.
+        :return: State ID.
+        '''
+        # Discard points outside of partition
+        in_partition = np.all((x >= self.boundary_lb) * (x <= self.boundary_ub))
+
+        if in_partition:
+            # Normalize points
+            x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
+            state = int(self.region_idx_array[tuple(x_norm)])
+            # state == -1 means the cell was removed (sparse partition)
+            if state == -1:
+                return self.size, False
             return state, True
 
         else:

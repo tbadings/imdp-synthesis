@@ -23,7 +23,7 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Dubins3D",
+        "MountainCar",
         "--batch_size",
         "1000",
         "--noise_distr",

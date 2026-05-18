@@ -11,88 +11,86 @@ import time
 import sys
 
 # Note: The following implementation supports Gaussian and Triangular noise distributions.
+# Unlike probability_intervals.py, this version enumerates ALL partition cells for every
+# state-action pair by directly using the cells stored in the partition (no max_slice window,
+# no meshgrid Cartesian product). The absorbing-state probability is derived as
+# 1 - sum of all per-cell probabilities.
 
-def dynslice(V, idx_low, size):
+def interval_distribution(mean_lb, mean_ub, *,
+                          n, wrap, wrap_array, decimals,
+                          all_cell_lb, all_cell_ub,
+                          state_space_lb,
+                          state_space_ub,
+                          unsafe_states, noise):
     '''
-    Given a vector of indices, keep only those starting at position idx_low and of length size.
-
-    :param V: Vector of indices.
-    :param idx_low: Index to start slice at.
-    :param size: Number of elements to keep in slice.
-    :return: Slice of V.
-    '''
-    roll = jnp.roll(V, -idx_low)
-    # roll_zero = roll.at[size:].set(0)
-    return roll[:size]
-
-def interval_distribution(i_lb, mean_lb, mean_ub, *,
-                                  n, max_slice, wrap, wrap_array, decimals,
-                                  number_per_dim, per_dim_lb, per_dim_ub,
-                                  state_space_lb, state_space_ub,
-                                  region_idx_array, unsafe_states, noise):
-    '''
-    For a given state-action pair, compute the probability intervals over all successor states.
+    For a given state-action pair, compute the probability intervals over all successor states
+    by directly enumerating the cells already stored in the partition.
     '''
 
-    # Extract slices from the partition elements per dimension
-    x_lb = [dynslice(per_dim_lb[i], i_lb[i], max_slice[i]) for i in range(n)]
-    x_ub = [dynslice(per_dim_ub[i], i_lb[i], max_slice[i]) for i in range(n)]
-
-    # List of indexes of the partition elements in the slices above
-    prob_idx = [jnp.arange(max_slice[i]) + i_lb[i] for i in range(n)]
+    # Extract per-dimension columns from the (S, n) cell-bound arrays.
+    # Each x_lb_per_dim[i] / x_ub_per_dim[i] is a 1-D array of length S (one value per cell).
+    x_lb_per_dim = [all_cell_lb[:, i] for i in range(n)]
+    x_ub_per_dim = [all_cell_ub[:, i] for i in range(n)]
 
     # Switch explicitly on noise type to avoid silently accepting unsupported distributions.
     noise_type = noise['type']
     if noise_type == 'Gaussian':
-        _, prob_low, prob_high = noise.prob_minmax_per_dim(n, wrap, x_lb, x_ub, mean_lb, mean_ub, state_space_ub - state_space_lb)
+        _, prob_low_per_dim, prob_high_per_dim = noise.prob_minmax_per_dim(n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_ub - state_space_lb)
         prob_state_space = noise.prob_minmax(state_space_lb, state_space_ub, mean_lb, mean_ub, wrap_array)
     elif noise_type == 'Triangular':
-        _, prob_low, prob_high = noise.prob_minmax_per_dim(n, wrap, x_lb, x_ub, mean_lb, mean_ub, state_space_ub - state_space_lb)
+        _, prob_low_per_dim, prob_high_per_dim = noise.prob_minmax_per_dim(n, wrap, x_lb_per_dim, x_ub_per_dim, mean_lb, mean_ub, state_space_ub - state_space_lb)
         prob_state_space = noise.prob_minmax(state_space_lb, state_space_ub, mean_lb, mean_ub, wrap_array)
     else:
         raise ValueError(f'Unsupported noise type: {noise_type}. Expected Gaussian or Triangular.')
 
-    prob_low_prod = prob_low[0]
+    # Elementwise product across dimensions — each array has shape (S,), giving one
+    # probability per cell. This is correct because cells are already stored as full
+    # (lb, ub) pairs; no outer product or index mapping is needed.
+    prob_low_prod = prob_low_per_dim[0]
     for i in range(1, n):
-        prob_low_prod = prob_low_prod[..., None] * prob_low[i]
-    prob_low_prod = jnp.round(prob_low_prod.reshape(-1), decimals)
+        prob_low_prod = prob_low_prod * prob_low_per_dim[i]
+    prob_low_prod = jnp.round(prob_low_prod, decimals)
 
-    prob_high_prod = prob_high[0]
+    prob_high_prod = prob_high_per_dim[0]
     for i in range(1, n):
-        prob_high_prod = prob_high_prod[..., None] * prob_high[i]
-    prob_high_prod = jnp.round(prob_high_prod.reshape(-1), decimals)
+        prob_high_prod = prob_high_prod * prob_high_per_dim[i]
+    prob_high_prod = jnp.round(prob_high_prod, decimals)
 
-    # Note: meshgrid is used to get the Cartesian product between the indexes of the partition elements in every state space dimension, but meshgrid sorts in the wrong order.
-    # To fix this, we first flip the order of the dimensions, then compute the meshgrid, and again flip the columns of the result. This ensures the sorting is in the correct order.
-    prob_idx_flip = [prob_idx[n - i - 1] for i in range(n)]
-    prob_idx = jnp.flip(jnp.asarray(jnp.meshgrid(*prob_idx_flip, indexing='ij')).T.reshape(-1, n), axis=1)
-
-    prob_idx_clip = jnp.astype(jnp.clip(prob_idx, jnp.zeros(n), number_per_dim), int)
-    prob_id = region_idx_array[tuple(prob_idx_clip.T)]
+    # Cell index == region ID: the stored cells are already in the flat region ordering.
+    prob_id = jnp.arange(all_cell_lb.shape[0], dtype=jnp.int32)
 
     p_lowest = 10 ** -decimals
-    
-    # Only keep nonzero probabilities, and also filter spurious indices that were added to keep arrays in JAX of fixed size
-    prob_nonzero = (prob_high_prod > p_lowest) * jnp.all(prob_idx < number_per_dim, axis=1)
 
-    # For the nonzero probabilities, also set a (very small) minimum lower bound probability (to ensure the IMDP is "graph-preserving")
+    # All indices are in-bounds by construction; only filter near-zero upper bounds.
+    prob_nonzero = prob_high_prod > p_lowest
+
+    # For the nonzero probabilities, also set a (very small) minimum lower bound probability
+    # (to ensure the IMDP is "graph-preserving").
     prob_low_prod = jnp.maximum(p_lowest * prob_nonzero, prob_low_prod)
     prob_high_prod = jnp.maximum(p_lowest * prob_nonzero, prob_high_prod)
 
-    # Stack lower and upper bounds such that such prob[s] is an array of length two representing a single interval
+    # Stack lower and upper bounds such that prob[s] is an array of length two representing a single interval.
     prob = jnp.stack([prob_low_prod, prob_high_prod]).T
 
-    # Compute probability to end outside of partition
+    # Absorbing probability interval derived from cell probabilities:
+    #   lb = max(0, 1 - sum(upper bounds))  — best case for reaching partition cells
+    #   ub = max(0, 1 - sum(lower bounds))  — worst case for reaching partition cells
+    # prob_absorbing_lb = jnp.maximum(0.0, jnp.round(1.0 - jnp.sum(prob_high_prod), decimals))
+    # prob_absorbing_ub = jnp.maximum(0.0, jnp.round(1.0 - jnp.sum(prob_low_prod), decimals))
+    # prob_absorbing = jnp.array([prob_absorbing_lb, prob_absorbing_ub])
+    # prob_absorbing = jnp.maximum(p_lowest * (prob_absorbing[1] > 0), prob_absorbing)
+
+    # TODO: This computation is currently incorrect, because not all of X might be covered by the (sparse) partition. 
     prob_absorbing = jnp.round(1 - prob_state_space[::-1], decimals)
     prob_absorbing = jnp.maximum(p_lowest * (prob_absorbing[1] > 0), prob_absorbing)
 
-    # Keep this distribution only if the probability of reaching the absorbing state is less than given threshold
+    # Keep this distribution only if the probability of reaching the absorbing state is less than given threshold.
     threshold = 0.1
     unsafe_states_slice = unsafe_states[prob_id]
     keep = ~(((jnp.sum(prob[:, 0] * ~unsafe_states_slice)) < 1 - threshold) * ((prob_absorbing[1] + jnp.sum(prob[:, 1] * unsafe_states_slice)) > threshold))
 
     number_nonzero = jnp.sum(prob_nonzero)
-    
+
     # Move all nonzero probabilities to the front without a full sort.
     # TODO: Fix bug that causes wrong IDs that are supposed to be excluded (but they don't hurt, because their probabilities are zero anyway).
     n_probs = prob_nonzero.shape[0]
@@ -106,51 +104,47 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
     prob = prob[sorted_idx]
     prob_id = prob_id[sorted_idx]
     prob_nonzero = prob_nonzero[sorted_idx]
-    
+
     return prob, prob_id, prob_nonzero, prob_absorbing, keep, number_nonzero
 
 def compute_probability_intervals(args, model, partition, actions, vectorized=True):
     '''
-    Compute probability intervals for all states and actions of the IMDP.
+    Compute probability intervals for all states and actions of the IMDP by enumerating all
+    partition cells (no max_slice window).
 
     :param args: Argument object.
     :param model: Model object.
     :param partition: Partition object.
-    :param frs: Forward reachable sets.
-    :param max_slice: Array where each element is the maximum number of partition elements to consider in each dimension.
+    :param actions: Actions object.
     :return:
         - prob: Probability intervals per state-action pair
         - prob_id: Successor states associated with these probability intervals per state-action pair
         - prob_absorbing: Probability interval of reaching the absorbing state per state-action pair
     '''
 
-    print('Compute probability intervals for all state-action pairs...')
+    print('Compute probability intervals for all state-action pairs (full enumeration)...')
 
     frs_lb = actions.frs_lb
     frs_ub = actions.frs_ub
-    frs_idx_lb = actions.frs_idx_lb
     model_wrap_tuple = tuple(np.array(model.wrap))
 
     interval_distribution_fixed = partial(
         interval_distribution,
         n=model.n,
-        max_slice=actions.max_slice,
         wrap=model_wrap_tuple,
         wrap_array=model.wrap,
         decimals=args.decimals,
-        number_per_dim=partition.number_per_dim,
-        per_dim_lb=partition.regions_per_dim['lower_bounds'],
-        per_dim_ub=partition.regions_per_dim['upper_bounds'],
+        all_cell_lb=jax.device_put(partition.regions['lower_bounds']),
+        all_cell_ub=jax.device_put(partition.regions['upper_bounds']),
         state_space_lb=jax.device_put(partition.boundary_lb),
         state_space_ub=jax.device_put(partition.boundary_ub),
-        region_idx_array=jax.device_put(partition.region_idx_array),
         unsafe_states=jax.device_put(partition.critical['bools']),
         noise=model.noise,
     )
 
-    # vmap over the 3 per-action args only; all constants are captured in the closure
+    # vmap over the 2 per-action args only; all constants are captured in the closure
     vmap_interval_distribution = jax.jit(
-        jax.vmap(interval_distribution_fixed, in_axes=(0, 0, 0), out_axes=(0, 0, 0, 0, 0, 0)))
+        jax.vmap(interval_distribution_fixed, in_axes=(0, 0), out_axes=(0, 0, 0, 0, 0, 0)))
 
     action_labels = {}
     interval_matrix = {}
@@ -165,14 +159,12 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         starts, ends = create_batches(len(partition.regions['idxs']), batch_size=args.batch_size)
 
         for iter, (i, j) in tqdm(enumerate(zip(starts, ends)), total=len(starts)):
-            
-            # Reshape frs_idx_lb from S x A x n to (S x A) rows and n columns
-            frs_idx_lb_2D = frs_idx_lb[i:j].reshape(-1, model.n)
+
+            # Reshape frs_lb/ub from S x A x n to (S x A) rows and n columns
             frs_lb_2D = frs_lb[i:j].reshape(-1, model.n)
             frs_ub_2D = frs_ub[i:j].reshape(-1, model.n)
 
             p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution(
-                                                                                    frs_idx_lb_2D,
                                                                                     frs_lb_2D,
                                                                                     frs_ub_2D)
 
@@ -199,19 +191,16 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
     else:
 
-        #####
-
         # For all states
         for s in tqdm(range(len(partition.regions['idxs']))):
 
             p, s_id, _, p_abs, keep_actions, number_nonzero = vmap_interval_distribution(
-                                                                                frs_idx_lb[s].reshape(-1, model.n),
                                                                                 frs_lb[s].reshape(-1, model.n),
                                                                                 frs_ub[s].reshape(-1, model.n))
 
             p, s_id, p_abs, keep_actions, number_nonzero = jax.device_get((p, s_id, p_abs, keep_actions, number_nonzero))
             max_nonzero = int(np.max(number_nonzero))
-            
+
             # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
             # p_nonzero=True means that the upper bound of the probability interval is greater than the minimum probability threshold
             # Evaluate p_nonzero over each columns to get the successor states that we should keep
