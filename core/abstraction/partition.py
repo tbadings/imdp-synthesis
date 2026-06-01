@@ -293,8 +293,8 @@ class SparsePartition(object):
         goal_regions = model.goal
         critical_regions = model.critical
 
-        # Set partition as being (hyper)rectangular and nonsparse
-        self.rectangular = True
+        # Set partition as being nonsparse
+        self.rectangular = False
 
         t = time.time()
         # From the partition boundary, determine where the first grid centers are placed

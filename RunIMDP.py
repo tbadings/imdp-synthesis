@@ -48,7 +48,7 @@ if __name__ == '__main__':
     actions = RectangularForward(args=args, partition=partition, model=model)
     actions_inputs = actions.id_to_input
     
-    _compute_prob = compute_probability_intervals_enumerate if partition.rectangular else compute_probability_intervals
+    _compute_prob = compute_probability_intervals if partition.rectangular else compute_probability_intervals_enumerate
     P_full, S_id, A_id, P_absorbing = _compute_prob(args=args,
                                                     model=model,
                                                     partition=partition,
