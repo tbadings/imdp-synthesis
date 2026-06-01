@@ -69,7 +69,7 @@ def parse_arguments(argv=None):
                         help="If True, plot unit grids in figures")
     parser.add_argument('--plot_title', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot titles in figures")
-    parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=False,
+    parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=True,
                         help="If True, plot ticks in figures")
 
     # Parse arguments

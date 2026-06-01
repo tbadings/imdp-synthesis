@@ -3,6 +3,7 @@
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 from matplotlib.patches import Rectangle
 from scipy.interpolate import CubicSpline
@@ -14,7 +15,14 @@ mpl.rcParams['pdf.fonttype'] = 42
 mpl.rcParams['ps.fonttype'] = 42
 
 
-def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces"):
+def _format_state_label_math(var_name):
+    if '_' in var_name:
+        head, tail = var_name.split('_', 1)
+        return f'${head}_{{{tail}}}$'
+    return f'${var_name}$'
+
+
+def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces", show_ticks=None):
     fig, ax = plt.subplots(figsize=cm2inch(6.1, 5), dpi=300)
 
     font = {'size': 10}
@@ -22,19 +30,34 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
 
     i1, i2 = np.array(idx_show, dtype=int)
 
-    plt.xlabel(f'${model.state_variables[i1]}$', labelpad=2)
-    plt.ylabel(f'${model.state_variables[i2]}$', labelpad=2)
+    plt.xlabel(_format_state_label_math(model.state_variables[i1]), labelpad=2)
+    plt.ylabel(_format_state_label_math(model.state_variables[i2]), labelpad=2)
 
     if add_unsafe_box:
         expand = 1
     else:
         expand = 0
 
-    if args.plot_ticks:
+    # show_ticks overrides args.plot_ticks when explicitly set
+    _show_ticks = args.plot_ticks if show_ticks is None else show_ticks
+
+    if _show_ticks == 'nice' or show_ticks is True:
+        # Keep a small number of readable ticks and avoid scientific-offset labels.
+        formatter = FuncFormatter(lambda x, pos: f'{x:.3g}')
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+        ax.xaxis.set_major_formatter(formatter)
+        ax.yaxis.set_major_formatter(formatter)
+        ax.tick_params(axis='both', which='major', labelsize=6, direction='in', length=3, top=False, right=False)
+    elif _show_ticks:
         set_plot_ticks(ax,
                   state_min=np.array(partition.boundary_lb)[[i1, i2]] - expand,
                   state_max=np.array(partition.boundary_ub)[[i1, i2]] + expand,
-                  width=np.array(partition.cell_width))
+                  width=np.array(partition.cell_width)[[i1, i2]])
+        formatter = FuncFormatter(lambda x, pos: f'{x:.3g}')
+        ax.xaxis.set_major_formatter(formatter)
+        ax.yaxis.set_major_formatter(formatter)
+        ax.tick_params(axis='both', which='major', labelsize=6, direction='in', length=3, top=False, right=False)
     else:
         ax.set_xticks([])
         ax.set_yticks([])
@@ -52,6 +75,27 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
 
     # Plot goal/unsafe regions
     plot_boxes(ax, model, plot_dimensions=[i1, i2])
+
+    # Mark missing projected states (from sparse partitions) with a thin red X.
+    idxs = np.asarray(partition.region_idx_inv, dtype=int)
+    existing_proj = {tuple(v.tolist()) for v in idxs[:, [i1, i2]]}
+    w1 = float(partition.cell_width[i1])
+    w2 = float(partition.cell_width[i2])
+    x0 = float(partition.boundary_lb[i1])
+    y0 = float(partition.boundary_lb[i2])
+
+    for ix in range(partition.number_per_dim[i1]):
+        for iy in range(partition.number_per_dim[i2]):
+            if (ix, iy) in existing_proj:
+                continue
+
+            x_low = x0 + ix * w1
+            x_high = x_low + w1
+            y_low = y0 + iy * w2
+            y_high = y_low + w2
+
+            ax.plot([x_low, x_high], [y_low, y_high], color='red', linewidth=0.4, alpha=1.0, zorder=4)
+            ax.plot([x_low, x_high], [y_high, y_low], color='red', linewidth=0.4, alpha=1.0, zorder=4)
 
     # Plot boundary of unsafe regions if requested
     if add_unsafe_box:
