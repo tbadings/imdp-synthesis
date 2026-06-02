@@ -1,10 +1,13 @@
 from functools import partial, reduce
+import logging
 
 from core.utils import create_batches
 import jax
 import jax.numpy as jnp
 import numpy as np
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 # Note: The following implementation supports Gaussian and Triangular noise distributions.
 
@@ -160,7 +163,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
         - prob_absorbing: Probability interval of reaching the absorbing state per state-action pair
     '''
 
-    print('Compute probability intervals for all state-action pairs...')
+    logger.info('Compute probability intervals for all state-action pairs...')
 
     frs_lb = actions.frs_lb
     frs_ub = actions.frs_ub
@@ -268,7 +271,6 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                 interval_absorbing[s] = np.maximum(args.pAbs_min, np.round(p_abs[keep_actions], args.decimals))
             del p, s_id, p_abs, missing_absorbing
 
-    print('-- Number of times function was compiled:', vmap_interval_distribution._cache_size())
-    print('')
+    logger.info('-- Number of times function was compiled: %d', vmap_interval_distribution._cache_size())
 
     return interval_matrix, successor_id, action_labels, interval_absorbing

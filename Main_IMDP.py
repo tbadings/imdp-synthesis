@@ -1,6 +1,8 @@
 import datetime
+import copy
 import logging
 import os
+import pickle
 import time
 from pathlib import Path
 import jax
@@ -15,7 +17,7 @@ from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.imdp.rvi_storm import RVI_STORM
 from core.jax_config import configure_jax
-from core.utils import configure_logging
+from core.utils import configure_logging, add_file_handler
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -32,48 +34,87 @@ if __name__ == '__main__':
     args.root_dir = Path(args.cwd)
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    logger.info('Run %s | model=%s | noise=%s | batch=%d', stamp, args.model, args.noise_distr, args.batch_size)
-    logger.debug('Arguments: %s', vars(args))
 
-    # Define and parse model
-    model = benchmarks.create_model(args)
+    if args.load_checkpoint:
+        # --- Load IMDP from checkpoint ---
+        ckpt_path = Path(args.load_checkpoint)
+        logger.info('Loading checkpoint from %s', ckpt_path)
+        with open(ckpt_path, 'rb') as f:
+            ckpt = pickle.load(f)
+        model = ckpt['model']
+        partition = ckpt['partition']
+        imdp = ckpt['imdp']
+        args.model = ckpt['args'].model
 
-    t = time.time()
+        run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        args.output_dir = run_output_dir
+        add_file_handler(run_output_dir, stamp)
+        logger.info('Run %s | model=%s (from checkpoint)', stamp, args.model)
+        logger.info('Output directory: %s', run_output_dir)
 
-    # Create partition of the continuous state space into convex polytope
-    partition = RectangularPartition(model=model)
-    # Sparse partition can be created with, e.g.,
-    # partition = SparsePartition(model=model, remove_cells=0)
-    
-    # Create actions based on forward reachable sets
-    actions = RectangularForward(args=args, partition=partition, model=model)
-    actions_inputs = actions.id_to_input
-    
-    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args,
-                                                    model=model,
-                                                    partition=partition,
-                                                    actions=actions,
-                                                    vectorized=True)
+        logger.info('\n=== IMDP loaded from checkpoint: %s ===', ckpt_path)
+    else:
+        # --- Build IMDP from scratch ---
+        run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        args.output_dir = run_output_dir
+        add_file_handler(run_output_dir, stamp)
+        logger.info('Run %s | model=%s | noise=%s | batch=%d', stamp, args.model, args.noise_distr, args.batch_size)
+        logger.info('Output directory: %s', run_output_dir)
 
-    # assert False
-    del actions
+        logger.info('\n=== Generating IMDP from scratch ===')
+        logger.debug('Arguments: %s', vars(args))
 
-    imdp = IMDP(partition=partition,
-                states=np.array(partition.regions['idxs']),
-                actions_inputs=actions_inputs,
-                x0=model.x0,
-                goal_regions=np.array(partition.goal['bools']),
-                critical_regions=np.array(partition.critical['bools']),
-                P_full=P_full,
-                S_id=S_id,
-                A_id=A_id,
-                P_absorbing=P_absorbing)
+        # Define and parse model
+        model = benchmarks.create_model(args)
 
-    logger.info('Generating abstraction took %.3f sec.', (time.time() - t))
+        t = time.time()
+
+        # Create partition of the continuous state space into convex polytope
+        partition = RectangularPartition(model=model)
+        # Sparse partition can be created with, e.g.,
+        # partition = SparsePartition(model=model, remove_cells=0)
+
+        # Create actions based on forward reachable sets
+        actions = RectangularForward(args=args, partition=partition, model=model)
+        actions_inputs = actions.id_to_input
+
+        P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args,
+                                                        model=model,
+                                                        partition=partition,
+                                                        actions=actions,
+                                                        vectorized=True)
+
+        # assert False
+        del actions
+
+        imdp = IMDP(partition=partition,
+                    states=np.array(partition.regions['idxs']),
+                    actions_inputs=actions_inputs,
+                    x0=model.x0,
+                    goal_regions=np.array(partition.goal['bools']),
+                    critical_regions=np.array(partition.critical['bools']),
+                    P_full=P_full,
+                    S_id=S_id,
+                    A_id=A_id,
+                    P_absorbing=P_absorbing)
+
+        logger.info('Generating abstraction took %.3f sec.', (time.time() - t))
+
+        # Save checkpoint (strip JAX runtime objects that can't be pickled)
+        args_to_save = copy.copy(args)
+        del args_to_save.rvi_device
+        del args_to_save.jax_key
+        ckpt_path = args.output_dir / 'checkpoint.pkl'
+        logger.info('Saving checkpoint to %s', ckpt_path)
+        with open(ckpt_path, 'wb') as f:
+            pickle.dump({'model': model, 'partition': partition, 'imdp': imdp, 'args': args_to_save}, f)
+        logger.info('Checkpoint saved.')
 
     # %% Run dynamic programming to compute optimal policy
 
-    logger.info('Computing optimal policy via robust dynamic programming (solver=%s)...', args.solver)
+    logger.info('\n=== Computing optimal policy via robust dynamic programming (solver=%s) ===', args.solver)
     t = time.time()
     if args.solver == 'jax':
         with jax.default_device(args.rvi_device):
@@ -95,6 +136,9 @@ if __name__ == '__main__':
         )
         logger.info('RVI with Storm took %.3f sec.', (time.time() - t))
 
+    s0 = partition.x2state(model.x0)[0]
+    logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    
+
     # %% Simulations and plot
 
     sim_policy = policy
@@ -113,9 +157,13 @@ if __name__ == '__main__':
     heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
     
     if args.model == 'Pendulum':
-        model.plot_trajectory_gif(np.array(sim.results['traces'][0]['x'])[:,0], filename=f'output/pendulum_{stamp}.gif')
+        model.plot_trajectory_gif(
+            np.array(sim.results['traces'][0]['x'])[:, 0],
+            filename=str(args.output_dir / f'pendulum_{stamp}.gif'),
+        )
 
     if args.model == 'MountainCar':
-        model.plot_trajectory_gif(np.array(sim.results['traces'][0]['x'])[:,0], filename=f'output/mountaincar_{stamp}.gif')
-        
-# %%
+        model.plot_trajectory_gif(
+            np.array(sim.results['traces'][0]['x'])[:, 0],
+            filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
+        )

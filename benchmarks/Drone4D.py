@@ -7,7 +7,7 @@ import scipy
 from benchmarks.dynamics import setmath
 
 
-class Drone2D(DroneDynamics):
+class Drone4D(DroneDynamics):
     '''
     Drone benchmark, with a 4D state space and a 2D control input space.
     '''
@@ -22,7 +22,6 @@ class Drone2D(DroneDynamics):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''

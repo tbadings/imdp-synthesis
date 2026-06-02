@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib as mpl
+from pathlib import Path
 
 
 
@@ -89,7 +90,9 @@ def heatmap(args, stamp, idx_show, slice_values, partition, results, filename="h
         ax.set_title(f"Heatmap for {args.model} ({filename})")
 
     # Save figure
-    plt.savefig(f'output/{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
-    plt.savefig(f'output/{filename}_{stamp}.png', format='png', bbox_inches='tight')
+    output_dir = Path(getattr(args, 'output_dir', 'output'))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
 
     plt.close()

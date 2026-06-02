@@ -1,3 +1,4 @@
+import logging
 import time
 
 import jax
@@ -7,6 +8,8 @@ import numpy as np
 from .polytope import hyperrectangles_isdisjoint_multi
 
 EPS = 1e-3
+
+logger = logging.getLogger(__name__)
 
 
 @jax.jit
@@ -126,7 +129,7 @@ class RectangularPartition(object):
     """
 
     def __init__(self, model, verbose=False):
-        print('Define rectangular partition...')
+        logger.info('Define rectangular partition...')
         t_total = time.time()
 
         self.dimension = model.n
@@ -185,15 +188,13 @@ class RectangularPartition(object):
         # Determine the vertices of all partition elements
         vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
         all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
-        if verbose:
-            print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         t = time.time()
         # Determine halfspace (Ax <= b) inequalities
         vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
-        if verbose:
-            print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
@@ -243,15 +244,13 @@ class RectangularPartition(object):
         else:
             goal_regions_bools = jnp.full(self.size, False, dtype=bool)
             goal_regions_idxs = jnp.array([], dtype=int)
-        if verbose:
-            print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.goal = {
             'bools': goal_regions_bools,
             'idxs': goal_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        if verbose:
-            print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+        logger.debug(f"-- Number of goal regions: {len(self.goal['idxs'])}")
 
         t = time.time()
         if len(critical_regions) > 0:
@@ -266,21 +265,17 @@ class RectangularPartition(object):
         else:
             critical_regions_bools = jnp.full(self.size, False, dtype=bool)
             critical_regions_idxs = jnp.array([], dtype=int)
-        if verbose:
-            print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.critical = {
             'bools': critical_regions_bools,
             'idxs': critical_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        if verbose:
-            print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+        logger.debug(f"-- Number of critical regions: {len(self.critical['idxs'])}")
 
-        if verbose:
-            print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
+        logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 
-        print(f"(Number of states: {len(self.regions['idxs'])})")
-        print('')
+        logger.info(f"(Number of states: {len(self.regions['idxs'])})")
         return
 
     def x2state(self, x):
@@ -322,7 +317,7 @@ class SparsePartition(object):
     """
 
     def __init__(self, model, remove_cells=10, verbose=False):
-        print('Define non-rectangular (sparse) partition...')
+        logger.info('Define non-rectangular (sparse) partition...')
         t_total = time.time()
 
         self.dimension = model.n
@@ -406,15 +401,13 @@ class SparsePartition(object):
         # Determine the vertices of all partition elements
         vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
         all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
-        if verbose:
-            print(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
 
         t = time.time()
         # Determine halfspace (Ax <= b) inequalities
         vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
-        if verbose:
-            print(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
@@ -464,15 +457,13 @@ class SparsePartition(object):
         else:
             goal_regions_bools = jnp.full(self.size, False, dtype=bool)
             goal_regions_idxs = jnp.array([], dtype=int)
-        if verbose:
-            print(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Goal regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.goal = {
             'bools': goal_regions_bools,
             'idxs': goal_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        if verbose:
-            print(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+        logger.debug(f"-- Number of goal regions: {len(self.goal['idxs'])}")
 
         t = time.time()
         if len(critical_regions) > 0:
@@ -487,21 +478,17 @@ class SparsePartition(object):
         else:
             critical_regions_bools = jnp.full(self.size, False, dtype=bool)
             critical_regions_idxs = jnp.array([], dtype=int)
-        if verbose:
-            print(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Critical regions defined (took {(time.time() - t):.3f} sec.)')
 
         self.critical = {
             'bools': critical_regions_bools,
             'idxs': critical_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        if verbose:
-            print(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+        logger.debug(f"-- Number of critical regions: {len(self.critical['idxs'])}")
 
-        if verbose:
-            print(f'Partitioning took {(time.time() - t_total):.3f} sec.')
+        logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 
-        print(f"(Number of states: {len(self.regions['idxs'])})")
-        print('')
+        logger.info(f"(Number of states: {len(self.regions['idxs'])})")
         return
 
     def x2state(self, x):

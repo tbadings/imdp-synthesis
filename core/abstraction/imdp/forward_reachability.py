@@ -1,4 +1,5 @@
 import itertools
+import logging
 import time
 from functools import partial
 
@@ -8,6 +9,8 @@ import numpy as np
 from tqdm import tqdm
 
 from core.utils import create_batches
+
+logger = logging.getLogger(__name__)
 
 
 @partial(jax.jit, static_argnums=(0))
@@ -92,7 +95,7 @@ class RectangularForward(object):
         :param partition: Partition object containing the discretized state space
         :param model: Model object containing the dynamics and control action specifications
         """
-        print('Define target points and forward reachable sets...')
+        logger.info('Define target points and forward reachable sets...')
         t_total = time.time()
 
         # Inner vmap over control actions, outer vmap over a batch of state regions.
@@ -167,11 +170,10 @@ class RectangularForward(object):
         # This is used to allocate sufficient memory for transition probability computations
         self.max_slice = tuple(max_span.tolist())
 
-        print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
+        logger.info(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
         # Create array of action indices for efficient indexing        
         
         self.id = np.arange(len(self.id_to_input))
 
-        print(f'Defining actions took {(time.time() - t_total):.3f} sec.')
-        print('')
+        logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
         return

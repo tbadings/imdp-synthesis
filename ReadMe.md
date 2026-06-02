@@ -1,113 +1,206 @@
+# IMDP Synthesis
+
+This repository implements abstraction-based methods for robust policy synthesis in discrete-time stochastic dynamical systems, based on interval Markov decision process (IDMP) abstractions.
+
+In particular, the codebase implements and builds on methods from the following papers:
+
+- Thom Badings and Alessandro Abate. "Probabilistic Alternating Simulations for Policy Synthesis in Uncertain Stochastic Dynamical Systems." In 2025 IEEE 64th Conference on Decision and Control (CDC), pages 3919-3924. IEEE, 2025.
+- Thom Badings, Licio Romao, Alessandro Abate, David Parker, Hasan A. Poonawala, Marielle Stoelinga, and Nils Jansen. "Robust Control for Dynamical Systems with Non-Gaussian Noise via Formal Abstractions." Journal of Artificial Intelligence Research, 76:341-391, 2023.
+
 # Installation
 
-The code can be installed by following the instructions below.
+Follow the steps below to install the tool:
 
-### 1. Create Python environment
+## 1. Python environment
 
-The first step is to create the Python environment. We tested the code on Python 3.12.
+The project is currently documented and tested with Python 3.13.
 
-We recommend using (mini)conda for setting up an environment. To create and activate the environment, run:
+We recommend creating a dedicated environment with conda or mamba:
 
-```
-conda create -n dynabs-jax python=3.12
+```bash
+conda create -n dynabs-jax python=3.13
 conda activate dynabs-jax
 ```
 
-Install cddlib and GMP by [following the (OS-dependent) instructions here](https://pycddlib.readthedocs.io/en/latest/quickstart.html). For example, on MacOS, you can run:
+Next, install the base Python dependencies:
 
-```
-brew install cddlib gmp
-```
-
-Then, install the dependencies within the conda environment:
-
-```
+```bash
 pip install -r requirements.txt
 ```
 
-Finally, install pycddlib:
+## 2. JAX installation
 
-```
-pip install pycddlib
-```
+JAX should be installed differently depending on whether you wish to run the code on CPU or GPU.
 
-If installing pycddlib gives you an error similar to ```Cannot open include file: 'cddlib/setoper.h': No such file or directory```, then try
-to [use this troubleshoot page.](https://pycddlib.readthedocs.io/en/latest/quickstart.html#installation)
-On MacOS, the suggested fix is as follows:
+For CPU-only execution:
 
-```
-env "CFLAGS=-I$(brew --prefix)/include -L$(brew --prefix)/lib" python -m pip install pycddlib
+```bash
+pip install jax
 ```
 
-### 2. Install JAX
+For CUDA-enabled execution via conda:
 
-To install JAX with CUDA support via conda, run:
-
-```
+```bash
 conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia
 ```
 
-To instead install JAX without CUDA support, run:
+Apple Silicon note: in practice, CPU JAX has generally been more reliable here than JAX Metal.
 
-```
-pip install jax==0.8.0
-```
+## 3. Storm backend (optional)
 
-> We have also tested running with JAX on METAL. However, performance on Apple Silicon chips currently seems better on an up-to-date version of JAX+JAXlib (running on CPU) than on JAX on METAL.
+The `storm` solver backend requires the Storm model checker together with the Python bindings `stormpy`. If `stormpy` is not installed, the JAX backend remains fully available.
 
-# Running benchmarks
+For installation instructions, see:
 
-The following benchmarks are implemented and available to run:
+- Storm build documentation: https://www.stormchecker.org/documentation/obtain-storm/build.html
+- Stormpy installation guide: https://stormchecker.github.io/stormpy/installation.html
 
-- **Dubins3D**: 3D Dubins vehicle with 2D control input
-- **Dubins4D**: 4D Dubins vehicle with 2D control input
-- **Drone2D**: 2D quadrotor model
-- **Drone3D**: 3D quadrotor model
-- **Drone3D_small**: Smaller version of the 3D quadrotor (useful for faster debugging)
-- **Pendulum**: Inverted pendulum system
-- **MountainCar**: Mountain car benchmark
-- **DoubleIntegrator**: Double integrator system
-- **Test1D**: Simple 1D test model
+# Project entrypoints
 
-To run a benchmark, use:
+The main script is:
 
-```
-python RunFile.py --model <model_name>
+```bash
+python Main_IMDP.py --model <model_name>
 ```
 
-For example:
+The repository also includes a convenience launcher, `Run_fixed_benchmark.py`, for replaying a fixed configuration during local experimentation. It is not intended as the primary public entrypoint and currently uses hardcoded parameters.
 
+# Available benchmarks
+
+The current benchmark registry includes:
+
+- `Dubins3D`: 3D Dubins vehicle with 2D control input.
+- `Dubins4D`: 4D Dubins vehicle with 2D control input.
+- `Drone4D`: 4D quadrotor model.
+- `Drone6D`: 6D quadrotor model.
+- `Drone6D_small`: reduced 6D quadrotor configuration for faster debugging.
+- `Pendulum`: inverted pendulum benchmark.
+- `MountainCar`: mountain car benchmark.
+- `DoubleIntegrator`: double integrator benchmark.
+- `Test1D`: simple 1D test model.
+
+Example runs:
+
+```bash
+python Main_IMDP.py --model Dubins3D
+python Main_IMDP.py --model Drone4D
+python Main_IMDP.py --model MountainCar
 ```
-python RunFile.py --model Dubins3D
-python RunFile.py --model Drone2D
-python RunFile.py --model MountainCar
+
+# Running a benchmark
+
+A typical command looks as follows:
+
+```bash
+python Main_IMDP.py --model MountainCar --solver jax --noise_distr gaussian
 ```
 
-Created figures will be stored in the `output/` folder. The runtimes and model sizes can be read from the terminal output.
+This will:
 
-## Noise distribution options
+1. create a timestamped output directory under `output/`,
+2. construct the partition and IMDP abstraction,
+3. solve the robust reachability problem,
+4. run Monte Carlo validation,
+5. save logs, plots, and a `checkpoint.pkl` file.
 
-The tool supports different noise distribution types via the `--noise_distr` argument:
+## Reusing a checkpoint
 
-- **gaussian** (default): Gaussian (normal) distribution. A good choice for models with additive Gaussian noise.
-- **triangular**: Symmetric triangular distribution. Useful for models with bounded, symmetric noise around a mean value.
+To skip abstraction generation and rerun the solver and plotting pipeline from a saved checkpoint:
 
-Example usage:
-
+```bash
+python Main_IMDP.py --model MountainCar --load_checkpoint output/<timestamp>_MountainCar/checkpoint.pkl
 ```
-python RunFile.py --model Dubins3D --noise_distr triangular
-python RunFile.py --model Pendulum --noise_distr gaussian
+
+When `--load_checkpoint` is provided, the saved model, partition, and IMDP are loaded directly from the specified pickle file.
+
+# Solver backends
+
+Two solver backends are supported:
+
+- `--solver jax`: robust dynamic programming implemented in JAX.
+- `--solver storm`: robust value iteration through Storm.
+
+Examples:
+
+```bash
+python Main_IMDP.py --model Pendulum --solver jax
+python Main_IMDP.py --model Test1D --solver storm --no-policy_iteration
 ```
 
-## Additional options
+Note: the Storm backend currently supports robust value iteration, not robust policy iteration. If `--solver storm` is selected together with policy iteration, the code emits a warning and falls back to robust value iteration.
 
-- `--batch_size`: Number of states to process in a vectorized fashion when computing transition probability intervals. Default is 100. Increase for faster computation (but higher memory usage), or decrease if encountering memory issues. For example: `--batch_size 1000` or `--batch_size 10000`.
-- `--policy_iteration`: Run policy iteration (default: True) or value iteration (False).
-- `--gpu`: Run computations on GPU (requires CUDA-compatible hardware).
-- `--seed`: Random seed for reproducibility (default: 0).
-- `--plot_title`, `--plot_grid`, `--plot_ticks`: Toggle various plotting options.
+# Important command-line options
 
-## Memory troubleshooting
+## Model and solver selection
 
-In case you run into memory issues, try decreasing the `--batch_size` argument. Good starting values are 30,000 or 10,000 for large models, and 1,000 for smaller models.
+- `--model`: benchmark name.
+- `--solver {jax,storm}`: select the backend.
+- `--noise_distr {gaussian,normal,triangular}`: select the noise model. `normal` is accepted as an alias of `gaussian`.
 
+## Performance and memory tuning
+
+- `--batch_size`: number of states processed together when computing transition probability intervals.
+- `--frs_batch_size`: number of regions processed per batch when computing forward reachable sets.
+- `--gpu` or `--no-gpu`: select the main JAX platform.
+- `--gpu_rvi` or `--no-gpu_rvi`: select the device used for robust dynamic programming.
+
+If you run into memory limits, reduce `--batch_size` first. On larger benchmarks, values such as `1000`, `100`, or even smaller may be necessary.
+
+## Reproducibility and logging
+
+- `--seed`: random seed for NumPy and JAX.
+- `--log-level {DEBUG,INFO,WARNING,ERROR}`: logging verbosity.
+- `--output_root`: root directory for timestamped run folders.
+
+## Plotting controls
+
+- `--plot_title` or `--no-plot_title`
+- `--plot_grid` or `--no-plot_grid`
+- `--plot_ticks` or `--no-plot_ticks`
+
+# Output structure
+
+Each run creates an output directory named like:
+
+```text
+output/2026-06-02_10-49-08_MountainCar/
+```
+
+Depending on the benchmark and selected options, that directory may contain:
+
+- `checkpoint.pkl`: serialized model, partition, IMDP, and selected arguments.
+- `run_<timestamp>.log`: full log output.
+- heatmaps of values and selected inputs.
+- trajectory plots.
+- benchmark-specific GIFs for models such as Pendulum or MountainCar.
+
+# Running tests
+
+The repository includes a small regression test suite under `tests/`.
+
+Run all tests with:
+
+```bash
+python tests/run_tests.py
+```
+
+List available test modules:
+
+```bash
+python tests/run_tests.py --list
+```
+
+Run specific tests:
+
+```bash
+python tests/run_tests.py test_options
+python tests/run_tests.py test_benchmarks test_test1d_probability_intervals
+```
+
+# Repository structure
+
+- `benchmarks/`: benchmark model definitions.
+- `core/abstraction/`: partitioning, IMDP construction, and solver implementations.
+- `core/plotting/`: heatmaps and trajectory visualization.
+- `core/validate/`: Monte Carlo simulation and validation utilities.
+- `tests/`: regression tests.

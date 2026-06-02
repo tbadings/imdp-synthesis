@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 from tqdm import tqdm
 from copy import copy, deepcopy
@@ -10,6 +11,9 @@ from jaxtyping import Array, UInt8, Bool, Float32, PyTree
 
 from core.abstraction.imdp.imdp import IMDP
 from core.utils import jit_compile_count
+
+logger = logging.getLogger(__name__)
+
 
 def RVI_JAX(
     args: argparse.Namespace, 
@@ -145,14 +149,14 @@ def RVI_JAX(
     max_successors = max([imdp.S_id[s].shape[1] + 1 for s in imdp.states if s in imdp.S_id]) # +1 for absorbing state
 
     if policy_iteration:
-        print(f'=== Run robust policy iteration ===')
+        logger.info('=== Run robust policy iteration ===')
     else:
-        print(f'=== Run robust value iteration ===')
+        logger.info('=== Run robust value iteration ===')
 
-    print(f'- Number of states: {len(imdp.states)}')
-    print(f'- Total number of choices: {np.sum(total_actions)} (total number of state-action pairs)')
-    print(f'- Max number of actions per state: {max_actions}')
-    print(f'- Max number of successor states per action: {max_successors}')
+    logger.info('- Number of states: %d', len(imdp.states))
+    logger.info('- Total number of choices: %d (total number of state-action pairs)', np.sum(total_actions))
+    logger.info('- Max number of actions per state: %d', max_actions)
+    logger.info('- Max number of successor states per action: %d', max_successors)
 
     # Filling the following arrays is faster with NumPy
     full_successors_array = np.full((len(imdp.states), max_actions, max_successors), -1, dtype=np.int32)
@@ -173,11 +177,11 @@ def RVI_JAX(
         full_prob_lb_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 0]
         full_prob_ub_array[s, :num_actions, max_successors-1] = imdp.P_absorbing[s][:, 1]
 
-    print(f'- Padding and array construction done')
+    logger.info('- Padding and array construction done')
 
     #####
 
-    print('- Set states to update...')
+    logger.info('- Set states to update...')
     states_with_enabled_actions = np.array([True if s in imdp.A_id and len(imdp.A_id[s]) > 0 else False for s in imdp.states])
     update_mask = ~imdp.goal_regions & ~imdp.critical_regions & (imdp.states != imdp.absorbing_state) & states_with_enabled_actions
     states_to_update = imdp.states[update_mask]
@@ -191,9 +195,9 @@ def RVI_JAX(
     policy = np.zeros(imdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
-    pbar = tqdm(desc='Iteration', total=None, unit='it')
+    logger.info(f'- IMDP defined (took {time.time() - start_time:.3f}s); start robust dynamic programming...')
 
-    print(f'- IDMP defined (took {time.time() - start_time:.3f}s); start robust dynamic programming...')
+    pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
 
     if RND_SWEEPS:
         # Shuffle and batch states_to_update
@@ -229,11 +233,11 @@ def RVI_JAX(
             
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
-                print(f'Converged after {iteration + 1} iterations')
+                pbar.write(f'Converged after {iteration + 1} iterations')
                 break
 
     else:
-        bool = False
+        partial_convergence_reached = False
 
         # Policy iteration
         for iteration in range(max_iterations):
@@ -269,7 +273,10 @@ def RVI_JAX(
                     V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
                     # print(f'- Policy evaluation batch took: {time.time() - t:.6f} sec')
                 
-                if np.max(np.abs(V - V_old)) < epsilon or (bool is False and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)):
+                if np.max(np.abs(V - V_old)) < epsilon or (
+                    not partial_convergence_reached
+                    and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                ):
                     break
 
                 i += 1
@@ -295,12 +302,15 @@ def RVI_JAX(
             
             # Check convergence
             if np.all(policy == policy_old):
-                if bool:
-                    print(f'Converged after {iteration + 1} iterations')
+                if partial_convergence_reached:
+                    pbar.write(f'Converged after {iteration + 1} iterations')
                     break
                 else:
-                    print(f'Partial convergence after {iteration + 1} iterations. Decrease epsilon to refine values...')
-                    bool = True
+                    pbar.write(
+                        f'Partial convergence after {iteration + 1} iterations. '
+                        'Decrease epsilon to refine values...'
+                    )
+                    partial_convergence_reached = True
 
     pbar.close()
 

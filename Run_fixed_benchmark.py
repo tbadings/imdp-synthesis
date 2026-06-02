@@ -1,7 +1,5 @@
 """
 Fixed-arguments launcher for experimentation.
-
-This script invokes RunFile.py with a hardcoded argument list.
 """
 
 import subprocess
@@ -14,13 +12,13 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Dubins3D",
+        "Drone4D",
         "--batch_size",
         "1000",
         "--noise_distr",
         "normal",
         "--solver",
-        "storm",
+        "jax",
     ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]
