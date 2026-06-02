@@ -28,6 +28,7 @@ def main() -> None:
         "1000",
         "--noise_distr",
         "normal",
+        "--no-policy_iteration",
     ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]

@@ -43,9 +43,9 @@ class Drone2D(DroneDynamics):
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min], [7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = np.array([21, 7, 21, 7]) # 7 not enough
-        self.partition['sparse_exclude'] = np.array([
-            [[-7, v_min, 3, v_min], [-1, v_max, 7, v_max]],
-        ], dtype=float)
+        # self.partition['sparse_exclude'] = np.array([
+        #     [[-7, v_min, 3, v_min], [-1, v_max, 7, v_max]],
+        # ], dtype=float)
 
         self.goal = np.array([
             [[3, v_min, 3, v_min], [7, v_max, 7, v_max]]
