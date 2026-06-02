@@ -8,7 +8,6 @@ import numpy as np
 
 import benchmarks
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
-from core.abstraction.imdp.probability_intervals_enumerate import compute_probability_intervals as compute_probability_intervals_enumerate
 from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.options import parse_arguments
 from core.abstraction.partition import RectangularPartition, SparsePartition
@@ -44,15 +43,15 @@ if __name__ == '__main__':
     active_states = find_active(model=model, args=args, previous_cells=set())
     print(f"Identified {len(active_states)} active states from RL exploration.")
     # Create partition of the continuous state space into convex polytope
-    # partition = RectangularPartition(model=model)
-    partition = SparsePartition(model=model, active_states=active_states)
+    partition = RectangularPartition(model=model)
+    # Sparse partition can be created with, e.g.,
+    # partition = SparsePartition(model=model, remove_cells=50)
     
     # Create actions based on forward reachable sets
     actions = RectangularForward(args=args, partition=partition, model=model)
     actions_inputs = actions.id_to_input
     
-    _compute_prob = compute_probability_intervals if partition.rectangular else compute_probability_intervals_enumerate
-    P_full, S_id, A_id, P_absorbing = _compute_prob(args=args,
+    P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args,
                                                     model=model,
                                                     partition=partition,
                                                     actions=actions,

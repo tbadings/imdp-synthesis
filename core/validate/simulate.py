@@ -127,15 +127,21 @@ class MonteCarloSim():
             elif k >= self.horizon:
                 return trace, success
 
-            # Retreive the action from the policy
+            # Retreive the action from the policy.
             if len(self.policy.shape) == 1:
-                # If infinite horizon, policy does not have a time index
-                a[k] = self.policy[s[k]]
-                u[k] = self.policy_inputs[s[k]]
+                # If infinite horizon, policy does not have a time index.
+                action_idx = self.policy[s[k]]
             else:
-                # If finite horizon, use action for the current time step k
-                a[k] = self.policy[k, s[k]]
-                u[k] = self.policy_inputs[k, s[k]]
+                # If finite horizon, use action for the current time step k.
+                action_idx = self.policy[k, s[k]]
+
+            if action_idx < 0:
+                if self.verbose or True:
+                    print('- No enabled action in the current state, so abort')
+                return trace, success
+
+            a[k] = action_idx
+            u[k] = self.policy_inputs[s[k]] if len(self.policy.shape) == 1 else self.policy_inputs[k, s[k]]
 
             ###
 

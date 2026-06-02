@@ -99,6 +99,23 @@ def get_vertices_from_bounds(lb, ub):
     return vertices
 
 
+def _compute_linear_strides(number_per_dim):
+    # Row-major strides to map an n-D grid index [i0, ..., in-1] to a unique 1-D key.
+    number_per_dim = np.asarray(number_per_dim, dtype=np.int64)
+    strides = np.ones_like(number_per_dim, dtype=np.int64)
+    if len(number_per_dim) > 1:
+        strides[:-1] = np.cumprod(number_per_dim[1:][::-1], dtype=np.int64)[::-1]
+    return strides
+
+
+def _build_sparse_region_index(centers):
+    centers_np = np.asarray(centers, dtype=np.int64)
+    # Membership and lookup tables for Python-side indexing without allocating dense tensors.
+    region_idx_set = {tuple(c.tolist()) for c in centers_np}
+    region_idx_dict = {tuple(c.tolist()): i for i, c in enumerate(centers_np)}
+    return region_idx_set, region_idx_dict
+
+
 class RectangularPartition(object):
     """
     Represents a rectangular partitioning of a state space into hyperrectangular regions.
@@ -136,11 +153,25 @@ class RectangularPartition(object):
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
         centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
 
-        # Define n-dimensional array (n = dimension of state space) to index elements of the partition
+        # Build sparse index structures for state lookup.
         centers = jnp.array(centers_unit, dtype=int)
-        self.region_idx_array = np.zeros(self.number_per_dim, dtype=int)
-        self.region_idx_array[tuple(centers.T)] = np.arange(len(centers))
-        self.region_idx_array = jnp.array(self.region_idx_array)
+        self.region_idx_set, self.region_idx_dict = _build_sparse_region_index(centers)
+
+        # JAX-friendly sparse index map via linearized coordinates and searchsorted.
+        # We store sorted linear keys and aligned state IDs so lookup can stay inside JIT.
+        idx_np_dtype = np.int64 if jax.config.read('jax_enable_x64') else np.int32
+        idx_jnp_dtype = jnp.int64 if jax.config.read('jax_enable_x64') else jnp.int32
+        region_linear_strides = _compute_linear_strides(self.number_per_dim).astype(idx_np_dtype)
+        centers_np = np.asarray(centers, dtype=idx_np_dtype)
+        # Linear key for each kept cell index tuple.
+        region_linear_idx = np.sum(centers_np * region_linear_strides, axis=1, dtype=idx_np_dtype)
+        order = np.argsort(region_linear_idx)
+        
+        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted).
+        self.region_linear_idx = jnp.array(region_linear_idx[order], dtype=idx_jnp_dtype)
+        self.region_linear_state = jnp.array(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
+        self.region_linear_strides = jnp.array(region_linear_strides, dtype=idx_jnp_dtype)
+        
         # Define list with each element containing its index elements
         self.region_idx_inv = centers
 
@@ -174,6 +205,9 @@ class RectangularPartition(object):
             'b': all_b
         }
         self.size = len(centers)
+        
+        # Sentinel state id used by JAX kernels for coordinates that are not present.
+        self.missing_state = int(self.size)
 
         # Also store the partition bounds per dimension
         elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
@@ -262,11 +296,19 @@ class RectangularPartition(object):
         if in_partition:
             # Normalize points
             x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
-            state = int(self.region_idx_array[tuple(x_norm)])
-            return state, True
+            state = self.region_idx_dict.get(tuple(x_norm.tolist()), -1)
+            if state == -1:
+                return self.size, False
+            return int(state), True
 
         else:
             return self.size, False
+
+    def grid_idx2state(self, grid_idx):
+        state = self.region_idx_dict.get(tuple(np.asarray(grid_idx, dtype=int).tolist()), -1)
+        if state == -1:
+            return self.size, False
+        return int(state), True
 
 
 class SparsePartition(object):
@@ -305,19 +347,34 @@ class SparsePartition(object):
         # First define a grid where each region is a unit cube
         lb_unit = jnp.zeros(len(lb_center), dtype=int)
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
-        # centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
-        # centers_unit = jnp.array(centers_unit)
-        # print(centers_unit.shape)
-        centers_unit = jnp.array(active_states, dtype=int)
-        # print(centers_unit.shape)
+        centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
 
+        # Randomly remove cells to make partition sparse
+        centers_unit = np.array(centers_unit)
+        remove_idxs = np.random.choice(len(centers_unit), size=remove_cells, replace=False)
+        centers_unit = jnp.array(np.delete(centers_unit, remove_idxs, axis=0))
 
-        # Define n-dimensional array (n = dimension of state space) to index elements of the partition
-        # Use -1 as sentinel for removed/missing cells
+        # ====== #
+
+        # Build sparse index structures for state lookup.
         centers = jnp.array(centers_unit, dtype=int)
-        self.region_idx_array = np.full(self.number_per_dim, -1, dtype=int)
-        self.region_idx_array[tuple(centers.T)] = np.arange(len(centers))
-        self.region_idx_array = jnp.array(self.region_idx_array)
+        self.region_idx_set, self.region_idx_dict = _build_sparse_region_index(centers)
+
+        # JAX-friendly sparse index map via linearized coordinates and searchsorted.
+        # We store sorted linear keys and aligned state IDs so lookup can stay inside JIT.
+        idx_np_dtype = np.int64 if jax.config.read('jax_enable_x64') else np.int32
+        idx_jnp_dtype = jnp.int64 if jax.config.read('jax_enable_x64') else jnp.int32
+        region_linear_strides = _compute_linear_strides(self.number_per_dim).astype(idx_np_dtype)
+        centers_np = np.asarray(centers, dtype=idx_np_dtype)
+        
+        # Linear key for each kept cell index tuple.
+        region_linear_idx = np.sum(centers_np * region_linear_strides, axis=1, dtype=idx_np_dtype)
+        order = np.argsort(region_linear_idx)
+        
+        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted).
+        self.region_linear_idx = jnp.array(region_linear_idx[order], dtype=idx_jnp_dtype)
+        self.region_linear_state = jnp.array(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
+        self.region_linear_strides = jnp.array(region_linear_strides, dtype=idx_jnp_dtype)
         # Define list with each element containing its index elements
         self.region_idx_inv = centers
 
@@ -351,6 +408,9 @@ class SparsePartition(object):
             'b': all_b
         }
         self.size = len(centers)
+        
+        # Sentinel state id used by JAX kernels for coordinates that are not present.
+        self.missing_state = int(self.size)
 
         # Also store the partition bounds per dimension
         elems_per_dim = [jnp.arange(num) for num in self.number_per_dim]
@@ -439,11 +499,17 @@ class SparsePartition(object):
         if in_partition:
             # Normalize points
             x_norm = np.array(((x - self.boundary_lb) / (self.boundary_ub - self.boundary_lb) * self.number_per_dim) // 1, dtype=int)
-            state = int(self.region_idx_array[tuple(x_norm)])
+            state = self.region_idx_dict.get(tuple(x_norm.tolist()), -1)
             # state == -1 means the cell was removed (sparse partition)
             if state == -1:
                 return self.size, False
-            return state, True
+            return int(state), True
 
         else:
             return self.size, False
+
+    def grid_idx2state(self, grid_idx):
+        state = self.region_idx_dict.get(tuple(np.asarray(grid_idx, dtype=int).tolist()), -1)
+        if state == -1:
+            return self.size, False
+        return int(state), True
