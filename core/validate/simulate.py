@@ -1,5 +1,8 @@
+import logging
 import numpy as np
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 class MonteCarloSim():
@@ -9,7 +12,7 @@ class MonteCarloSim():
 
     def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True, **kwargs):
 
-        print('\nStarting Monte Carlo simulations...')
+        logger.info('\nStarting Monte Carlo simulations...')
 
         self.verbose = verbose
 
@@ -105,7 +108,7 @@ class MonteCarloSim():
                 x_tuple[k] = -1
 
                 if self.verbose or True:
-                    print(f'- Absorbing state reached at k = {k} (x = {x[k]}), so abort')
+                    logger.info(f'- Absorbing state reached at k = {k} (x = {x[k]}), so abort')
                 return trace, success
 
             # If current region is the goal state ...
@@ -113,14 +116,14 @@ class MonteCarloSim():
                 # Then abort the current iteration, as we have achieved the goal
                 success = True
                 if self.verbose:
-                    print(f'- Goal state reached (x = {x[k]})')
+                    logger.info(f'- Goal state reached (x = {x[k]})')
                 return trace, success
 
             # If current region is in critical states...
             elif s[k] in self.partition.critical['idxs']:
                 # Then abort current iteration
                 if self.verbose or True:
-                    print('- Critical state reached, so abort')
+                    logger.info('- Critical state reached, so abort')
                 return trace, success
 
             # Check if we can still perform another action within the horizon
@@ -137,7 +140,7 @@ class MonteCarloSim():
 
             if action_idx < 0:
                 if self.verbose or True:
-                    print('- No enabled action in the current state, so abort')
+                    logger.info('- No enabled action in the current state, so abort')
                 return trace, success
 
             a[k] = action_idx
@@ -147,8 +150,8 @@ class MonteCarloSim():
 
             # If loop was not aborted, we have a valid action
             if self.verbose:
-                print(f'In state {s[k]} (x = {x[k]}), take action {a[k]} (u = {u[k]})')
-                print(f'- w = {self.noise[m, k]}')
+                logger.info(f'In state {s[k]} (x = {x[k]}), take action {a[k]} (u = {u[k]})')
+                logger.info(f'- w = {self.noise[m, k]}')
 
             x[k + 1] = self.model.step(x[k], u[k], self.noise[m, k])
 

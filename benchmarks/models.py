@@ -3,6 +3,7 @@ This file contains the dynamics models used in the benchmarks.
 '''
 
 from functools import partial
+import logging
 
 import jax
 import jax.numpy as jnp
@@ -11,6 +12,8 @@ import scipy
 
 from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr
 from benchmarks.dynamics import setmath
+
+logger = logging.getLogger(__name__)
 
 
 def wrap_theta(theta):
@@ -92,7 +95,7 @@ class DubinsDynamics4D:
         self.wrap = jnp.array([False, False, True, False], dtype=bool)
 
         if args.model_version == 0:
-            print('- Load Dubins without parameter uncertainty')
+            logger.info('- Load Dubins without parameter uncertainty')
             # No parameter uncertainty
             self.alpha_min = 0.85
             self.alpha_max = 0.85
@@ -102,7 +105,7 @@ class DubinsDynamics4D:
             self.beta_max = 0.85
             self.beta = 0.85
         elif args.model_version == 1:
-            print('- Load Dubins with uncertain parameters in the interval [0.80,0.90]')
+            logger.info('- Load Dubins with uncertain parameters in the interval [0.80,0.90]')
             # High parameter uncertainty
             self.alpha_min = 0.80
             self.alpha_max = 0.90
@@ -112,7 +115,7 @@ class DubinsDynamics4D:
             self.beta_max = 0.90
             self.beta = 0.85
         else:
-            print('- Load Dubins with uncertain parameters in the interval [0.75,0.95]')
+            logger.info('- Load Dubins with uncertain parameters in the interval [0.75,0.95]')
             # High parameter uncertainty
             self.alpha_min = 0.75
             self.alpha_max = 0.95

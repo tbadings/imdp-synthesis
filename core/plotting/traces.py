@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 from matplotlib.patches import Rectangle
+from pathlib import Path
 from scipy.interpolate import CubicSpline
 
 from core.utils import cm2inch, remove_consecutive_duplicates
@@ -166,7 +167,9 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         ax.set_title(f"Simulation for {args.model}")
 
     # Save figure
-    plt.savefig(f'output/{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
-    plt.savefig(f'output/{filename}_{stamp}.png', format='png', bbox_inches='tight')
+    output_dir = Path(getattr(args, 'output_dir', 'output'))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / f'{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(output_dir / f'{filename}_{stamp}.png', format='png', bbox_inches='tight')
 
-    plt.show()
+    plt.close(fig)

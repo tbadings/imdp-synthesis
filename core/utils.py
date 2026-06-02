@@ -28,6 +28,17 @@ def configure_logging(log_level: str) -> None:
     logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 
+def add_file_handler(log_dir, stamp: str = '') -> None:
+    """Add a file handler that writes all log output to run_<stamp>.log in log_dir."""
+    filename = f'run_{stamp}.log' if stamp else 'run.log'
+    file_handler = logging.FileHandler(log_dir / filename, encoding='utf-8')
+    file_handler.setFormatter(logging.Formatter(
+        fmt='%(asctime)s %(levelname)-8s %(message)s',
+        datefmt='%H:%M:%S',
+    ))
+    logging.getLogger().addHandler(file_handler)
+
+
 def create_batches(data_length, batch_size):
     '''
     Create batches for the given data and batch size. Returns the start and end indices to iterate over.

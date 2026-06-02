@@ -21,7 +21,6 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''

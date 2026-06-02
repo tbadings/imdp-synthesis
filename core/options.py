@@ -1,4 +1,5 @@
 import argparse
+import warnings
 
 
 def _nonnegative_int(value: str) -> int:
@@ -40,7 +41,7 @@ def parse_arguments(argv=None):
     parser.add_argument('--pAbs_min', type=_probability, default=0.0001,
                         help="Minimum probability for absorbing states")
 
-    parser.add_argument('--model', type=str, default='Drone2D',
+    parser.add_argument('--model', type=str, default='',
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,
                         help="Version of the model to use (optinal; 0 by default)")
@@ -54,6 +55,8 @@ def parse_arguments(argv=None):
     
     parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=True,
                         help="If true, run policy iteration. Otherwise, run value iteration")
+    parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
+                        help="Solver backend to use for robust dynamic programming")
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
@@ -63,6 +66,14 @@ def parse_arguments(argv=None):
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')
+    parser.add_argument('--output_root', type=str, default='output',
+                        help='Base directory where per-run output folders are created')
+    parser.add_argument('--load_checkpoint', type=str, default=None, metavar='PATH',
+                        help='Path to a checkpoint.pkl file saved by a previous run. '
+                             'When set, the IMDP abstraction generation is skipped and '
+                             'model, partition, and IMDP are loaded from the checkpoint.')
+    parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=True,
+                        help="If True, save checkpoints during execution")
 
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
@@ -92,5 +103,12 @@ def parse_arguments(argv=None):
     # Canonicalize alias.
     if args.noise_distr == 'normal':
         args.noise_distr = 'gaussian'
+
+    if args.solver == 'storm' and args.policy_iteration:
+        warnings.warn(
+            "solver='storm' does not support policy_iteration; Storm runs value iteration instead.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     return args

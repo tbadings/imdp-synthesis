@@ -59,13 +59,13 @@ def _exact_reachable_vertices(model, state_min, state_max, action_min, action_ma
 class TestDroneStepSet(unittest.TestCase):
     def test_step_set_returns_exact_interval_hull_for_drone_models(self) -> None:
         cases = {
-            "Drone2D": {
+            "Drone4D": {
                 "state_min": np.array([1.2, 0.8, -0.5, 1.5]),
                 "state_max": np.array([-0.4, -1.2, 2.0, -0.1]),
                 "action_min": np.array([4.0, -1.5]),
                 "action_max": np.array([-2.0, 5.0]),
             },
-            "Drone3D": {
+            "Drone6D": {
                 "state_min": np.array([2.0, -0.2, 1.5, 0.6, -1.0, 0.4]),
                 "state_max": np.array([0.5, -1.0, -0.5, -0.3, 1.2, -0.8]),
                 "action_min": np.array([5.0, -1.5, 1.0]),

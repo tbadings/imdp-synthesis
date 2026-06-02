@@ -27,7 +27,6 @@ class Dubins3D(DubinsDynamics3D):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''

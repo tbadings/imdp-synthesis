@@ -21,7 +21,6 @@ class Dubins4D(DubinsDynamics4D):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''

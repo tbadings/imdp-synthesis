@@ -7,7 +7,7 @@ import scipy
 from benchmarks.dynamics import setmath
 
 
-class Drone3D(DroneDynamics):
+class Drone6D(DroneDynamics):
     '''
     Drone benchmark, with a 6D state space and a 3D control input space.
     '''
@@ -22,7 +22,6 @@ class Drone3D(DroneDynamics):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''
@@ -88,7 +87,7 @@ class Drone3D(DroneDynamics):
 
 
 
-class Drone3D_small(DroneDynamics):
+class Drone6D_small(DroneDynamics):
     '''
     Drone benchmark, with a 6D state space and a 3D control input space.
     '''
@@ -103,7 +102,6 @@ class Drone3D_small(DroneDynamics):
         self.lump = 1
 
         self.set_spec()
-        print('')
 
     def set_spec(self):
         '''
