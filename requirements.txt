@@ -15,3 +15,6 @@ xlrd==2.0.1
 xlsxwriter==3.2.2
 tqdm==4.67.1
 jaxtyping==0.3.7
+gymnasium==1.1.1
+stable-baselines3==2.6.0
+torch==2.7.0

@@ -16,6 +16,7 @@ from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.jax_config import configure_jax
 from core.utils import configure_logging
+from core.rl import find_active
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -40,20 +41,22 @@ if __name__ == '__main__':
 
     t = time.time()
 
+    active_states = find_active(model=model, args=args, previous_cells=set())
+    print(f"Identified {len(active_states)} active states from RL exploration.")
     # Create partition of the continuous state space into convex polytope
     # partition = RectangularPartition(model=model)
-    partition = SparsePartition(model=model, remove_cells=100)
+    partition = SparsePartition(model=model, active_states=active_states)
     
     # Create actions based on forward reachable sets
     actions = RectangularForward(args=args, partition=partition, model=model)
     actions_inputs = actions.id_to_input
     
-    _compute_prob = compute_probability_intervals_enumerate if partition.rectangular else compute_probability_intervals
+    _compute_prob = compute_probability_intervals if partition.rectangular else compute_probability_intervals_enumerate
     P_full, S_id, A_id, P_absorbing = _compute_prob(args=args,
                                                     model=model,
                                                     partition=partition,
                                                     actions=actions,
-                                                    vectorized=True)
+                                                    vectorized=False)
 
     # assert False
     del actions

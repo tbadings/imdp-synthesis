@@ -279,7 +279,7 @@ class SparsePartition(object):
     and the entirety of these regions form a structured grid within the state space.
     """
 
-    def __init__(self, model, remove_cells=10, verbose=False):
+    def __init__(self, model, active_states, verbose=False):
         print('Define non-rectangular (sparse) partition...')
         t_total = time.time()
 
@@ -293,8 +293,8 @@ class SparsePartition(object):
         goal_regions = model.goal
         critical_regions = model.critical
 
-        # Set partition as being (hyper)rectangular and nonsparse
-        self.rectangular = True
+        # Set partition as being nonsparse
+        self.rectangular = False
 
         t = time.time()
         # From the partition boundary, determine where the first grid centers are placed
@@ -305,12 +305,12 @@ class SparsePartition(object):
         # First define a grid where each region is a unit cube
         lb_unit = jnp.zeros(len(lb_center), dtype=int)
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
-        centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
+        # centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
+        # centers_unit = jnp.array(centers_unit)
+        # print(centers_unit.shape)
+        centers_unit = jnp.array(active_states, dtype=int)
+        # print(centers_unit.shape)
 
-        # Randomly remove cells to make partition sparse
-        centers_unit = np.array(centers_unit)
-        remove_idxs = np.random.choice(len(centers_unit), size=remove_cells, replace=False)
-        centers_unit = jnp.array(np.delete(centers_unit, remove_idxs, axis=0))
 
         # Define n-dimensional array (n = dimension of state space) to index elements of the partition
         # Use -1 as sentinel for removed/missing cells

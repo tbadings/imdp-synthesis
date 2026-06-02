@@ -72,6 +72,20 @@ def parse_arguments(argv=None):
     parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot ticks in figures")
 
+    parser.add_argument("--total_timesteps", type=int, default=20000)
+    parser.add_argument("--eval_episodes", type=int, default=50)
+    parser.add_argument("--max_steps", type=int, default=200)
+
+    parser.add_argument("--goal_reward", type=float, default=10.0)
+    parser.add_argument("--unsafe_penalty", type=float, default=-5.0)
+    parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
+    parser.add_argument("--revisit_penalty", type=float, default=0.05)
+
+    parser.add_argument("--ent_coef", type=float, default=0.005)
+    parser.add_argument("--learning_rate", type=float, default=3e-4)
+    parser.add_argument("--n_envs", type=int, default=8)
+    parser.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=False)
+
     # Parse arguments
     args = parser.parse_args(argv)
 

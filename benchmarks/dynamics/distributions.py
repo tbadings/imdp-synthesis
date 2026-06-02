@@ -71,7 +71,7 @@ class GaussianDistr(dict):
 			cov=jnp.diag(cov_diag),
 			cov_diag=cov_diag,
 			stdev=jnp.sqrt(cov_diag),
-			support_radius=6 * jnp.sqrt(cov_diag) # 6 standard deviations cover 99.9999998% of the probability mass for a univariate Gaussian
+			support_radius=3 * jnp.sqrt(cov_diag) # 6 standard deviations cover 99.9999998% of the probability mass for a univariate Gaussian
 		)
 
 	def sample(self, size=None, rng=None):

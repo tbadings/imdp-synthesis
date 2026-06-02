@@ -166,7 +166,7 @@ class RectangularForward(object):
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations
         self.max_slice = tuple(max_span.tolist())
-
+        print(f"Max slice: {self.max_slice}")
         print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
         # Create array of action indices for efficient indexing        
         
