@@ -164,6 +164,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
     '''
 
     logger.info('Compute probability intervals for all state-action pairs...')
+    logger.info('- Size of the successor state slice to consider per dimension: %s', actions.max_slice)
 
     frs_lb = actions.frs_lb
     frs_ub = actions.frs_ub

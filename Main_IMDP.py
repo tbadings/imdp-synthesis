@@ -72,9 +72,9 @@ if __name__ == '__main__':
         t = time.time()
 
         # Create partition of the continuous state space into convex polytope
-        partition = RectangularPartition(model=model)
+        # partition = RectangularPartition(model=model)
         # Sparse partition can be created with, e.g.,
-        # partition = SparsePartition(model=model, remove_cells=0)
+        partition = SparsePartition(model=model, remove_cells=10)
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
@@ -102,15 +102,16 @@ if __name__ == '__main__':
 
         logger.info('Generating abstraction took %.3f sec.', (time.time() - t))
 
-        # Save checkpoint (strip JAX runtime objects that can't be pickled)
-        args_to_save = copy.copy(args)
-        del args_to_save.rvi_device
-        del args_to_save.jax_key
-        ckpt_path = args.output_dir / 'checkpoint.pkl'
-        logger.info('Saving checkpoint to %s', ckpt_path)
-        with open(ckpt_path, 'wb') as f:
-            pickle.dump({'model': model, 'partition': partition, 'imdp': imdp, 'args': args_to_save}, f)
-        logger.info('Checkpoint saved.')
+        if args.save_checkpoint:
+            # Save checkpoint (strip JAX runtime objects that can't be pickled)
+            args_to_save = copy.copy(args)
+            del args_to_save.rvi_device
+            del args_to_save.jax_key
+            ckpt_path = args.output_dir / 'checkpoint.pkl'
+            logger.info('Saving checkpoint to %s', ckpt_path)
+            with open(ckpt_path, 'wb') as f:
+                pickle.dump({'model': model, 'partition': partition, 'imdp': imdp, 'args': args_to_save}, f)
+            logger.info('Checkpoint saved.')
 
     # %% Run dynamic programming to compute optimal policy
 

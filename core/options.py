@@ -72,6 +72,8 @@ def parse_arguments(argv=None):
                         help='Path to a checkpoint.pkl file saved by a previous run. '
                              'When set, the IMDP abstraction generation is skipped and '
                              'model, partition, and IMDP are loaded from the checkpoint.')
+    parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=True,
+                        help="If True, save checkpoints during execution")
 
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
