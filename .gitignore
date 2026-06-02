@@ -1,8 +1,19 @@
-**/__pychache__/
+**/__pycache__/
 __pycache__/
 *.pyc
 *.pyo
 *.DS_Store
+
+# Local developer files
+.python-version
+*.swp
+*.swo
+
+# Tool caches
+.ruff_cache/
+
+# Generated docs
+docs/_build/
 
 # Ignore options file
 options.txt

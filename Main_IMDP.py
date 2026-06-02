@@ -13,6 +13,7 @@ from core.options import parse_arguments
 from core.abstraction.partition import RectangularPartition, SparsePartition
 from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.rvi_jax import RVI_JAX
+from core.abstraction.imdp.rvi_storm import RVI_STORM
 from core.jax_config import configure_jax
 from core.utils import configure_logging
 
@@ -72,19 +73,27 @@ if __name__ == '__main__':
 
     # %% Run dynamic programming to compute optimal policy
 
-    with jax.default_device(args.rvi_device):
-        logger.info('Computing optimal policy via robust dynamic programming...')
-        t = time.time()
-        V, policy, policy_inputs = RVI_JAX(
-            args=args, 
-            imdp=imdp, 
-            s0=partition.x2state(model.x0)[0], 
-            max_iterations=10000, 
-            epsilon=1e-6, 
-            RND_SWEEPS=True, 
-            BATCH_SIZE=1000, 
-            policy_iteration=args.policy_iteration)
+    logger.info('Computing optimal policy via robust dynamic programming (solver=%s)...', args.solver)
+    t = time.time()
+    if args.solver == 'jax':
+        with jax.default_device(args.rvi_device):
+            V, policy, policy_inputs = RVI_JAX(
+                args=args,
+                imdp=imdp,
+                s0=partition.x2state(model.x0)[0],
+                max_iterations=10000,
+                epsilon=1e-6,
+                RND_SWEEPS=True,
+                BATCH_SIZE=1000,
+                policy_iteration=args.policy_iteration,
+            )
         logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
+    else:
+        V, policy, policy_inputs = RVI_STORM(
+            args=args,
+            imdp=imdp,
+        )
+        logger.info('RVI with Storm took %.3f sec.', (time.time() - t))
 
     # %% Simulations and plot
 

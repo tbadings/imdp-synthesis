@@ -1,4 +1,5 @@
 import argparse
+import warnings
 
 
 def _nonnegative_int(value: str) -> int:
@@ -54,6 +55,8 @@ def parse_arguments(argv=None):
     
     parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=True,
                         help="If true, run policy iteration. Otherwise, run value iteration")
+    parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
+                        help="Solver backend to use for robust dynamic programming")
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
@@ -78,5 +81,12 @@ def parse_arguments(argv=None):
     # Canonicalize alias.
     if args.noise_distr == 'normal':
         args.noise_distr = 'gaussian'
+
+    if args.solver == 'storm' and args.policy_iteration:
+        warnings.warn(
+            "solver='storm' does not support policy_iteration; Storm runs value iteration instead.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     return args

@@ -38,6 +38,8 @@ def RVI_JAX(
     :return: Tuple of (values, Q-values, policy_labels, policy_inputs)
     """
 
+    start_time = time.time()
+
     phase1_initial_it = 100
     phase1_increment_it = 0
     phase1_max_it = 100
@@ -189,7 +191,9 @@ def RVI_JAX(
     policy = np.zeros(imdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
-    pbar = tqdm(range(max_iterations), desc='Iteration')
+    pbar = tqdm(desc='Iteration', total=None, unit='it')
+
+    print(f'- IDMP defined (took {time.time() - start_time:.3f}s); start robust dynamic programming...')
 
     if RND_SWEEPS:
         # Shuffle and batch states_to_update
@@ -200,7 +204,8 @@ def RVI_JAX(
 
     if not policy_iteration:
         # Value iteration
-        for iteration in pbar:
+        for iteration in range(max_iterations):
+            pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
                 postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
@@ -231,7 +236,8 @@ def RVI_JAX(
         bool = False
 
         # Policy iteration
-        for iteration in pbar:
+        for iteration in range(max_iterations):
+            pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
                 postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
@@ -295,6 +301,8 @@ def RVI_JAX(
                 else:
                     print(f'Partial convergence after {iteration + 1} iterations. Decrease epsilon to refine values...')
                     bool = True
+
+    pbar.close()
 
     # Extract policy inputs from policy
     policy_labels = np.full_like(policy, fill_value=-1)

@@ -169,4 +169,4 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     plt.savefig(f'output/{filename}_{stamp}.pdf', format='pdf', bbox_inches='tight')
     plt.savefig(f'output/{filename}_{stamp}.png', format='png', bbox_inches='tight')
 
-    plt.show()
+    plt.close(fig)
