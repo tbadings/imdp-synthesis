@@ -90,7 +90,23 @@ if __name__ == '__main__':
                                                         vectorized=True)
 
         # assert False
-        del actions        
+        # del actions        
+
+        # cell = (7, 16, 7, 17, 7, 16)
+        # state_id, exists = partition.grid_idx2state(cell)
+        # print('cell', cell)
+        # print('state_id', state_id)
+        # print('exists', exists)
+        # labels = A_id.get(state_id)
+        # print('action_labels', labels)
+        # if labels is not None:
+        #     labels = np.asarray(labels, dtype=int)
+        #     print('num_actions', len(labels))
+        #     print('action_inputs')
+        #     print(actions.id_to_input[labels])
+        # print(P_full[14649][1], S_id[14649][1], A_id[14649][1], P_absorbing[14649][1])
+
+
 
         imdp = IMDP(partition=partition,
                     states=np.array(partition.regions['idxs']),

@@ -286,7 +286,7 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     for cell in newly_visited:
-        bounds = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)]
+        bounds = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2)]
         ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, bounds)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")
         for neighbor in itertools.product(*ranges):

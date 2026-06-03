@@ -112,9 +112,9 @@ class Drone6D_small(DroneDynamics):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-2, -2, -2]
-        self.uMax = [2, 2, 2]
-        self.num_actions = [10, 10, 10]
+        self.uMin = [-0.5, -0.5, -0.5]
+        self.uMax = [0.5, 0.5, 0.5]
+        self.num_actions = [5, 5, 5]
 
         v_min = -3.5
         v_max = 3.5
