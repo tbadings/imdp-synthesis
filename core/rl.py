@@ -286,14 +286,14 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     for cell in newly_visited:
-        bounds = [(-5, 5), (-3, 3), (-5, 5), (-3, 3)]
+        bounds = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)]
         ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, bounds)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")
         for neighbor in itertools.product(*ranges):
             neighbor = tuple(int(v) for v in neighbor)
             valid = True
             for i, val in enumerate(neighbor):
-                limit = int(number_per_dim[i]) if number_per_dim.ndim > 0 else int(number_per_dim.item())
+                limit = int(number_per_dim[i])
                 if val < 0 or val >= limit:
                     valid = False
                     break

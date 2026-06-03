@@ -32,9 +32,9 @@ class Drone6D(DroneDynamics):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-3, -3, -3]
-        self.uMax = [3, 3, 3]
-        self.num_actions = [5, 5, 5]
+        self.uMin = [-2, -2, -2]
+        self.uMax = [2, 2, 2]
+        self.num_actions = [10, 10, 10]
 
         v_min = -3.5
         v_max = 3.5
@@ -42,7 +42,7 @@ class Drone6D(DroneDynamics):
         self.partition['boundary'] = np.array([[-15, v_min, -9, v_min, -7, v_min], 
                                                [15, v_max, 9, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([30, 7, 18, 7, 14, 7])
+        self.partition['number_per_dim'] = np.array([90, 28, 54, 28, 42, 28])
 
         self.goal = np.array([
             # [[11, v_min, 1, v_min, -7, v_min], [15, v_max, 5, v_max, -3, v_max]]
@@ -112,9 +112,9 @@ class Drone6D_small(DroneDynamics):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-3, -3, -3]
-        self.uMax = [3, 3, 3]
-        self.num_actions = [5, 5, 5]
+        self.uMin = [-2, -2, -2]
+        self.uMax = [2, 2, 2]
+        self.num_actions = [10, 10, 10]
 
         v_min = -3.5
         v_max = 3.5
@@ -122,7 +122,7 @@ class Drone6D_small(DroneDynamics):
         self.partition['boundary'] = np.array([[-5, v_min, -5, v_min, -5, v_min],
                                                [5, v_max, 5, v_max, 5, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([10, 7, 10, 7, 10, 7])
+        self.partition['number_per_dim'] = np.array([40, 28, 40, 28, 40, 28])
 
         self.goal = np.array([
             [[1, v_min, 1, v_min, 1, v_min], [5, v_max, 5, v_max, 5, v_max]],

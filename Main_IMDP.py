@@ -18,6 +18,7 @@ from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.imdp.rvi_storm import RVI_STORM
 from core.jax_config import configure_jax
 from core.utils import configure_logging, add_file_handler
+from core.rl import find_active
 
 if __name__ == '__main__':
     args = parse_arguments()
@@ -71,10 +72,12 @@ if __name__ == '__main__':
 
         t = time.time()
 
+        active_states = find_active(model, args=args, previous_cells=set())
+        print(f"Identified {len(active_states)} active states from RL exploration.")
         # Create partition of the continuous state space into convex polytope
         # partition = RectangularPartition(model=model)
         # Sparse partition can be created with, e.g.,
-        partition = SparsePartition(model=model, remove_cells=10)
+        partition = SparsePartition(model=model, active_states=active_states)
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
@@ -87,7 +90,7 @@ if __name__ == '__main__':
                                                         vectorized=True)
 
         # assert False
-        del actions
+        del actions        
 
         imdp = IMDP(partition=partition,
                     states=np.array(partition.regions['idxs']),
@@ -150,7 +153,7 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces
     from core.plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=10)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)

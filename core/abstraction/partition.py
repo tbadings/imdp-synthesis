@@ -342,12 +342,13 @@ class SparsePartition(object):
         # First define a grid where each region is a unit cube
         lb_unit = jnp.zeros(len(lb_center), dtype=int)
         ub_unit = jnp.array(self.number_per_dim - 1, dtype=int)
-        centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
-
+        # centers_unit = define_grid_jax(lb_unit, ub_unit, self.number_per_dim)
+        centers_unit = jnp.array(active_states, dtype=int)
+        
         # Randomly remove cells to make partition sparse
-        centers_unit = np.array(centers_unit)
-        remove_idxs = np.random.choice(len(centers_unit), size=remove_cells, replace=False)
-        centers_unit = jnp.array(np.delete(centers_unit, remove_idxs, axis=0))
+        # centers_unit = np.array(centers_unit)
+        # remove_idxs = np.random.choice(len(centers_unit), size=remove_cells, replace=False)
+        # centers_unit = jnp.array(np.delete(centers_unit, remove_idxs, axis=0))
 
         # ====== #
 
