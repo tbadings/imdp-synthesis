@@ -285,9 +285,10 @@ def find_active(model, args, previous_cells):
     active_states = set()
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
+    #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
+    rate = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2)]
     for cell in newly_visited:
-        bounds = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2)]
-        ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, bounds)]
+        ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, rate)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")
         for neighbor in itertools.product(*ranges):
             neighbor = tuple(int(v) for v in neighbor)
