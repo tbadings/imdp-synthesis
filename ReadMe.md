@@ -76,6 +76,7 @@ The current benchmark registry includes:
 - `Drone6D_small`: reduced 6D quadrotor configuration for faster debugging.
 - `Pendulum`: inverted pendulum benchmark.
 - `MountainCar`: mountain car benchmark.
+- `Cartpole`: Gymnasium-style classic-control cart-pole benchmark.
 - `DoubleIntegrator`: double integrator benchmark.
 - `Test1D`: simple 1D test model.
 

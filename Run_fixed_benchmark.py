@@ -12,9 +12,9 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Drone6D_small",
+        "Drone4D",
         "--batch_size",
-        "1000",
+        "100",
         "--noise_distr",
         "normal",
         "--solver",

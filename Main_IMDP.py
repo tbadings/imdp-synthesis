@@ -72,9 +72,9 @@ if __name__ == '__main__':
         t = time.time()
 
         # Create partition of the continuous state space into convex polytope
-        # partition = RectangularPartition(model=model)
+        partition = RectangularPartition(model=model)
         # Sparse partition can be created with, e.g.,
-        partition = SparsePartition(model=model, remove_cells=10)
+        # partition = SparsePartition(model=model, remove_cells=50)
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)

@@ -250,7 +250,7 @@ class RectangularPartition(object):
             'bools': goal_regions_bools,
             'idxs': goal_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        logger.debug(f"-- Number of goal regions: {len(self.goal['idxs'])}")
+        logger.info(f"(Number of goal regions: {len(self.goal['idxs'])})")
 
         t = time.time()
         if len(critical_regions) > 0:
@@ -271,7 +271,7 @@ class RectangularPartition(object):
             'bools': critical_regions_bools,
             'idxs': critical_regions_idxs.tolist(), # TODO: Set should be more efficient here
         }
-        logger.debug(f"-- Number of critical regions: {len(self.critical['idxs'])}")
+        logger.info(f"(Number of critical regions: {len(self.critical['idxs'])})")
 
         logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 

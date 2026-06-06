@@ -5,6 +5,7 @@ from .Drone4D import Drone4D
 from .Drone6D import Drone6D, Drone6D_small
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
+from .Cartpole import Cartpole
 from .Integrators import DoubleIntegrator
 from .Test1D import Test1D
 
@@ -20,6 +21,7 @@ def create_model(args):
 		'Drone6D_small': Drone6D_small,
 		'Pendulum': Pendulum,
 		'MountainCar': MountainCar,
+		'Cartpole': Cartpole,
 		'DoubleIntegrator': DoubleIntegrator,
 		'Test1D': Test1D,
 	}

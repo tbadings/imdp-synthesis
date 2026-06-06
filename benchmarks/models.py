@@ -92,7 +92,7 @@ class DubinsDynamics4D:
         self.n = 4
         self.p = 2
         self.state_variables = ['x', 'y', 'angle', 'velocity']
-        self.wrap = jnp.array([False, False, True, False], dtype=bool)
+        self.wrap = jnp.array([False, False, False, False], dtype=bool)
 
         if args.model_version == 0:
             logger.info('- Load Dubins without parameter uncertainty')
@@ -371,6 +371,153 @@ class MountainCarDynamics:
         state_next_max = jnp.max(state_next, axis=1)
 
         return state_next_min, state_next_max
+
+class CartpoleDynamics:
+    def __init__(self, args):
+        self.linear = False
+        self.independent_state_dims = None
+        self.independent_input_dims = None
+
+        self.n = 4
+        self.p = 1
+        self.state_variables = ['position', 'velocity', 'angle', 'angular_velocity']
+        self.wrap = jnp.array([False, False, True, False], dtype=bool)
+
+        # Gymnasium CartPole-v1 physical constants.
+        self.gravity = 9.8
+        self.masscart = 1.0
+        self.masspole = 0.1
+        self.total_mass = self.masscart + self.masspole
+        self.length = 0.5
+        self.polemass_length = self.masspole * self.length
+        self.force_mag = 10.0
+        self.tau = 0.02
+        self.angle_offset = np.pi
+
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.005, 0.02, 0.005, 0.02])**2)
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.01, 0.04, 0.01, 0.04]))
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+    def _accelerations(self, state, action):
+        _, x_dot, theta, theta_dot = state
+        theta = theta + self.angle_offset
+        force = np.clip(action[0], -self.force_mag, self.force_mag)
+        costheta = np.cos(theta)
+        sintheta = np.sin(theta)
+
+        temp = (
+            force + self.polemass_length * theta_dot**2 * sintheta
+        ) / self.total_mass
+        thetaacc = (
+            self.gravity * sintheta - costheta * temp
+        ) / (
+            self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass)
+        )
+        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+        return xacc, thetaacc
+
+    def step(self, state, action, noise):
+        x, x_dot, theta, theta_dot = state
+        xacc, thetaacc = self._accelerations(state, action)
+
+        x = x + self.tau * x_dot
+        x_dot = x_dot + self.tau * xacc
+        theta = theta + self.tau * theta_dot
+        theta_dot = theta_dot + self.tau * thetaacc
+
+        return np.array([x, x_dot, theta, theta_dot]) + noise
+
+    @partial(jax.jit, static_argnums=(0))
+    def step_set(self, state_min, state_max, action_min, action_max):
+        state_min, state_max = setmath.box(jnp.array(state_min), jnp.array(state_max))
+        action_min, action_max = setmath.box(jnp.array(action_min), jnp.array(action_max))
+        [x_min, xdot_min, theta_min, thetadot_min] = state_min
+        [x_max, xdot_max, theta_max, thetadot_max] = state_max
+
+        force_min = jnp.maximum(action_min, self.uMin)[0]
+        force_max = jnp.minimum(action_max, self.uMax)[0]
+
+        sin_theta = setmath.sin(theta_min + self.angle_offset, theta_max + self.angle_offset)
+        cos_theta = setmath.cos(theta_min + self.angle_offset, theta_max + self.angle_offset)
+        cos_sq = self._square_interval(cos_theta[0], cos_theta[1])
+        theta_dot_sq = self._square_interval(thetadot_min, thetadot_max)
+
+        temp = self._div_interval(
+            *self._add_interval(
+                (force_min, force_max),
+                self._mul_interval(
+                    (self.polemass_length * theta_dot_sq[0], self.polemass_length * theta_dot_sq[1]),
+                    sin_theta,
+                ),
+            ),
+            self.total_mass,
+            self.total_mass,
+        )
+
+        denom = self._mul_interval(
+            (self.length, self.length),
+            self._add_interval(
+                (4.0 / 3.0, 4.0 / 3.0),
+                (-self.masspole * cos_sq[1] / self.total_mass, -self.masspole * cos_sq[0] / self.total_mass),
+            ),
+        )
+        thetaacc = self._div_interval(
+            *self._add_interval(
+                (self.gravity * sin_theta[0], self.gravity * sin_theta[1]),
+                self._mul_interval((-cos_theta[1], -cos_theta[0]), temp),
+            ),
+            denom[0],
+            denom[1],
+        )
+        xacc = self._add_interval(
+            temp,
+            self._mul_interval(
+                (-self.polemass_length / self.total_mass * thetaacc[1],
+                 -self.polemass_length / self.total_mass * thetaacc[0]),
+                cos_theta,
+            ),
+        )
+
+        xdot_next = self._add_interval((xdot_min, xdot_max), (self.tau * xacc[0], self.tau * xacc[1]))
+        x_next = self._add_interval((x_min, x_max), (self.tau * xdot_min, self.tau * xdot_max))
+        thetadot_next = self._add_interval((thetadot_min, thetadot_max), (self.tau * thetaacc[0], self.tau * thetaacc[1]))
+        theta_next = self._add_interval((theta_min, theta_max), (self.tau * thetadot_min, self.tau * thetadot_max))
+
+        state_next_min = jnp.array([
+            jnp.squeeze(x_next[0]),
+            jnp.squeeze(xdot_next[0]),
+            jnp.squeeze(theta_next[0]),
+            jnp.squeeze(thetadot_next[0]),
+        ])
+        state_next_max = jnp.array([
+            jnp.squeeze(x_next[1]),
+            jnp.squeeze(xdot_next[1]),
+            jnp.squeeze(theta_next[1]),
+            jnp.squeeze(thetadot_next[1]),
+        ])
+        return state_next_min, state_next_max
+
+    @staticmethod
+    def _add_interval(x, y):
+        return x[0] + y[0], x[1] + y[1]
+
+    @staticmethod
+    def _mul_interval(x, y):
+        z_min, z_max = setmath.mult(jnp.array([x[0], x[1]]), jnp.array([y[0], y[1]]))
+        return jnp.squeeze(z_min), jnp.squeeze(z_max)
+
+    @staticmethod
+    def _div_interval(x_min, x_max, y_min, y_max):
+        return setmath.mult(jnp.array([x_min, x_max]), jnp.array([1.0 / y_max, 1.0 / y_min]))
+
+    @staticmethod
+    def _square_interval(x_min, x_max):
+        sq_min = jnp.where((x_min <= 0) & (x_max >= 0), 0.0, jnp.minimum(x_min**2, x_max**2))
+        sq_max = jnp.maximum(x_min**2, x_max**2)
+        return sq_min, sq_max
     
 class DoubleIntegratorDynamics:
     def __init__(self, args):
