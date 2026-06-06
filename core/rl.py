@@ -98,7 +98,13 @@ class BenchmarkRLEnv(gym.Env):
         testing = bool(options.get("testing", False)) if options else False
 
         if testing:
-            state = np.asarray(self.model.x0, dtype=np.float32)
+            cell = self.state_to_cell(self.model.x0)
+            cell_lb = self.obs_low + np.asarray(cell, dtype=np.float32) * self.bin_widths
+            cell_ub = cell_lb + self.bin_widths
+
+            # Add a small epsilon, to make sure we appropriately cover the initial state cell
+            eps = 0.25 * self.bin_widths
+            state = self.np_random.uniform(cell_lb - eps, cell_ub + eps).astype(np.float32)
         else:
             state = self.np_random.uniform(self.obs_low, self.obs_high).astype(np.float32)
 
@@ -152,7 +158,7 @@ class BenchmarkRLEnv(gym.Env):
         }
         return self.state.copy(), float(reward), terminated, truncated, info
 
-def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims):
+def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, discrete_actions=None):
     norm_env.training = False
     norm_env.norm_reward = False
 
@@ -161,14 +167,35 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims):
     visited_cells = set()
     trajectories = []
 
+    if discrete_actions is not None:
+        discrete_actions = np.asarray(discrete_actions, dtype=np.float32)
+
     for _ in range(episodes):
         obs, _ = eval_env.reset(options={"testing": True})
         visited_cells.add(eval_env.state_to_cell(obs))
 
         trace = [obs.copy()]
         for _ in range(cfg.max_steps):
-            norm_obs = norm_env.normalize_obs(np.expand_dims(obs, axis=0))[0]
+            # Quantize observation to the center of its partition cell.
+            if discrete_actions is not None:
+                cell = eval_env.state_to_cell(obs)
+                obs_q = (eval_env.obs_low + (np.asarray(cell, dtype=np.float32) + 0.5) * eval_env.bin_widths)
+                obs_q = np.clip(obs_q, eval_env.obs_low, eval_env.obs_high)
+
+                # print(f"Original obs: {obs}, quantized obs: {obs_q}, cell: {cell}")
+            else:
+                obs_q = obs
+
+            norm_obs = norm_env.normalize_obs(np.expand_dims(obs_q, axis=0))[0]
             action, _ = model.predict(norm_obs, deterministic=True)
+
+            # Quantize the continuous action to the nearest discrete action.
+            if discrete_actions is not None:
+                dists = np.linalg.norm(discrete_actions - action, axis=1)
+                action = discrete_actions[np.argmin(dists)]
+
+                # print(f"Original action: {action}, quantized action: {action}")
+
             obs, _, terminated, truncated, info = eval_env.step(action)
 
             visited_cells.add(info["cell"])
@@ -256,7 +283,7 @@ def find_active(model, args, previous_cells):
     )
     import torch as th
     policy_kwargs = dict(activation_fn=th.nn.ReLU,
-                     net_arch=dict(pi=[128, 128, 128, 128, 128], vf=[128, 128, 128, 128, 128]))
+                     net_arch=dict(pi=[128, 128], vf=[128, 128]))
 
     ppo = PPO(
         "MlpPolicy",
@@ -271,6 +298,12 @@ def find_active(model, args, previous_cells):
 
     ppo.learn(total_timesteps=args.total_timesteps, progress_bar=True)
 
+    discrete_actions_per_dim = [
+        np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i])
+        for i in range(len(model.num_actions))
+    ]
+    discrete_actions = np.array(list(itertools.product(*discrete_actions_per_dim)), dtype=np.float32)
+
     goal_reached, newly_visited, total_cells = evaluate_policy(
         model=ppo,
         norm_env=vec_env,
@@ -278,6 +311,7 @@ def find_active(model, args, previous_cells):
         cfg=cfg,
         episodes=args.eval_episodes,
         dims=list(model.plot_dimensions),
+        discrete_actions=discrete_actions,
     )
 
     print (f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
@@ -286,7 +320,7 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
-    rate = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2)]
+    rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1)]
     for cell in newly_visited:
         ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, rate)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")

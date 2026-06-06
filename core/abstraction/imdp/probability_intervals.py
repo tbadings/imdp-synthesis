@@ -148,7 +148,7 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
 
     return prob, prob_id, prob_nonzero, prob_absorbing, keep, number_nonzero, missing_absorbing
 
-def compute_probability_intervals(args, model, partition, actions, vectorized=True):
+def compute_probability_intervals(args, model, partition, actions, vectorized=True, debug_state=None):
     '''
     Compute probability intervals for all states and actions of the IMDP.
 
@@ -157,6 +157,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
     :param partition: Partition object.
     :param frs: Forward reachable sets.
     :param max_slice: Array where each element is the maximum number of partition elements to consider in each dimension.
+    :param debug_state: If provided, log detailed per-action diagnostics for this state index when it has no enabled actions.
     :return:
         - prob: Probability intervals per state-action pair
         - prob_id: Successor states associated with these probability intervals per state-action pair
@@ -233,7 +234,30 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
             keep_actions = keep_actions.reshape(batch_states, nrA)
             p = p[:, :max_nonzero].reshape(batch_states, nrA, max_nonzero, 2)
             s_id = s_id[:, :max_nonzero].reshape(batch_states, nrA, max_nonzero)
-            p_abs = np.maximum(args.pAbs_min, np.round(p_abs, args.decimals)).reshape(batch_states, nrA, 2)
+            # Keep raw p_abs for debug logging before pAbs_min clamp
+            p_abs_raw = np.round(p_abs, args.decimals).reshape(batch_states, nrA, 2)
+            p_abs = np.maximum(args.pAbs_min, p_abs_raw)
+
+            # --- Debug: log diagnostics when the target state has no enabled actions ---
+            if debug_state is not None and i <= debug_state < j:
+                dbg_idx = debug_state - i
+                if not np.any(keep_actions[dbg_idx]):
+                    logger.warning(
+                        'State %d (debug_state) has NO enabled actions (batch [%d, %d), threshold=%.2f):',
+                        debug_state, i, j, 0.1,
+                    )
+                    for a in range(nrA):
+                        ma = missing_absorbing[dbg_idx * nrA + a]
+                        pa_raw = p_abs_raw[dbg_idx, a]
+                        logger.warning(
+                            '  Action %3d: missing_absorbing=[%.4f, %.4f]  p_abs_raw=[%.4f, %.4f]  kept=%s',
+                            actions_id[a], ma[0], ma[1], pa_raw[0], pa_raw[1], keep_actions[dbg_idx, a],
+                        )
+                else:
+                    logger.info(
+                        'State %d (debug_state) has %d enabled actions (batch [%d, %d)).',
+                        debug_state, int(np.sum(keep_actions[dbg_idx])), i, j,
+                    )
 
             for idx, s in enumerate(range(i, j)):
                 keep_mask = keep_actions[idx]
@@ -260,7 +284,27 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
                 assert np.all(missing_absorbing == 0), (
                     f"missing_absorbing must be zero for a rectangular partition, got max={missing_absorbing.max()}")
             max_nonzero = int(np.max(number_nonzero))
-            
+
+            # --- Debug: log diagnostics when the target state has no enabled actions ---
+            if debug_state is not None and s == debug_state:
+                if not np.any(keep_actions):
+                    logger.warning(
+                        'State %d (debug_state) has NO enabled actions (threshold=%.2f):',
+                        debug_state, 0.1,
+                    )
+                    for a in range(nrA):
+                        ma = missing_absorbing[a]
+                        pa_raw = np.round(p_abs[a], args.decimals)
+                        logger.warning(
+                            '  Action %3d: missing_absorbing=[%.4f, %.4f]  p_abs_raw=[%.4f, %.4f]  kept=%s',
+                            actions_id[a], ma[0], ma[1], pa_raw[0], pa_raw[1], keep_actions[a],
+                        )
+                else:
+                    logger.info(
+                        'State %d (debug_state) has %d enabled actions.',
+                        debug_state, int(np.sum(keep_actions)),
+                    )
+
             # k=True are the action indices that are to be kept (i.e., those with nonzero probabilities and for which the absorbing state probability is less than threshold)
             # p_nonzero=True means that the upper bound of the probability interval is greater than the minimum probability threshold
             # Evaluate p_nonzero over each columns to get the successor states that we should keep

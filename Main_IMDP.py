@@ -83,11 +83,16 @@ if __name__ == '__main__':
         actions = RectangularForward(args=args, partition=partition, model=model)
         actions_inputs = actions.id_to_input
 
+        s_init_debug, s_init_exists = partition.x2state(model.x0)
+
+        logger.info('Initial state x0=%s maps to state index %d (exists in partition: %s)',
+                    model.x0, s_init_debug, s_init_exists)
         P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args,
                                                         model=model,
                                                         partition=partition,
                                                         actions=actions,
-                                                        vectorized=True)
+                                                        vectorized=True,
+                                                        debug_state=s_init_debug if s_init_exists else None)
 
         # assert False
         # del actions        
@@ -169,7 +174,7 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces
     from core.plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=10)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)

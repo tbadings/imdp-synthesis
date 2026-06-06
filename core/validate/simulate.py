@@ -140,7 +140,7 @@ class MonteCarloSim():
 
             if action_idx < 0:
                 if self.verbose or True:
-                    logger.info('- No enabled action in the current state, so abort')
+                    logger.info('- No enabled action in the current state (x = %s, k = %d), so abort', x[k], k)
                 return trace, success
 
             a[k] = action_idx
