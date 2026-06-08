@@ -32,9 +32,9 @@ class Drone6D(DroneDynamics):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-2, -2, -2]
-        self.uMax = [2, 2, 2]
-        self.num_actions = [10, 10, 10]
+        self.uMin = [-1, -1, -1]
+        self.uMax = [1, 1, 1]
+        self.num_actions = [11, 11, 11]
 
         v_min = -3.5
         v_max = 3.5
@@ -112,25 +112,26 @@ class Drone6D_small(DroneDynamics):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-0.5, -0.5, -0.5]
-        self.uMax = [0.5, 0.5, 0.5]
+        self.uMin = [-1, -1, -1]
+        self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
 
-        v_min = -3.5
+        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
         v_max = 3.5
 
-        self.partition['boundary'] = np.array([[-5, v_min, -5, v_min, -5, v_min],
-                                               [5, v_max, 5, v_max, 5, v_max]])
+        self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -2, v_min], [7, v_max, 7, v_max, 2, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 28, 40, 28, 40, 28])
+        self.partition['number_per_dim'] = np.array([42, 28, 42, 28, 6, 28]) # 7 not enough
 
         self.goal = np.array([
-            [[1, v_min, 1, v_min, 1, v_min], [5, v_max, 5, v_max, 5, v_max]],
+            [[3, v_min, 3, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]]
         ], dtype=float)
 
         self.critical = np.array([
+            [[-7, v_min, 1, v_min, -7, v_min], [-1, v_max, 3, v_max, 7, v_max]],
+            [[3, v_min, -7, v_min, -7, v_min], [7, v_max, -3, v_max, 7, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-3.5, 0, -3.5, 0, -3.5, 0])
+        self.x0 = np.array([-5.5, 0.01, -5.5, 0.01, 0.01, 0.01])
 
         return

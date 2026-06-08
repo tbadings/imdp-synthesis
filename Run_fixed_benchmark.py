@@ -12,13 +12,17 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Drone6D_small",
+        "Drone4D",
         "--batch_size",
         "1000",
         "--noise_distr",
         "normal",
         "--solver",
         "jax",
+        "--eval_episodes",
+        "5000",
+        "--total_timesteps",
+        "100000",
     ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]

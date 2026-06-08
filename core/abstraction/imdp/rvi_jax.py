@@ -44,9 +44,10 @@ def RVI_JAX(
 
     start_time = time.time()
 
-    phase1_initial_it = 100
-    phase1_increment_it = 0
+    phase1_initial_it = 10
+    phase1_increment_it = 10
     phase1_max_it = 100
+    fix_policy_above_value = 2 # >1 means this feature is disabled
 
     #####
 
@@ -80,7 +81,8 @@ def RVI_JAX(
         probs = sorted_lb + extra_probs
         lower_val = probs @ successor_values[sort]
         
-        return lower_val
+        # Clip the values to be within [0, 1], since they are probabilities
+        return jnp.clip(lower_val, 0.0, 1.0)
 
     vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0, 0, 0), out_axes=0))
 
@@ -238,19 +240,33 @@ def RVI_JAX(
 
     else:
         partial_convergence_reached = False
+        sat_policy = False
+        delta = float('inf')
 
         # Policy iteration
         for iteration in range(max_iterations):
+
             pbar.update(1)
-            postfix_dict = {}
-            if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-            pbar.set_postfix(postfix_dict)
 
             # Policy evaluation
             i = 0
             while True: # TODO: Remove this hardcoding
+
+                postfix_dict = {}
+                if s0 is not None:
+                    postfix_dict[f'eval_it'] = i
+                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
+                    postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
+
+                    # Check if policy is above the preset threshold quality
+                    if V[s0] > fix_policy_above_value:
+                        # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
+                        sat_policy = True
+                    else:
+                        sat_policy = False
+                pbar.set_postfix(postfix_dict)
+
                 # print(f'- Policy evaluation iteration {i + 1}...')
                 V_old = V.copy()
                 
@@ -272,8 +288,9 @@ def RVI_JAX(
                                                 sort_indices)
                     V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
                     # print(f'- Policy evaluation batch took: {time.time() - t:.6f} sec')
-                
-                if np.max(np.abs(V - V_old)) < epsilon or (
+
+                delta = np.max(np.abs(V - V_old))
+                if delta < epsilon or (
                     not partial_convergence_reached
                     and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
                 ):
@@ -282,26 +299,28 @@ def RVI_JAX(
                 i += 1
 
             # Policy evaluation + improvement
-            policy_old = policy.copy()
+            V_before_improvement = V.copy()
 
-            for state_batch in state_batches:
-                # t = time.time()
-                sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
-                # print(f'- Sort indices took: {time.time() - t:.6f} sec')
-                # t = time.time()
-                V_batch, policy_batch = vmap_state_policy_improvement(
-                                            jax.device_put(full_successors_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_lb_array[state_batch], args.rvi_device), 
-                                            jax.device_put(full_prob_ub_array[state_batch], args.rvi_device), 
-                                            V,
-                                            sort_indices)
-                V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
-                V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
-                policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
-                # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
-            
-            # Check convergence
-            if np.all(policy == policy_old):
+            if not sat_policy:
+                for state_batch in state_batches:
+                    # t = time.time()
+                    sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
+                    # print(f'- Sort indices took: {time.time() - t:.6f} sec')
+                    # t = time.time()
+                    V_batch, policy_batch = vmap_state_policy_improvement(
+                                                jax.device_put(full_successors_array[state_batch], args.rvi_device),
+                                                jax.device_put(full_prob_lb_array[state_batch], args.rvi_device),
+                                                jax.device_put(full_prob_ub_array[state_batch], args.rvi_device),
+                                                V,
+                                                sort_indices)
+                    V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
+                    V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
+                    policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
+                    # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
+
+            # Check convergence: improvement step is monotone, so max gain suffices
+            # TODO: Better validate the convergence criterion based on max gain (rather than checking if the policy is unchanged; which is less stable in case of multiple optimal policies)
+            if np.max(V - V_before_improvement) < epsilon:
                 if partial_convergence_reached:
                     pbar.write(f'Converged after {iteration + 1} iterations')
                     break
@@ -319,6 +338,10 @@ def RVI_JAX(
     for s in imdp.states:
         policy_labels[s] = imdp.A_id[s][int(policy[s])] if policy[s] != -1 and s in imdp.A_id else -1
 
-    policy_inputs = imdp.actions_inputs[policy_labels]
+    float_dtype = getattr(args, "floatprecision", np.float32)
+
+    mask = policy_labels >= 0
+    policy_inputs = np.full((imdp.nr_states, imdp.actions_inputs.shape[1]), fill_value=float('nan'), dtype=float_dtype)
+    policy_inputs[mask] = imdp.actions_inputs[policy_labels[mask]]
 
     return V, policy_labels, policy_inputs

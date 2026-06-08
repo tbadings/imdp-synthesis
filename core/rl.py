@@ -244,8 +244,14 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, discrete_a
                 )
             )
 
+    # Only plot max 100 trajectories
+    i_max = 100
+    i = 0
     for trace in trajectories:
+        if i >= i_max:
+            break
         ax.plot(trace[:, dims[0]], trace[:, dims[1]], linewidth=1.0, alpha=0.9, color="black")
+        i += 1
 
     ax.set_xlim(eval_env.obs_low[dims[0]], eval_env.obs_high[dims[0]])
     ax.set_ylim(eval_env.obs_low[dims[1]], eval_env.obs_high[dims[1]])
@@ -320,7 +326,7 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
-    rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1)]
+    rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1), (-1, 1), (-1, 1)]
     for cell in newly_visited:
         ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, rate)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")

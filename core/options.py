@@ -64,6 +64,8 @@ def parse_arguments(argv=None):
                         help="For computing the transition probability intervals, the number of states to process in a vectorized fashion (Warning: increasing this too much drastically increases memory usage for JIT compilation by JAX!)")
     parser.add_argument('--frs_batch_size', type=_positive_int, default=1000,
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
+    parser.add_argument('--shrink_frs', type=float, default=0.001,
+                        help="Amount to shrink forward reachable set bounds inward for numerical stability (avoids misclassification when the FRS lands exactly on a cell boundary).")
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
                         help='Logging verbosity level')
     parser.add_argument('--output_root', type=str, default='output',

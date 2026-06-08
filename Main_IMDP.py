@@ -79,11 +79,22 @@ if __name__ == '__main__':
         # Sparse partition can be created with, e.g.,
         partition = SparsePartition(model=model, active_states=active_states)
 
+        s_init_debug, s_init_exists = partition.x2state(model.x0)
+
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
         actions_inputs = actions.id_to_input
 
-        s_init_debug, s_init_exists = partition.x2state(model.x0)
+        if not s_init_exists:
+            raise ValueError(f"Initial state x0={model.x0} is not an active cell in the partition.")
+        # print(f"\n=== Forward reachable sets for initial state s0={s_init_debug} (x0={model.x0}) ===")
+        # for a_idx in range(len(actions.id_to_input)):
+        #     u = actions.id_to_input[a_idx]
+        #     lb = actions.frs_lb[s_init_debug, a_idx]
+        #     ub = actions.frs_ub[s_init_debug, a_idx]
+        #     idx_lb = actions.frs_idx_lb[s_init_debug, a_idx]
+        #     print(f"  action {a_idx:3d}: u={np.array(u)}  FRS=[{np.array(lb)}, {np.array(ub)}]  grid_idx_lb={np.array(idx_lb)}")
+        # print("=== End forward reachable sets ===\n")
 
         logger.info('Initial state x0=%s maps to state index %d (exists in partition: %s)',
                     model.x0, s_init_debug, s_init_exists)
@@ -93,6 +104,40 @@ if __name__ == '__main__':
                                                         actions=actions,
                                                         vectorized=True,
                                                         debug_state=s_init_debug if s_init_exists else None)
+
+        # --- Transition probability intervals for neutral action u=0 in initial state ---
+        s0 = s_init_debug
+        enabled_action_ids = A_id.get(s0, np.array([]))
+        critical_regions = np.array(partition.critical['bools'])
+        goal_regions     = np.array(partition.goal['bools'])
+        absorbing_state  = int(np.max(partition.regions['idxs'])) + 1
+        print(f"\n=== Transition intervals for s0={s0}, neutral action u=0 ===")
+        found = False
+        for local_idx, global_aid in enumerate(enabled_action_ids):
+            u = actions.id_to_input[global_aid]
+            if not np.allclose(u, 0):
+                continue
+            found = True
+            probs    = P_full[s0][local_idx]      # shape [num_successors, 2]
+            succ_ids = S_id[s0][local_idx]         # shape [num_successors]
+            p_abs    = P_absorbing[s0][local_idx]  # shape [2]
+            print(f"Action {global_aid} (u={np.array(u)}):")
+            print(f"  state {absorbing_state}: P=[{p_abs[0]:.6f}, {p_abs[1]:.6f}]  [ABSORBING]")
+            for k in range(len(probs)):
+                if probs[k, 1] == 0:
+                    continue
+                sid = int(succ_ids[k])
+                is_critical = bool(critical_regions[sid]) if sid < len(critical_regions) else False
+                is_goal     = bool(goal_regions[sid])     if sid < len(goal_regions)     else False
+                tag = ""
+                if is_critical:
+                    tag = "  [ABSORBING - critical]"
+                elif is_goal:
+                    tag = "  [ABSORBING - goal]"
+                print(f"  state {sid}: P=[{probs[k,0]:.6f}, {probs[k,1]:.6f}]{tag}")
+        if not found:
+            print("  No neutral action (u=0) found among enabled actions for s0.")
+        print("=== End ===\n")
 
         # assert False
         # del actions        
@@ -174,7 +219,7 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces
     from core.plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=100)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)

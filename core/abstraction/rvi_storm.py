@@ -233,6 +233,8 @@ def RVI_STORM(
             if labels:
                 policy_labels[s] = int(labels[0])
 
-    policy_inputs = imdp.actions_inputs[policy_labels]
+    mask = policy_labels >= 0
+    policy_inputs = np.full((imdp.nr_states, imdp.actions_inputs.shape[1]), fill_value=float('nan'), dtype=float_dtype)
+    policy_inputs[mask] = imdp.actions_inputs[policy_labels[mask]]
 
     return V, policy_labels, policy_inputs

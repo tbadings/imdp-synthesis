@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @partial(jax.jit, static_argnums=(0))
-def forward_reach(step_set, state_min, state_max, input, state_wrap, support_radius, number_per_dim, cell_width, boundary_lb, boundary_ub):
+def forward_reach(step_set, state_min, state_max, input, state_wrap, support_radius, number_per_dim, cell_width, boundary_lb, boundary_ub, shrink_frs):
     """
     Computes the forward reachable set for a given state region and control input.
 
@@ -46,6 +46,10 @@ def forward_reach(step_set, state_min, state_max, input, state_wrap, support_rad
 
     # Compute the continuous bounds of the forward reachable set
     frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
+
+    # Shrink frs bounds slightly for numerical stability (avoids issues when frs lands exactly on a cell boundary)
+    frs_min = frs_min + shrink_frs
+    frs_max = frs_max - shrink_frs
 
     frs_min_plus_noise = frs_min - support_radius
     frs_max_plus_noise = frs_max + support_radius
@@ -102,13 +106,13 @@ class RectangularForward(object):
         # This reduces Python–JAX round trips from num_regions to ceil(num_regions / frs_batch_size).
         vmap_over_actions = jax.vmap(
             forward_reach,
-            in_axes=(None, None, None, 0, None, None, None, None, None, None),
+            in_axes=(None, None, None, 0, None, None, None, None, None, None, None),
             out_axes=(0, 0, 0, 0, 0),
         )
         batch_forward_reach = jax.jit(
             jax.vmap(
                 vmap_over_actions,
-                in_axes=(None, 0, 0, None, None, None, None, None, None, None),
+                in_axes=(None, 0, 0, None, None, None, None, None, None, None, None),
                 out_axes=(0, 0, 0, 0, 0),
             ),
             static_argnums=(0),
@@ -157,6 +161,7 @@ class RectangularForward(object):
                 cw_dev,
                 blb_dev,
                 bub_dev,
+                args.shrink_frs,
             )
             flb, fub, fil, fiu = jax.device_get((flb, fub, fil, fiu))
             self.frs_lb[batch_start:batch_end] = flb
@@ -176,4 +181,5 @@ class RectangularForward(object):
         self.id = np.arange(len(self.id_to_input))
 
         logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
+        
         return

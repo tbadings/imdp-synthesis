@@ -34,7 +34,7 @@ class Drone4D(DroneDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-1, -1]
         self.uMax = [1 ,1]
-        self.num_actions = [11, 11]
+        self.num_actions = [5, 5]
 
         v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
         v_max = 3.5
