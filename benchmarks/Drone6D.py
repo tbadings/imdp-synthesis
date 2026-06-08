@@ -121,7 +121,7 @@ class Drone6D_small(DroneDynamics):
 
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -2, v_min], [7, v_max, 7, v_max, 2, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([42, 28, 42, 28, 6, 28]) # 7 not enough
+        self.partition['number_per_dim'] = np.array([42, 28, 42, 28, 42, 28]) # 7 not enough
 
         self.goal = np.array([
             [[3, v_min, 3, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]]

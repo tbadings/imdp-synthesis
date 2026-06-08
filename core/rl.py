@@ -246,13 +246,13 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
             )
 
     # Only plot max 100 trajectories
-    i_max = 100
-    i = 0
+    # i_max = 100
+    # i = 0
     for trace in trajectories:
-        if i >= i_max:
-            break
+        # if i >= i_max:
+        #     break
         ax.plot(trace[:, dims[0]], trace[:, dims[1]], linewidth=1.0, alpha=0.9, color="black")
-        i += 1
+        # i += 1
 
     ax.set_xlim(eval_env.obs_low[dims[0]], eval_env.obs_high[dims[0]])
     ax.set_ylim(eval_env.obs_low[dims[1]], eval_env.obs_high[dims[1]])
