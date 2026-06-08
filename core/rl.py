@@ -1,5 +1,6 @@
 import multiprocessing
 from dataclasses import dataclass
+from pathlib import Path
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -158,7 +159,7 @@ class BenchmarkRLEnv(gym.Env):
         }
         return self.state.copy(), float(reward), terminated, truncated, info
 
-def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, discrete_actions=None):
+def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, discrete_actions=None):
     norm_env.training = False
     norm_env.norm_reward = False
 
@@ -260,7 +261,11 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, discrete_a
     ax.set_title(f"PPO trajectories ({base_model.__class__.__name__})")
     ax.legend(loc="best")
     plt.tight_layout()
-    plt.show()
+    output_dir = Path(getattr(args, 'output_dir', 'output'))
+    output_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(output_dir / 'rl_trajectories.pdf', format='pdf', bbox_inches='tight')
+    plt.savefig(output_dir / 'rl_trajectories.png', format='png', bbox_inches='tight')
+    plt.close(fig)
 
     total_cells = int(np.prod(base_model.partition['number_per_dim']))
     return reached_goal, visited_cells, total_cells
@@ -317,6 +322,7 @@ def find_active(model, args, previous_cells):
         cfg=cfg,
         episodes=args.eval_episodes,
         dims=list(model.plot_dimensions),
+        args=args,
         discrete_actions=discrete_actions,
     )
 
