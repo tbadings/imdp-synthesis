@@ -1,6 +1,7 @@
 import multiprocessing
 from dataclasses import dataclass
 from pathlib import Path
+from time import time
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -163,6 +164,8 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     norm_env.training = False
     norm_env.norm_reward = False
 
+    t = time()
+
     eval_env = BenchmarkRLEnv(base_model, cfg)
     reached_goal = 0
     visited_cells = set()
@@ -211,6 +214,9 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
 
     if len(dims) != 2:
         raise ValueError("This runner currently supports plotting exactly 2 dimensions.")
+
+    print(f"- Evaluation rollouts completed in {time() - t:.2f} seconds.")
+    t = time()
 
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
@@ -266,6 +272,8 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     plt.savefig(output_dir / 'rl_trajectories.pdf', format='pdf', bbox_inches='tight')
     plt.savefig(output_dir / 'rl_trajectories.png', format='png', bbox_inches='tight')
     plt.close(fig)
+
+    print(f"- Rollouts plotted completed in {time() - t:.2f} seconds.")
 
     total_cells = int(np.prod(base_model.partition['number_per_dim']))
     return reached_goal, visited_cells, total_cells
