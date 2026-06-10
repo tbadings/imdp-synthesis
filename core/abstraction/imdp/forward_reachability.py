@@ -118,26 +118,18 @@ class RectangularForward(object):
             static_argnums=(0),
         )
 
-        # Generate discrete action grid by taking Cartesian product of actions per dimension
-        discrete_actions_per_dimension = [
-            np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i])
-            for i in range(len(model.num_actions))
-        ]
-        self.id_to_input = jnp.array(list(itertools.product(*discrete_actions_per_dimension)))
-
         t = time.time()
 
         # Allocate output arrays
-        num_regions = len(partition.regions['lower_bounds'])
-        num_actions = partition.regions['actions'].shape[1]
-        self.frs_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=args.floatprecision)
+        self.num_regions = len(partition.regions['lower_bounds'])
+        self.num_actions = partition.regions['actions'].shape[1]
+        self.frs_lb = np.zeros((self.num_regions, self.num_actions, partition.dimension), dtype=args.floatprecision)
         self.frs_ub = np.zeros_like(self.frs_lb)
-        self.frs_idx_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=np.int16)
+        self.frs_idx_lb = np.zeros((self.num_regions, self.num_actions, partition.dimension), dtype=np.int16)
         # max_slice is computed incrementally per batch to avoid storing frs_idx_ub
         max_span = np.zeros(partition.dimension, dtype=int)
 
         # Pre-load shared (non-batched) tensors to device once to avoid repeated transfers
-        inputs_dev = jax.device_put(self.id_to_input)
         wrap_dev = jax.device_put(model.wrap)
         support_radius_dev = jax.device_put(model.noise['support_radius'])
         npd_dev = jax.device_put(partition.number_per_dim)
@@ -147,14 +139,22 @@ class RectangularForward(object):
 
         # Process state regions in batches: each call handles a [batch, num_actions] computation
         # instead of one [num_actions] computation, reducing Python–JAX round trips by frs_batch_size.
-        starts, ends = create_batches(num_regions, args.frs_batch_size)
+        starts, ends = create_batches(self.num_regions, args.frs_batch_size)
         pbar = tqdm(zip(starts, ends), total=len(starts))
         for batch_start, batch_end in pbar:
+            batch_size = batch_end - batch_start
+            actions_slice = partition.regions['actions']
+            # RectangularPartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
+            # SparsePartition stores (num_states, num_actions, action_dim); slice normally.
+            if actions_slice.shape[0] == 1:
+                actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))
+            else:
+                actions_batch = actions_slice[batch_start:batch_end]
             flb, fub, _, fil, fiu = batch_forward_reach(
                 model.step_set,
                 partition.regions['lower_bounds'][batch_start:batch_end],
                 partition.regions['upper_bounds'][batch_start:batch_end],
-                partition.regions['actions'][batch_start:batch_end],
+                actions_batch,
                 wrap_dev,
                 support_radius_dev,
                 npd_dev,
@@ -174,11 +174,10 @@ class RectangularForward(object):
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations
         self.max_slice = tuple(max_span.tolist())
-        print(f"Max slice: {self.max_slice}")
-        print(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
-        # Create array of action indices for efficient indexing        
-        
-        self.id = np.arange(len(self.id_to_input))
+        logger.info(f"- Max state-slice to compute probability intervals over (including noise): {self.max_slice}")
+        logger.info(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
+
+        self.id = np.arange(self.num_actions)
 
         logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
         

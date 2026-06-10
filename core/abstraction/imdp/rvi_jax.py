@@ -25,11 +25,11 @@ def RVI_JAX(
     BATCH_SIZE: int = 2000, 
     policy_iteration: bool = False,
     return_Q_values: bool = False
-) -> Tuple[Float32[Array, "nr_states"], Bool, UInt8[Array, "nr_states"], Float32[Array, "nr_states p"]]:
+) -> Tuple[Float32[Array, "nr_states"], UInt8[Array, "nr_states"]]:
 
     """
     Robust value iteration for interval MDPs.
-    
+
     :param args: Argument namespace
     :param imdp: Instance of IMDP class
     :param s0: Initial state for tracking
@@ -39,7 +39,7 @@ def RVI_JAX(
     :param BATCH_SIZE: Batch size for state updates
     :param policy_iteration: Whether to use policy iteration instead of value iteration
     :param return_Q_values: Whether to return Q-values for all state-action pairs
-    :return: Tuple of (values, Q-values, policy_labels, policy_inputs)
+    :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
 
     start_time = time.time()
@@ -338,10 +338,4 @@ def RVI_JAX(
     for s in imdp.states:
         policy_labels[s] = imdp.A_id[s][int(policy[s])] if policy[s] != -1 and s in imdp.A_id else -1
 
-    float_dtype = getattr(args, "floatprecision", np.float32)
-
-    mask = policy_labels >= 0
-    policy_inputs = np.full((imdp.nr_states, imdp.actions_inputs.shape[1]), fill_value=float('nan'), dtype=float_dtype)
-    policy_inputs[mask] = imdp.actions_inputs[policy_labels[mask]]
-
-    return V, policy_labels, policy_inputs
+    return V, policy_labels

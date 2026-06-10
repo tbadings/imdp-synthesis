@@ -6,12 +6,11 @@ class IMDP:
     Class to construct the IMDP abstraction.
     """
 
-    def __init__(self, partition, states, actions_inputs, x0, goal_regions, critical_regions, P_full, S_id, A_id, P_absorbing):
+    def __init__(self, partition, states, x0, goal_regions, critical_regions, P_full, S_id, A_id, P_absorbing):
         '''
         Generate the IMDP abstraction
 
         :param partition:
-        :param actions_inputs:
         :param states:
         :param x0:
         :param goal_regions:
@@ -21,7 +20,7 @@ class IMDP:
         :param A_id:
         :param P_absorbing:
         '''
-        self.actions_inputs = actions_inputs
+        
         self.states = states
 
         self.goal_regions = goal_regions

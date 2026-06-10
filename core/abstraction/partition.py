@@ -1,3 +1,4 @@
+import itertools
 import logging
 import time
 
@@ -196,11 +197,22 @@ class RectangularPartition(object):
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
         logger.debug(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
 
+        # Generate discrete action grid by taking Cartesian product of actions per dimension
+        discrete_actions_per_dimension = [
+            np.linspace(model.uMin[i], model.uMax[i], num=model.num_actions[i])
+            for i in range(len(model.num_actions))
+        ]
+        action_array = jnp.array(list(itertools.product(*discrete_actions_per_dimension)))
+        # Store as (1, num_actions, action_dim) — broadcast in forward_reachability to avoid
+        # materializing a (num_states, num_actions, action_dim) array for large rectangular partitions.
+        actions = action_array[None, :, :].astype(float)
+
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
             'idxs': region_idxs,
             'lower_bounds': lower_bounds,
             'upper_bounds': upper_bounds,
+            'actions': actions,
             'all_vertices': all_vertices,
             'A': all_A,
             'b': all_b
@@ -276,6 +288,7 @@ class RectangularPartition(object):
         logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 
         logger.info(f"(Number of states: {len(self.regions['idxs'])})")
+        logger.info(f"(Number of actions: {actions.shape[1]})")
         return
 
     def x2state(self, x):
@@ -317,7 +330,7 @@ class SparsePartition(object):
     """
 
     def __init__(self, model, active_states, active_actions, verbose=False):
-        print('Define non-rectangular (sparse) partition...')
+        logger.info('Define non-rectangular (sparse) partition...')
         t_total = time.time()
 
         self.dimension = model.n
@@ -395,7 +408,12 @@ class SparsePartition(object):
         example = active_actions[tuple(np.array(centers_unit[0]))]
         actions = np.zeros(shape=(len(centers_unit), example.shape[0], example.shape[1]), dtype=float)
         for i in range(len(centers_unit)):
-            actions[i] = active_actions[tuple(np.array(centers_unit[i]))] 
+            a = active_actions[tuple(np.array(centers_unit[i]))]
+            assert a.shape == example.shape, (
+                f"State {i} has action shape {a.shape}, expected {example.shape}. "
+                "All states must have the same number of actions."
+            )
+            actions[i] = a
         actions = jnp.array(actions, dtype=float)
     
         self.regions = {
@@ -479,6 +497,7 @@ class SparsePartition(object):
         logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 
         logger.info(f"(Number of states: {len(self.regions['idxs'])})")
+        logger.info(f"(Number of actions: {actions.shape[1]})")
         return
 
     def x2state(self, x):

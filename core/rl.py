@@ -1,3 +1,4 @@
+import logging
 import multiprocessing
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +14,8 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 import itertools
 import benchmarks
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class RLConfig:
@@ -215,7 +218,7 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     if len(dims) != 2:
         raise ValueError("This runner currently supports plotting exactly 2 dimensions.")
 
-    print(f"- Evaluation rollouts completed in {time() - t:.2f} seconds.")
+    logger.info(f"- Evaluation rollouts completed in {time() - t:.2f} seconds.")
     t = time()
 
     fig = plt.figure(figsize=(8, 8))
@@ -273,7 +276,7 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     plt.savefig(output_dir / 'rl_trajectories.png', format='png', bbox_inches='tight')
     plt.close(fig)
 
-    print(f"- Rollouts plotted completed in {time() - t:.2f} seconds.")
+    logger.info(f"- Rollouts plotted completed in {time() - t:.2f} seconds.")
 
     total_cells = int(np.prod(base_model.partition['number_per_dim']))
     return reached_goal, visited_cells, total_cells
@@ -284,13 +287,19 @@ def _build_vec_env(base_model, cfg, n_envs, use_subproc, previous_cells):
     vec_env = make_vec_env(BenchmarkRLEnv, n_envs=n_envs, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls)
     return VecNormalize(vec_env, norm_obs=True, norm_reward=True)
 
-def find_policy_action(obs, ppo, vec_env, discrete_actions, num):
-    #reutrn num discrete actions closest to the action predicted by the policy
-    norm_obs = vec_env.normalize_obs(np.expand_dims(obs, axis=0))[0]
-    action, _ = ppo.predict(norm_obs, deterministic=True)
-    dists = np.linalg.norm(discrete_actions - action, axis=1)
-    closest_indices = np.argsort(dists)[:num]
-    return discrete_actions[closest_indices]
+def find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num):
+    """Return the `num` nearest discrete actions for each observation in obs_batch.
+
+    obs_batch : (N, obs_dim) float32
+    Returns   : (N, num, action_dim) float32
+    """
+    norm_obs = vec_env.normalize_obs(obs_batch)                          # (N, obs_dim)
+    actions, _ = ppo.predict(norm_obs, deterministic=True)               # (N, action_dim)
+    dists = np.linalg.norm(
+        actions[:, None, :] - discrete_actions[None, :, :], axis=2       # (N, N_discrete)
+    )
+    top_k_idx = np.argsort(dists, axis=1)[:, :num]                       # (N, num)
+    return discrete_actions[top_k_idx]                                   # (N, num, action_dim)
 
 def find_active(model, args, previous_cells):
     cfg = RLConfig(
@@ -344,10 +353,10 @@ def find_active(model, args, previous_cells):
         discrete_actions=discrete_actions,
     )
 
-    print (f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
+    logger.info(f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
+    t = time()
 
     active_states = set()
-    active_actions = dict()
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
@@ -365,13 +374,21 @@ def find_active(model, args, previous_cells):
                     break
             if valid:
                 active_states.add(neighbor)
-                active_actions[neighbor] = find_policy_action(
-                    val_env.obs_low + (np.asarray(neighbor, dtype=np.float32) + 0.5) * val_env.bin_widths, 
-                    ppo,
-                    vec_env,
-                    discrete_actions,
-                    num=args.action_size,
-                )
 
-    active_states = np.array(list(active_states), dtype=int)
+    logger.info(f"- Active states extraction completed in {time() - t:.2f} seconds.")
+    t = time()
+
+    # One batched forward pass for all active states instead of one call per state.
+    active_states_list = list(active_states)
+    obs_batch = np.array(
+        [val_env.obs_low + (np.asarray(s, dtype=np.float32) + 0.5) * val_env.bin_widths
+         for s in active_states_list],
+        dtype=np.float32,
+    )
+    top_k = find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num=args.RL_actions_per_state)
+    active_actions = {s: top_k[i] for i, s in enumerate(active_states_list)}
+
+    logger.info(f"- Active state/action extraction completed in {time() - t:.2f} seconds.")
+
+    active_states = np.array(active_states_list, dtype=int)
     return active_states, active_actions

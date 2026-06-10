@@ -64,7 +64,6 @@ def _compute_initial_value(model_name: str):
     imdp = IMDP(
         partition=partition,
         states=np.array(partition.regions["idxs"]),
-        actions_inputs=actions.id_to_input,
         x0=model.x0,
         goal_regions=np.array(partition.goal["bools"]),
         critical_regions=np.array(partition.critical["bools"]),
@@ -75,7 +74,7 @@ def _compute_initial_value(model_name: str):
     )
 
     s0 = partition.x2state(model.x0)[0]
-    V, _, _ = RVI_JAX(
+    V, _ = RVI_JAX(
         args=args,
         imdp=imdp,
         s0=s0,

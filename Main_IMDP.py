@@ -73,7 +73,8 @@ if __name__ == '__main__':
         t = time.time()
 
         active_states, active_actions = find_active(model, args=args, previous_cells=set())
-        print(f"Identified {len(active_states)} active states from RL exploration.")
+        logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+
         # Create partition of the continuous state space into convex polytope
         # partition = RectangularPartition(model=model)
         # Sparse partition can be created with, e.g.,
@@ -83,10 +84,10 @@ if __name__ == '__main__':
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
-        actions_inputs = actions.id_to_input
-
+        
         if not s_init_exists:
             raise ValueError(f"Initial state x0={model.x0} is not an active cell in the partition.")
+        
         # print(f"\n=== Forward reachable sets for initial state s0={s_init_debug} (x0={model.x0}) ===")
         # for a_idx in range(len(actions.id_to_input)):
         #     u = actions.id_to_input[a_idx]
@@ -106,38 +107,38 @@ if __name__ == '__main__':
                                                         debug_state=s_init_debug if s_init_exists else None)
 
         # --- Transition probability intervals for neutral action u=0 in initial state ---
-        s0 = s_init_debug
-        enabled_action_ids = A_id.get(s0, np.array([]))
-        critical_regions = np.array(partition.critical['bools'])
-        goal_regions     = np.array(partition.goal['bools'])
-        absorbing_state  = int(np.max(partition.regions['idxs'])) + 1
-        print(f"\n=== Transition intervals for s0={s0}, neutral action u=0 ===")
-        found = False
-        for local_idx, global_aid in enumerate(enabled_action_ids):
-            u = actions.id_to_input[global_aid]
-            if not np.allclose(u, 0):
-                continue
-            found = True
-            probs    = P_full[s0][local_idx]      # shape [num_successors, 2]
-            succ_ids = S_id[s0][local_idx]         # shape [num_successors]
-            p_abs    = P_absorbing[s0][local_idx]  # shape [2]
-            print(f"Action {global_aid} (u={np.array(u)}):")
-            print(f"  state {absorbing_state}: P=[{p_abs[0]:.6f}, {p_abs[1]:.6f}]  [ABSORBING]")
-            for k in range(len(probs)):
-                if probs[k, 1] == 0:
-                    continue
-                sid = int(succ_ids[k])
-                is_critical = bool(critical_regions[sid]) if sid < len(critical_regions) else False
-                is_goal     = bool(goal_regions[sid])     if sid < len(goal_regions)     else False
-                tag = ""
-                if is_critical:
-                    tag = "  [ABSORBING - critical]"
-                elif is_goal:
-                    tag = "  [ABSORBING - goal]"
-                print(f"  state {sid}: P=[{probs[k,0]:.6f}, {probs[k,1]:.6f}]{tag}")
-        if not found:
-            print("  No neutral action (u=0) found among enabled actions for s0.")
-        print("=== End ===\n")
+        # s0 = s_init_debug
+        # enabled_action_ids = A_id.get(s0, np.array([]))
+        # critical_regions = np.array(partition.critical['bools'])
+        # goal_regions     = np.array(partition.goal['bools'])
+        # absorbing_state  = int(np.max(partition.regions['idxs'])) + 1
+        # print(f"\n=== Transition intervals for s0={s0}, neutral action u=0 ===")
+        # found = False
+        # for local_idx, global_aid in enumerate(enabled_action_ids):
+        #     u = actions.id_to_input[global_aid]
+        #     if not np.allclose(u, 0):
+        #         continue
+        #     found = True
+        #     probs    = P_full[s0][local_idx]      # shape [num_successors, 2]
+        #     succ_ids = S_id[s0][local_idx]         # shape [num_successors]
+        #     p_abs    = P_absorbing[s0][local_idx]  # shape [2]
+        #     print(f"Action {global_aid} (u={np.array(u)}):")
+        #     print(f"  state {absorbing_state}: P=[{p_abs[0]:.6f}, {p_abs[1]:.6f}]  [ABSORBING]")
+        #     for k in range(len(probs)):
+        #         if probs[k, 1] == 0:
+        #             continue
+        #         sid = int(succ_ids[k])
+        #         is_critical = bool(critical_regions[sid]) if sid < len(critical_regions) else False
+        #         is_goal     = bool(goal_regions[sid])     if sid < len(goal_regions)     else False
+        #         tag = ""
+        #         if is_critical:
+        #             tag = "  [ABSORBING - critical]"
+        #         elif is_goal:
+        #             tag = "  [ABSORBING - goal]"
+        #         print(f"  state {sid}: P=[{probs[k,0]:.6f}, {probs[k,1]:.6f}]{tag}")
+        # if not found:
+        #     print("  No neutral action (u=0) found among enabled actions for s0.")
+        # print("=== End ===\n")
 
         # assert False
         # del actions        
@@ -156,11 +157,8 @@ if __name__ == '__main__':
         #     print(actions.id_to_input[labels])
         # print(P_full[14649][1], S_id[14649][1], A_id[14649][1], P_absorbing[14649][1])
 
-
-
         imdp = IMDP(partition=partition,
                     states=np.array(partition.regions['idxs']),
-                    actions_inputs=actions_inputs,
                     x0=model.x0,
                     goal_regions=np.array(partition.goal['bools']),
                     critical_regions=np.array(partition.critical['bools']),
@@ -188,23 +186,34 @@ if __name__ == '__main__':
     t = time.time()
     if args.solver == 'jax':
         with jax.default_device(args.rvi_device):
-            V, policy, policy_inputs = RVI_JAX(
+            V, policy = RVI_JAX(
                 args=args,
                 imdp=imdp,
                 s0=partition.x2state(model.x0)[0],
                 max_iterations=10000,
                 epsilon=1e-6,
                 RND_SWEEPS=True,
-                BATCH_SIZE=1000,
+                BATCH_SIZE=10000,
                 policy_iteration=args.policy_iteration,
             )
         logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
     else:
-        V, policy, policy_inputs = RVI_STORM(
+        V, policy = RVI_STORM(
             args=args,
             imdp=imdp,
         )
         logger.info('RVI with Storm took %.3f sec.', (time.time() - t))
+
+    # Extract policy
+    float_dtype = getattr(args, "floatprecision", np.float32)
+    # Define concrete policy (but exclude final IMDP state, which is absorbing and has no actions)
+    actions_np = np.array(partition.regions['actions'])
+    # RectangularPartition stores (1, num_actions, action_dim); SparsePartition stores (num_states, ...).
+    if actions_np.shape[0] == 1:
+        actions_np = np.broadcast_to(actions_np, (imdp.nr_states - 1, *actions_np.shape[1:]))
+    policy_inputs = np.full((imdp.nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype)
+    mask = policy[:-1] >= 0
+    policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
 
     s0 = partition.x2state(model.x0)[0]
     logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    

@@ -232,7 +232,6 @@ def RVI_STORM(
 
             if labels:
                 policy_labels[s] = int(labels[0])
+    
+    return V, policy_labels
 
-    policy_inputs = imdp.actions_inputs[policy_labels]
-
-    return V, policy_labels, policy_inputs
