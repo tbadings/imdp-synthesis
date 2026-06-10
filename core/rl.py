@@ -284,6 +284,14 @@ def _build_vec_env(base_model, cfg, n_envs, use_subproc, previous_cells):
     vec_env = make_vec_env(BenchmarkRLEnv, n_envs=n_envs, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls)
     return VecNormalize(vec_env, norm_obs=True, norm_reward=True)
 
+def find_policy_action(obs, ppo, vec_env, discrete_actions, num):
+    #reutrn num discrete actions closest to the action predicted by the policy
+    norm_obs = vec_env.normalize_obs(np.expand_dims(obs, axis=0))[0]
+    action, _ = ppo.predict(norm_obs, deterministic=True)
+    dists = np.linalg.norm(discrete_actions - action, axis=1)
+    closest_indices = np.argsort(dists)[:num]
+    return discrete_actions[closest_indices]
+
 def find_active(model, args, previous_cells):
     cfg = RLConfig(
         max_steps=args.max_steps,
@@ -300,8 +308,10 @@ def find_active(model, args, previous_cells):
         use_subproc=args.subproc,
         previous_cells=previous_cells,
     )
-    import torch as th
-    policy_kwargs = dict(activation_fn=th.nn.ReLU,
+
+    val_env = BenchmarkRLEnv(model, cfg)
+
+    policy_kwargs = dict(activation_fn=torch.nn.ReLU,
                      net_arch=dict(pi=[128, 128], vf=[128, 128]))
 
     ppo = PPO(
@@ -337,6 +347,7 @@ def find_active(model, args, previous_cells):
     print (f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
 
     active_states = set()
+    active_actions = dict()
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
@@ -354,6 +365,13 @@ def find_active(model, args, previous_cells):
                     break
             if valid:
                 active_states.add(neighbor)
+                active_actions[neighbor] = find_policy_action(
+                    val_env.obs_low + (np.asarray(neighbor, dtype=np.float32) + 0.5) * val_env.bin_widths, 
+                    ppo,
+                    vec_env,
+                    discrete_actions,
+                    num=args.action_size,
+                )
 
     active_states = np.array(list(active_states), dtype=int)
-    return active_states
+    return active_states, active_actions

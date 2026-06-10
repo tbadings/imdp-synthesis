@@ -316,7 +316,7 @@ class SparsePartition(object):
     and the entirety of these regions form a structured grid within the state space.
     """
 
-    def __init__(self, model, active_states, verbose=False):
+    def __init__(self, model, active_states, active_actions, verbose=False):
         print('Define non-rectangular (sparse) partition...')
         t_total = time.time()
 
@@ -391,12 +391,19 @@ class SparsePartition(object):
         vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, None), out_axes=(0, 0)))
         all_A, all_b = vmap_center2halfspace(centers, self.cell_width)
         logger.debug(f'- Halfspace inequalities (Ax <= b) defined (took {(time.time() - t):.3f} sec.)')
-
+        
+        example = active_actions[tuple(np.array(centers_unit[0]))]
+        actions = np.zeros(shape=(len(centers_unit), example.shape[0], example.shape[1]), dtype=float)
+        for i in range(len(centers_unit)):
+            actions[i] = active_actions[tuple(np.array(centers_unit[i]))] 
+        actions = jnp.array(actions, dtype=float)
+    
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
             'idxs': region_idxs,
             'lower_bounds': lower_bounds,
             'upper_bounds': upper_bounds,
+            'actions': actions,
             'all_vertices': all_vertices,
             'A': all_A,
             'b': all_b

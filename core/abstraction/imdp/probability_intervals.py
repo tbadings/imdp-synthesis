@@ -203,7 +203,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
     actions_id = np.asarray(actions.id)
 
-    nrA = len(actions_id)
+    nrA = partition.regions['actions'].shape[1]
     if vectorized:
 
         starts, ends = create_batches(len(partition.regions['idxs']), batch_size=args.batch_size)
@@ -261,7 +261,7 @@ def compute_probability_intervals(args, model, partition, actions, vectorized=Tr
 
             for idx, s in enumerate(range(i, j)):
                 keep_mask = keep_actions[idx]
-                action_labels[s] = actions_id[keep_mask]
+                action_labels[s] = keep_mask
                 interval_matrix[s] = p[idx, keep_mask]
                 successor_id[s] = s_id[idx, keep_mask]
                 interval_absorbing[s] = p_abs[idx, keep_mask]

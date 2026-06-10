@@ -112,7 +112,7 @@ class RectangularForward(object):
         batch_forward_reach = jax.jit(
             jax.vmap(
                 vmap_over_actions,
-                in_axes=(None, 0, 0, None, None, None, None, None, None, None, None),
+                in_axes=(None, 0, 0, 0, None, None, None, None, None, None, None),
                 out_axes=(0, 0, 0, 0, 0),
             ),
             static_argnums=(0),
@@ -129,7 +129,7 @@ class RectangularForward(object):
 
         # Allocate output arrays
         num_regions = len(partition.regions['lower_bounds'])
-        num_actions = len(self.id_to_input)
+        num_actions = partition.regions['actions'].shape[1]
         self.frs_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=args.floatprecision)
         self.frs_ub = np.zeros_like(self.frs_lb)
         self.frs_idx_lb = np.zeros((num_regions, num_actions, partition.dimension), dtype=np.int16)
@@ -154,7 +154,7 @@ class RectangularForward(object):
                 model.step_set,
                 partition.regions['lower_bounds'][batch_start:batch_end],
                 partition.regions['upper_bounds'][batch_start:batch_end],
-                inputs_dev,
+                partition.regions['actions'][batch_start:batch_end],
                 wrap_dev,
                 support_radius_dev,
                 npd_dev,

@@ -76,6 +76,8 @@ def parse_arguments(argv=None):
                              'model, partition, and IMDP are loaded from the checkpoint.')
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, save checkpoints during execution")
+    parser.add_argument('--action_size', type=_positive_int, default=4,
+                        help="The number of actions to consider per state")
 
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
@@ -86,7 +88,7 @@ def parse_arguments(argv=None):
                         help="If True, plot ticks in figures")
 
     parser.add_argument("--total_timesteps", type=int, default=20000)
-    parser.add_argument("--eval_episodes", type=int, default=50)
+    parser.add_argument("--eval_episodes", type=int, default=2500)
     parser.add_argument("--max_steps", type=int, default=200)
 
     parser.add_argument("--goal_reward", type=float, default=10.0)
