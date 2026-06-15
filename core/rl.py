@@ -321,7 +321,7 @@ def find_active(model, args, previous_cells):
     val_env = BenchmarkRLEnv(model, cfg)
 
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
-                     net_arch=dict(pi=[128, 128], vf=[128, 128]))
+                     net_arch=dict(pi=[128, 128, 128], vf=[128, 128, 128]))
 
     ppo = PPO(
         "MlpPolicy",
@@ -360,7 +360,7 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
-    rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1), (-1, 1), (-1, 1)]
+    rate = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-2, 2), (-1, 1)]
     for cell in newly_visited:
         ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, rate)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")

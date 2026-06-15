@@ -22,6 +22,11 @@ from core.rl import find_active
 
 if __name__ == '__main__':
     args = parse_arguments()
+
+    args.model = 'Drone4D'
+    args.decimals = 9
+    args.pAbs_min = 0
+
     configure_logging(args.log_level)
     logger = logging.getLogger(__name__)
 
@@ -105,6 +110,46 @@ if __name__ == '__main__':
                                                         actions=actions,
                                                         vectorized=True,
                                                         debug_state=s_init_debug if s_init_exists else None)
+             
+        s = s_init_debug
+
+        frs_lb = actions.frs_lb[s][0]
+        print('frs_lb: ', frs_lb)
+        frs_ub = actions.frs_ub[s][0]
+        print('frs_ub: ', frs_ub)
+
+        frs_idx_lb = actions.frs_idx_lb[s][0]
+        print('frs_idx_lb: ', frs_idx_lb)
+
+        frs_idx_ub = frs_idx_lb + actions.max_slice - 1
+        print('frs_idx_ub: ', frs_idx_ub)
+
+        import math
+        from scipy.stats import norm
+
+        # x dimension
+        mu1, sigma = frs_lb[0], 0.15  # Standard normal distribution
+        mu2, sigma = frs_ub[0], 0.15  # Standard normal distribution
+        a, b = partition.regions_per_dim['lower_bounds'][0][frs_idx_lb[0]], partition.regions_per_dim['upper_bounds'][0][frs_idx_ub[0]]
+        prob_x1 = norm.cdf(b, mu1, sigma) - norm.cdf(a, mu1, sigma)
+        prob_x2 = norm.cdf(b, mu2, sigma) - norm.cdf(a, mu2, sigma)
+        print('Min probability for x dimension: ', min(prob_x1, prob_x2))
+        print('Max probability for x dimension: ', max(prob_x1, prob_x2))
+
+        # y dimension
+        mu1, sigma = frs_lb[2], 0.15  # Standard normal distribution
+        mu2, sigma = frs_ub[2], 0.15  # Standard normal distribution
+        a, b = partition.regions_per_dim['lower_bounds'][2][frs_idx_lb[2]], partition.regions_per_dim['upper_bounds'][2][frs_idx_ub[2]]
+        prob_y1 = norm.cdf(b, mu1, sigma) - norm.cdf(a, mu1, sigma)
+        prob_y2 = norm.cdf(b, mu2, sigma) - norm.cdf(a, mu2, sigma)
+        print('Min probability for y dimension: ', min(prob_y1, prob_y2))
+        print('Max probability for y dimension: ', max(prob_y1, prob_y2))
+
+        print('Min prob to reach absorbing: ', 1 - max(prob_x1, prob_x2) * max(prob_y1, prob_y2))
+        print('Max prob to reach absorbing: ', 1 - min(prob_x1, prob_x2) * min(prob_y1, prob_y2))
+        
+        print('Computed P_absorbing: ', P_absorbing[s][0])
+        print()
 
         # --- Transition probability intervals for initial state (debug) ---
         # s0 = s_init_debug

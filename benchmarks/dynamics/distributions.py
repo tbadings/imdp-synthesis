@@ -12,7 +12,7 @@ def _integ_Gauss(x_lb, x_ub, x, stdev):
 	:param stdev: Standard deviation of the Gaussian distribution.
 	:return:
 	'''
-	eps = 1e-4  # Add tiny epsilon to avoid NaN problems if the Gaussian is a Dirac (i.e., stdev=0) and x_lb or x_ub equals x
+	eps = 1e-6  # Add tiny epsilon to avoid NaN problems if the Gaussian is a Dirac (i.e., stdev=0) and x_lb or x_ub equals x
 	return jax.scipy.stats.norm.cdf(x_ub, x + eps, stdev) - jax.scipy.stats.norm.cdf(x_lb, x + eps, stdev)
 
 

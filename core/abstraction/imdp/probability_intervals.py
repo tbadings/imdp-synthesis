@@ -53,11 +53,15 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
     # Grid indices of those cells in each dimension.
     prob_idx = [jnp.arange(max_slice[i]) + i_lb[i] for i in range(n)]
 
+    # Spatial bounding box of the slice (first/last cell boundary per dimension).
+    slice_lb = jnp.stack([xl[0]  for xl in x_lb])
+    slice_ub = jnp.stack([xu[-1] for xu in x_ub])
+
     # Switch explicitly on noise type to avoid silently accepting unsupported distributions.
     noise_type = noise['type']
     if noise_type in ('Gaussian', 'Triangular'):
         _, prob_low, prob_high = noise.prob_minmax_per_dim(n, wrap, x_lb, x_ub, mean_lb, mean_ub, state_space_ub - state_space_lb)
-        prob_state_space = noise.prob_minmax(state_space_lb, state_space_ub, mean_lb, mean_ub, wrap_array)
+        prob_in_slice = noise.prob_minmax(slice_lb, slice_ub, mean_lb, mean_ub, wrap_array)
     else:
         raise ValueError(f'Unsupported noise type: {noise_type}. Expected Gaussian or Triangular.')
 
@@ -111,9 +115,10 @@ def interval_distribution(i_lb, mean_lb, mean_ub, *,
     # Pack lower and upper bounds: prob[s] = [lb, ub].
     prob = jnp.stack([prob_low_prod, prob_high_prod]).T
 
-    # Total probability of leaving the state space: invert prob_state_space ([lb_in, ub_in])
+    # Absorbing probability = P(NOT in slice), covering both P(outside state space) and
+    # P(in state space but outside the slice window). Invert prob_in_slice ([lb_in, ub_in])
     # and add the missing-cell contribution.
-    prob_absorbing = jnp.round(1 - prob_state_space[::-1], decimals)
+    prob_absorbing = jnp.round(1 - prob_in_slice[::-1], decimals)
     prob_absorbing = jnp.maximum(p_lowest * (prob_absorbing[1] > 0), prob_absorbing)
     prob_absorbing = prob_absorbing + missing_absorbing
 
