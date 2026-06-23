@@ -51,4 +51,8 @@ class Dubins4D(DubinsDynamics4D):
 
         self.x0 = np.array([-3, 2, 0, 0])
 
+        self.pi_arch = [128, 128]
+        self.vf_arch = [128, 128]
+        self.inflation_rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1)]
+
         return

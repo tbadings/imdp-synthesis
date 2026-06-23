@@ -49,6 +49,10 @@ class Pendulum(PendulumDynamics):
 
         self.x0 = np.array([0.99*np.pi, 0])
 
+        self.pi_arch = [64, 64]
+        self.vf_arch = [64, 64]
+        self.inflation_rate = [(-1, 1), (-1, 1)]
+
         return
 
 

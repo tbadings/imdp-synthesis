@@ -56,4 +56,8 @@ class Dubins3D(DubinsDynamics3D):
 
         self.x0 = np.array([-7.5, -7.5, 0])
 
+        self.pi_arch = [128, 128]
+        self.vf_arch = [128, 128]
+        self.inflation_rate = [(-1, 1), (-1, 1), (-1, 1)]
+
         return

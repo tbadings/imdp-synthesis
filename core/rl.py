@@ -163,7 +163,7 @@ class BenchmarkRLEnv(gym.Env):
         }
         return self.state.copy(), float(reward), terminated, truncated, info
 
-def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, discrete_actions=None):
+def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, discrete_actions=None, seed=0):
     norm_env.training = False
     norm_env.norm_reward = False
 
@@ -177,8 +177,8 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     if discrete_actions is not None:
         discrete_actions = np.asarray(discrete_actions, dtype=np.float32)
 
-    for _ in range(episodes):
-        obs, _ = eval_env.reset(options={"testing": True})
+    for ep_idx in range(episodes):
+        obs, _ = eval_env.reset(seed=seed if ep_idx == 0 else None, options={"testing": True})
         visited_cells.add(eval_env.state_to_cell(obs))
 
         trace = [obs.copy()]
@@ -281,10 +281,10 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     total_cells = int(np.prod(base_model.partition['number_per_dim']))
     return reached_goal, visited_cells, total_cells
 
-def _build_vec_env(base_model, cfg, n_envs, use_subproc, previous_cells):
+def _build_vec_env(base_model, cfg, n_envs, use_subproc, previous_cells, seed=0):
     env_kwargs = {"model": base_model, "cfg": cfg, "previous_cells": previous_cells}
     vec_env_cls = SubprocVecEnv if use_subproc else DummyVecEnv
-    vec_env = make_vec_env(BenchmarkRLEnv, n_envs=n_envs, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls)
+    vec_env = make_vec_env(BenchmarkRLEnv, n_envs=n_envs, env_kwargs=env_kwargs, vec_env_cls=vec_env_cls, seed=seed)
     return VecNormalize(vec_env, norm_obs=True, norm_reward=True)
 
 def find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num):
@@ -316,12 +316,15 @@ def find_active(model, args, previous_cells):
         n_envs=args.n_envs,
         use_subproc=args.subproc,
         previous_cells=previous_cells,
+        seed=args.seed,
     )
 
     val_env = BenchmarkRLEnv(model, cfg)
 
+    pi_arch = args.pi_arch if args.pi_arch is not None else model.pi_arch
+    vf_arch = args.vf_arch if args.vf_arch is not None else model.vf_arch
     policy_kwargs = dict(activation_fn=torch.nn.ReLU,
-                     net_arch=dict(pi=[128, 128, 128], vf=[128, 128, 128]))
+                         net_arch=dict(pi=pi_arch, vf=vf_arch))
 
     ppo = PPO(
         "MlpPolicy",
@@ -351,6 +354,7 @@ def find_active(model, args, previous_cells):
         dims=list(model.plot_dimensions),
         args=args,
         discrete_actions=discrete_actions,
+        seed=args.seed,
     )
 
     logger.info(f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
@@ -360,9 +364,8 @@ def find_active(model, args, previous_cells):
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
     #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
-    rate = [(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-2, 2), (-1, 1)]
     for cell in newly_visited:
-        ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, rate)]
+        ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, model.inflation_rate)]
         # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")
         for neighbor in itertools.product(*ranges):
             neighbor = tuple(int(v) for v in neighbor)

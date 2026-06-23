@@ -48,4 +48,8 @@ class Test1D(Test1DDynamics):
 
         self.x0 = np.array([-2.5])
 
+        self.pi_arch = [64, 64]
+        self.vf_arch = [64, 64]
+        self.inflation_rate = [(-1, 1)]
+
         return

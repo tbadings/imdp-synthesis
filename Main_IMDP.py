@@ -3,10 +3,12 @@ import copy
 import logging
 import os
 import pickle
+import random
 import time
 from pathlib import Path
 import jax
 import numpy as np
+import torch
 
 import benchmarks
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
@@ -27,7 +29,11 @@ if __name__ == '__main__':
 
     configure_jax(args)
 
+    random.seed(args.seed)
     np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     args.jax_key = jax.random.PRNGKey(args.seed)
 
     # Set current working directory

@@ -48,4 +48,8 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         self.x0 = np.array([0, -8])
 
+        self.pi_arch = [64, 64]
+        self.vf_arch = [64, 64]
+        self.inflation_rate = [(-2, 2), (-1, 1)]
+
         return

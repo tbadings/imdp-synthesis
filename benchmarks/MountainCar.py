@@ -53,6 +53,10 @@ class MountainCar(MountainCarDynamics):
 
         self.x0 = np.array([-0.6, 0])
 
+        self.pi_arch = [64, 64]
+        self.vf_arch = [64, 64]
+        self.inflation_rate = [(-1, 1), (-1, 1)]
+
         return
     
     def plot_trajectory_gif(self, positions, filename="mountaincar.gif", fps=30, dpi=300):
