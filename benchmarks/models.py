@@ -40,8 +40,10 @@ class DubinsDynamics3D:
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
             self.noise = GaussianDistr(np.array([0, 0, 0.1])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[1, 1, 10])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0, 0, 0.2])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[1, 1, 10])
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
@@ -127,6 +129,7 @@ class DubinsDynamics4D:
 
         # Covariance of the process noise
         self.noise = GaussianDistr(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
+        self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
 
     def step(self, state, action, noise):
         [x, y, theta, V] = state
@@ -212,9 +215,11 @@ class DroneDynamics:
             if args.noise_distr == 'gaussian':
                 cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
 
         else:
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
@@ -227,11 +232,11 @@ class DroneDynamics:
             if args.noise_distr == 'gaussian':
                 cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-
-        self.noise = GaussianDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -280,6 +285,7 @@ class PendulumDynamics:
 
         # Covariance of the process noise
         self.noise = GaussianDistr(np.array([0.03, 0.1])**2) # From stdev to covariance
+        self.noise.set_partition_probs(num_cells=[10, 10])
 
     def step(self, state, action, noise):
 
@@ -336,7 +342,7 @@ class MountainCarDynamics:
 
         # Covariance of the process noise
         self.noise = GaussianDistr(np.array([0.005,0.0005])**2) # From stdev to covariance
-
+        self.noise.set_partition_probs(num_cells=[10, 10])
     def step(self, state, action, noise):
 
         position, velocity = state
@@ -399,6 +405,7 @@ class DoubleIntegratorDynamics:
 
         # Covariance of the process noise
         self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
+        self.noise.set_partition_probs(num_cells=[10, 10])
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -445,8 +452,10 @@ class Test1DDynamics:
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
             self.noise = GaussianDistr(np.array([0.2])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[10])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([1])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[10])
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 

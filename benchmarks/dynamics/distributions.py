@@ -71,12 +71,74 @@ class GaussianDistr(dict):
 			cov=jnp.diag(cov_diag),
 			cov_diag=cov_diag,
 			stdev=jnp.sqrt(cov_diag),
-			support_radius=3 * jnp.sqrt(cov_diag) # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
+			support_radius=3 * jnp.sqrt(cov_diag), # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
 		)
 
 	def sample(self, size=None, rng=None):
 		rng = np.random if rng is None else rng
 		return rng.multivariate_normal(self['mean'], self['cov'], size=size)
+
+	def set_partition_probs(self, num_cells):
+		'''
+		Partition the truncated support into a grid of cells and compute the joint
+		probability mass of each cell.
+
+		Each dimension i is divided into num_cells[i] equal-width intervals within
+		[mean[i] - support_radius[i], mean[i] + support_radius[i]] (3 standard deviations).
+		The full grid contains prod(num_cells) cells. Joint probabilities are the product
+		of per-dimension probabilities (independent dimensions).
+		The probability mass outside the truncated support is stored as the remainder.
+
+		:param num_cells: Array of integers of length n_dims, number of cells per dimension.
+		:return:
+			- cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
+			- probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
+			- remainder: scalar, total probability mass not captured by any cell.
+		'''
+		mean = self['mean']
+		stdev = self['stdev']
+		support_radius = self['support_radius']
+		n_dims = len(stdev)
+		has_noise = np.asarray(stdev) > 0
+
+		per_dim_cells = []
+		per_dim_probs = []
+		actual_num_cells = []
+
+		for i in range(n_dims):
+			if has_noise[i]:
+				edges = jnp.linspace(mean[i] - support_radius[i], mean[i] + support_radius[i], num_cells[i] + 1)
+				lbs = edges[:-1]
+				ubs = edges[1:]
+				p = _vmap_integ_Gauss_per_dim_single(lbs, ubs, mean[i], stdev[i])
+				actual_num_cells.append(num_cells[i])
+			else:
+				lbs = jnp.array([mean[i]])
+				ubs = jnp.array([mean[i]])
+				p = jnp.array([1.0])
+				actual_num_cells.append(1)
+			per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
+			per_dim_probs.append(p)
+
+		# Build flat index arrays for the Cartesian product
+		index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
+		flat_idx = [g.reshape(-1) for g in index_grids]
+
+		# cells[j, i, :] = per-dim bounds of dimension i for cell j
+		all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+
+		# joint probability = product of per-dimension probabilities
+		all_probs = per_dim_probs[0][flat_idx[0]]
+		for i in range(1, n_dims):
+			all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+
+		self.partition = {
+			"cells": all_cells,
+			"probs": all_probs,
+			"remainder": 1.0 - jnp.sum(all_probs)
+		}
+
+		return 
 	
 	def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
 		'''
@@ -178,7 +240,7 @@ class TriangularDistr(dict):
 			type='Triangular',
 			mean=jnp.zeros(halfwidth.shape[0], dtype=float),
 			halfwidth=halfwidth,
-			support_radius=halfwidth # Support radius of triangular distribution is equal to halfwidth
+			support_radius=halfwidth, # Support radius of triangular distribution is equal to halfwidth
 		)
 		
 	def sample(self, size=None, rng=None):
@@ -197,6 +259,67 @@ class TriangularDistr(dict):
 
 		sampled = rng.triangular(mean - halfwidth_safe, mean, mean + halfwidth_safe, size=sample_size)
 		return np.where(nonzero, sampled, mean)
+
+	def set_partition_probs(self, num_cells):
+		'''
+		Partition the support into a grid of cells and compute the joint probability
+		mass of each cell.
+
+		Each dimension i is divided into num_cells[i] equal-width intervals within
+		[mean[i] - halfwidth[i], mean[i] + halfwidth[i]]. The full grid contains
+		prod(num_cells) cells. Joint probabilities are the product of per-dimension
+		probabilities (independent dimensions).
+
+		:param num_cells: Array of integers of length n_dims, number of cells per dimension.
+		:return:
+			- cells:     array of shape (prod(num_cells), n_dims, 2) with [lb, ub] per dim per cell.
+			- probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
+			- remainder: scalar, total probability mass not captured by any cell
+			             (theoretically zero; captures floating-point residuals).
+		'''
+		mean = self['mean']
+		halfwidth = self['halfwidth']
+		n_dims = len(halfwidth)
+		has_noise = np.asarray(halfwidth) > 0
+
+		per_dim_cells = []
+		per_dim_probs = []
+		actual_num_cells = []
+
+		for i in range(n_dims):
+			if has_noise[i]:
+				edges = jnp.linspace(mean[i] - halfwidth[i], mean[i] + halfwidth[i], num_cells[i] + 1)
+				lbs = edges[:-1]
+				ubs = edges[1:]
+				p = _vmap_integ_Triangular_per_dim_single(lbs, ubs, mean[i], halfwidth[i])
+				actual_num_cells.append(num_cells[i])
+			else:
+				lbs = jnp.array([mean[i]])
+				ubs = jnp.array([mean[i]])
+				p = jnp.array([1.0])
+				actual_num_cells.append(1)
+			per_dim_cells.append(jnp.stack([lbs, ubs], axis=1))
+			per_dim_probs.append(p)
+
+		# Build flat index arrays for the Cartesian product
+		index_grids = np.meshgrid(*[np.arange(n) for n in actual_num_cells], indexing='ij')
+		flat_idx = [g.reshape(-1) for g in index_grids]
+
+		# cells[j, i, :] = per-dim bounds of dimension i for cell j
+		all_cells = jnp.stack([per_dim_cells[i][flat_idx[i]] for i in range(n_dims)], axis=1)
+
+		# joint probability = product of per-dimension probabilities
+		all_probs = per_dim_probs[0][flat_idx[0]]
+		for i in range(1, n_dims):
+			all_probs = all_probs * per_dim_probs[i][flat_idx[i]]
+
+		self.partition = {
+			"cells": all_cells,
+			"probs": all_probs,
+			"remainder": 1.0 - jnp.sum(all_probs)
+		}
+
+		return
 
 	def prob_minmax(self, x_lb, x_ub, mean_lb, mean_ub, wrap_array):
 		'''
