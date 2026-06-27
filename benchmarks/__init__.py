@@ -2,7 +2,7 @@
 from .Dubins3D import Dubins3D
 from .Dubins4D import Dubins4D
 from .Drone4D import Drone4D
-from .Drone6D import Drone6D, Drone6D_small
+from .Drone6D import Drone6D, Drone6D_small, Drone6D_medium
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
 from .Integrators import DoubleIntegrator
@@ -18,6 +18,7 @@ def create_model(args):
 		'Drone4D': Drone4D,
 		'Drone6D': Drone6D,
 		'Drone6D_small': Drone6D_small,
+		'Drone6D_medium': Drone6D_medium,
 		'Pendulum': Pendulum,
 		'MountainCar': MountainCar,
 		'DoubleIntegrator': DoubleIntegrator,

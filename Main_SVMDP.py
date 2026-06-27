@@ -11,7 +11,7 @@ import torch
 import benchmarks
 from core.abstraction.svmdp.forward_reachability import RectangularForward
 from core.abstraction.svmdp.svmdp import SVMDP
-from core.abstraction.svmdp.rvi_jax import RVI_SVMDP
+from core.abstraction.svmdp.dynprog import SVMDP_DP
 from core.options import parse_arguments
 from core.abstraction.partition import RectangularPartition, SparsePartition
 from core.jax_config import configure_jax
@@ -52,25 +52,17 @@ if __name__ == '__main__':
 
     t = time.time()
 
-    # Partition the continuous state space.
+    # active_states, active_actions = find_active(model, args=args, previous_cells=set())
+    # logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+
+    # Create partition of the continuous state space into convex polytope
     partition = RectangularPartition(model=model)
+    # Sparse partition can be created with, e.g.,
+    # partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
     s_init, s_init_exists = partition.x2state(model.x0)
     if not s_init_exists:
         raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
-
-    # Set up the noise partition (required by RectangularForward for SVMDP).
-    # num_cells_per_dim: number of noise cells per dimension; zero-noise dims are
-    # forced to 1 cell automatically inside set_partition_probs.
-    noise_cells_per_dim = getattr(args, 'noise_partition_cells', None)
-    if noise_cells_per_dim is None:
-        noise_cells_per_dim = [10] * model.n
-    model.noise.set_partition_probs(noise_cells_per_dim)
-    logger.info(
-        'Noise partition: %d cells total  |  remainder=%.4f',
-        len(model.noise.partition['probs']),
-        float(model.noise.partition['remainder']),
-    )
 
     # Compute forward reachable sets and noise-shifted successor cell IDs.
     actions = RectangularForward(args=args, partition=partition, model=model)
@@ -79,17 +71,21 @@ if __name__ == '__main__':
     states = np.array(partition.regions['idxs'])
     A_id = {int(s): list(range(actions.num_actions)) for s in states}
 
+    # TODO: Action space can be pruned; any action that leads to unsafe state with prob zero can be omitted.
+
     svmdp = SVMDP(
         partition=partition,
         states=states,
         x0=model.x0,
         goal_regions=np.array(partition.goal['bools']),
         critical_regions=np.array(partition.critical['bools']),
+        P_full=actions.frs_noise_probs,
+        S_id=actions.frs_noise_ids,
         A_id=A_id,
-        actions=actions,
-        noise_probs=model.noise.partition['probs'],
-        noise_remainder=model.noise.partition['remainder'],
+        P_absorbing=model.noise.partition['remainder'],
     )
+    
+    del actions
 
     logger.info('Initial state x0=%s → state index %d', model.x0, s_init)
     logger.info('Generating SVMDP abstraction took %.3f sec.', time.time() - t)
@@ -99,16 +95,17 @@ if __name__ == '__main__':
     logger.info('\n=== Computing optimal policy via SVMDP value iteration ===')
     t = time.time()
     with jax.default_device(args.rvi_device):
-        V, policy = RVI_SVMDP(
+        V, policy = SVMDP_DP(
             args=args,
             svmdp=svmdp,
-            s0=s_init,
+            s0=partition.x2state(model.x0)[0],
             max_iterations=10000,
             epsilon=1e-6,
-            RND_SWEEPS=False,
+            RND_SWEEPS=True,
             BATCH_SIZE=10000,
+            policy_iteration=args.policy_iteration,
         )
-    logger.info('SVMDP value iteration took %.3f sec.', time.time() - t)
+    logger.info('SVMDP dynamic programming took %.3f sec.', time.time() - t)
 
     s0 = partition.x2state(model.x0)[0]
     logger.info('=== SVMDP value in initial state s0=%d: %.6f ===', s0, V[s0])

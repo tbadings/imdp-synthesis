@@ -43,7 +43,7 @@ class Dubins3D(DubinsDynamics3D):
 
         self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([20, 20, 11])
+        self.partition['number_per_dim'] = 10 * np.array([20, 20, 11])
 
         self.goal = np.array([
             [[-10, 5, -np.pi], [-5, 10, np.pi]]
@@ -56,8 +56,8 @@ class Dubins3D(DubinsDynamics3D):
 
         self.x0 = np.array([-7.5, -7.5, 0])
 
-        self.pi_arch = [128, 128]
-        self.vf_arch = [128, 128]
-        self.inflation_rate = [(-1, 1), (-1, 1), (-1, 1)]
+        self.pi_arch = [128, 128, 128]
+        self.vf_arch = [128, 128, 128]
+        self.inflation_rate = [(-3, 3), (-3, 3), (-5, 5)]
 
         return

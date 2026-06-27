@@ -128,8 +128,14 @@ class DubinsDynamics4D:
             self.beta = 0.85
 
         # Covariance of the process noise
-        self.noise = GaussianDistr(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
-        self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0, 0, 0.1, 0])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
         [x, y, theta, V] = state
@@ -215,11 +221,13 @@ class DroneDynamics:
             if args.noise_distr == 'gaussian':
                 cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1])
+            else:
+                raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
         else:
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
@@ -230,13 +238,15 @@ class DroneDynamics:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
+                cov = np.array([0*0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
+                self.noise.set_partition_probs(num_cells=[1, 1, 5, 1, 5, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1])
+            else:
+                raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -284,8 +294,14 @@ class PendulumDynamics:
         self.b = 0.0 # Gymnasium pendulum does not have damping
 
         # Covariance of the process noise
-        self.noise = GaussianDistr(np.array([0.03, 0.1])**2) # From stdev to covariance
-        self.noise.set_partition_probs(num_cells=[10, 10])
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.03, 0.1])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.03, 0.1])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
 
@@ -341,8 +357,14 @@ class MountainCarDynamics:
         self.power = 0.0015
 
         # Covariance of the process noise
-        self.noise = GaussianDistr(np.array([0.005,0.0005])**2) # From stdev to covariance
-        self.noise.set_partition_probs(num_cells=[10, 10])
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.005, 0.0005])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.005, 0.0005])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
     def step(self, state, action, noise):
 
         position, velocity = state
@@ -404,8 +426,14 @@ class DoubleIntegratorDynamics:
         self.Q  = np.array([[0],[0],])
 
         # Covariance of the process noise
-        self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
-        self.noise.set_partition_probs(num_cells=[10, 10])
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.15, 0.15])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.15, 0.15])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[10, 10])
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
         state_next = self.A @ state + self.B @ action + noise
@@ -454,7 +482,7 @@ class Test1DDynamics:
             self.noise = GaussianDistr(np.array([0.2])**2) # From stdev to covariance
             self.noise.set_partition_probs(num_cells=[10])
         elif args.noise_distr == 'triangular':
-            self.noise = TriangularDistr(np.array([1])) # Halfwidth
+            self.noise = TriangularDistr(np.array([0.2])) # Halfwidth
             self.noise.set_partition_probs(num_cells=[10])
         else:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')

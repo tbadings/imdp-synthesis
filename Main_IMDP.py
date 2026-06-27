@@ -78,13 +78,13 @@ if __name__ == '__main__':
 
         t = time.time()
 
-        # active_states, active_actions = find_active(model, args=args, previous_cells=set())
-        # logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+        active_states, active_actions = find_active(model, args=args, previous_cells=set())
+        logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         # Create partition of the continuous state space into convex polytope
-        partition = RectangularPartition(model=model)
+        # partition = RectangularPartition(model=model)
         # Sparse partition can be created with, e.g.,
-        # partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
+        partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
         s_init_debug, s_init_exists = partition.x2state(model.x0)
 

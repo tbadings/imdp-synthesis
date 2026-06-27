@@ -19,6 +19,7 @@ def RVI_SVMDP(
     s0: Optional[int] = None,
     max_iterations: int = 1000,
     epsilon: float = 1e-6,
+    gamma: float = 0.999,
     RND_SWEEPS: bool = False,
     BATCH_SIZE: int = 2000,
     policy_iteration: bool = False,
@@ -50,66 +51,50 @@ def RVI_SVMDP(
 
     S         = len(svmdp.states)
     A         = svmdp.actions.num_actions
-    C         = svmdp.num_noise_cells
     absorbing = svmdp.absorbing_state
     nr_states = svmdp.nr_states
 
-    noise_probs     = np.asarray(svmdp.noise_probs, dtype=args.floatprecision)   # (C,)
     noise_remainder = float(svmdp.noise_remainder)
 
     # ------------------------------------------------------------------
-    # Pre-build CSR successor arrays (once, before the iteration loop).
+    # Build the merged-group successor CSR (once, before the iteration loop).
     #
-    # succ_flat[a][c]: 1-D int32 array – partition state IDs for all S states
-    #                  concatenated in state-index order.
-    # seg[a][c]:       1-D int32 array – segment IDs (state index of each entry).
-    #
-    # Using pre-stored noise_frs_counts avoids an O(S) Python len() loop
-    # per (a,c) pair.
+    # forward_reachability already merged the (state, action, noise) entries
+    # with identical successor sets into G groups, each carrying its owning
+    # (state, action), a merged probability, and a successor cell-id set. Here
+    # we only map the flat partition cell ids to partition state ids and lay
+    # everything out for a single segment_min / segment_sum per Bellman backup.
     # ------------------------------------------------------------------
-    logger.info('  Pre-building CSR successor arrays (A=%d, C=%d)…', A, C)
+    logger.info('  Building merged-group successor CSR…')
 
     linear_idx   = svmdp._linear_idx    # sorted flat partition keys
     linear_state = svmdp._linear_state  # state IDs aligned to sorted keys
 
-    succ_flat: list = [[None] * C for _ in range(A)]
-    seg_arr:   list = [[None] * C for _ in range(A)]
+    fwd = svmdp.actions
+    G            = int(fwd.num_groups)
+    group_state  = np.asarray(fwd.group_state,  dtype=np.int64)   # (G,)
+    group_action = np.asarray(fwd.group_action, dtype=np.int64)   # (G,)
+    group_prob   = np.asarray(fwd.group_prob,   dtype=args.floatprecision)  # (G,)
+    group_seg    = np.asarray(fwd.group_succ_seg, dtype=np.int32)           # (T,)
+    group_flat   = np.asarray(fwd.group_succ_flat)                          # (T,) flat cell ids
 
-    for a in tqdm(range(A), desc='  Building CSR'):
-        for c in range(C):
-            counts  = np.asarray(svmdp.actions.noise_frs_counts[:, a, c], dtype=np.int64)
-            total   = int(counts.sum())
+    # Map flat linear keys → partition state IDs via binary search (once).
+    if group_flat.size > 0:
+        pos   = np.searchsorted(linear_idx, group_flat)
+        pos_c = np.minimum(pos, len(linear_idx) - 1)
+        valid = (pos < len(linear_idx)) & (linear_idx[pos_c] == group_flat)
+        succ_state = np.where(valid, linear_state[pos_c], absorbing).astype(np.int32)
+    else:
+        succ_state = np.empty(0, dtype=np.int32)
 
-            if total == 0:
-                succ_flat[a][c] = np.empty(0, dtype=np.int32)
-                seg_arr[a][c]   = np.empty(0, dtype=np.int32)
-                continue
+    # Flattened (state, action) index of each group, for scatter-add into Q.
+    group_sa = (group_state * A + group_action).astype(np.int32)   # (G,)
 
-            ids_obj  = svmdp.actions.noise_frs_cell_ids[:, a, c]   # (S,) object array
-            all_flat = np.concatenate(ids_obj)                       # (total,) flat keys
-
-            # Map flat linear keys → partition state IDs via binary search.
-            pos   = np.searchsorted(linear_idx, all_flat)
-            valid = (pos < len(linear_idx)) & (linear_idx[pos] == all_flat)
-            state_ids = np.where(valid, linear_state[pos], absorbing).astype(np.int32)
-
-            seg_ids = np.repeat(np.arange(S, dtype=np.int32), counts)
-
-            succ_flat[a][c] = state_ids
-            seg_arr[a][c]   = seg_ids
-
-    # Pre-transfer to device — avoids repeated H→D copies inside the hot loop.
-    logger.info('  Transferring CSR arrays to device…')
-    succ_flat_dev = [
-        [jax.device_put(jnp.asarray(succ_flat[a][c], dtype=jnp.int32), args.rvi_device)
-         for c in range(C)]
-        for a in range(A)
-    ]
-    seg_dev = [
-        [jax.device_put(jnp.asarray(seg_arr[a][c], dtype=jnp.int32), args.rvi_device)
-         for c in range(C)]
-        for a in range(A)
-    ]
+    # Pre-transfer to device.
+    succ_state_dev = jax.device_put(jnp.asarray(succ_state, dtype=jnp.int32), args.rvi_device)
+    group_seg_dev  = jax.device_put(jnp.asarray(group_seg,  dtype=jnp.int32), args.rvi_device)
+    group_prob_dev = jax.device_put(jnp.asarray(group_prob, dtype=args.floatprecision), args.rvi_device)
+    group_sa_dev   = jax.device_put(jnp.asarray(group_sa,   dtype=jnp.int32), args.rvi_device)
 
     # ------------------------------------------------------------------
     # Action mask: True where action a is enabled for state s.
@@ -127,75 +112,94 @@ def RVI_SVMDP(
     # Masked Q: set disabled-action slots to -inf so argmax ignores them.
     Q_neg_inf_mask = ~action_mask   # (S, A)
 
-    # ------------------------------------------------------------------
-    # Initialise value function and policy.
-    # ------------------------------------------------------------------
-    V = np.zeros(nr_states, dtype=args.floatprecision)
-    if len(svmdp.goal_regions) > 0:
-        V[:-1][svmdp.goal_regions] = 1.0   # [:-1] excludes absorbing state
-
-    policy = np.full(nr_states, -1, dtype=np.int32)
-    policy[states_not_update] = -1
-
     logger.info(
-        '  SVMDP ready (%.3fs) — states: %d  updatable: %d  actions: %d  noise cells: %d',
-        time.time() - start_time, S, len(states_to_update), A, C,
+        '  SVMDP ready (%.3fs) — states: %d  updatable: %d  actions: %d  groups: %d',
+        time.time() - start_time, S, len(states_to_update), A, G,
     )
 
-    pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
+    # ------------------------------------------------------------------
+    # Bellman Q-operator: Q[s, a] = noise_remainder * V(absorbing)
+    #                               + sum_c noise_probs[c] * min_{Succ(s,a,c)} V.
+    # With merged groups this is a single segment_min (worst successor per group)
+    # followed by a segment_sum scattering probability-weighted group values into
+    # the (S, A) grid. Returns the *undiscounted* one-step expectation.
+    # ------------------------------------------------------------------
+    def compute_Q(Vvec: np.ndarray) -> np.ndarray:
+        V_dev       = jax.device_put(jnp.asarray(Vvec, dtype=args.floatprecision), args.rvi_device)
+        v_absorbing = float(Vvec[absorbing])
+
+        v_succ    = V_dev[succ_state_dev]                                   # (T,)
+        group_min = jax.ops.segment_min(v_succ, group_seg_dev, num_segments=G)
+        # Empty groups (all-absorbing) → +inf identity; replace with V(absorbing).
+        group_min = jnp.where(jnp.isinf(group_min), v_absorbing, group_min)  # (G,)
+
+        contrib = group_prob_dev * group_min                                # (G,)
+        Q_added = jax.ops.segment_sum(contrib, group_sa_dev, num_segments=S * A)  # (S*A,)
+
+        Q = noise_remainder * v_absorbing + np.asarray(
+            jax.device_get(Q_added), dtype=args.floatprecision
+        )
+        return Q.reshape(S, A)
 
     # ------------------------------------------------------------------
-    # Value iteration.
+    # Phase 1 — policy synthesis with a discount gamma < 1.
+    #
+    # The undiscounted reach probability saturates to 1 across the whole
+    # basin of attraction (no probability leaks out when the noise has
+    # bounded support), so a greedy argmax over the saturated value has no
+    # gradient to follow and returns a degenerate policy. Discounting makes
+    # states closer to the goal strictly more valuable, which yields a
+    # goal-directed policy. The discounted values themselves are only used
+    # to rank actions; the reported satisfaction probability comes from
+    # phase 2.
     # ------------------------------------------------------------------
+    Vd = np.zeros(nr_states, dtype=args.floatprecision)
+    if len(svmdp.goal_regions) > 0:
+        Vd[:-1][svmdp.goal_regions] = 1.0   # [:-1] excludes absorbing state
+
+    policy = np.full(nr_states, -1, dtype=np.int32)
+
+    pbar = tqdm(desc='Synthesis (γ=%.4g)' % gamma, total=None, unit='it', dynamic_ncols=True, leave=True)
     for iteration in range(max_iterations):
         pbar.update(1)
         if s0 is not None:
-            pbar.set_postfix({
-                f'V[{s0}]': f'{V[s0]:.6f}',
-                'V_avg':    f'{np.mean(V[states_to_update]):.6f}',
-            })
+            pbar.set_postfix({f'Vd[{s0}]': f'{Vd[s0]:.6f}'})
 
-        V_old = V.copy()
-
-        # Upload current V once per iteration.
-        V_dev       = jax.device_put(jnp.asarray(V, dtype=args.floatprecision), args.rvi_device)
-        v_absorbing = float(V[absorbing])
-
-        # Initialise Q with the noise-remainder contribution (constant across noise cells).
-        Q = np.full((S, A), noise_remainder * v_absorbing, dtype=args.floatprecision)
-
-        # Accumulate per-noise-cell contributions.
-        for a in range(A):
-            for c in range(C):
-                sf = succ_flat_dev[a][c]
-                sg = seg_dev[a][c]
-
-                if sf.shape[0] == 0:
-                    # All successors are absorbing → contribution already in Q init.
-                    continue
-
-                v_succ   = V_dev[sf]
-                min_vals = jax.ops.segment_min(
-                    v_succ, sg,
-                    num_segments=S, indices_are_sorted=False,
-                )
-                # Empty segments → +inf; replace with V(absorbing) = 0 (worst case).
-                min_vals = jnp.where(jnp.isinf(min_vals), v_absorbing, min_vals)
-
-                Q[:, a] += noise_probs[c] * np.asarray(
-                    jax.device_get(min_vals), dtype=args.floatprecision
-                )
-
-        # Policy improvement: argmax over enabled actions.
-        Q[Q_neg_inf_mask] = -np.inf
+        Vd_old = Vd.copy()
+        Q = gamma * compute_Q(Vd)           # discounted one-step backup
+        Q[Q_neg_inf_mask] = -np.inf         # mask disabled actions
         best_action = np.argmax(Q[states_to_update], axis=1)   # global action IDs
-        V[states_to_update]      = Q[states_to_update, best_action]
+        Vd[states_to_update]     = Q[states_to_update, best_action]
         policy[states_to_update] = best_action
 
-        if np.max(np.abs(V - V_old)) < epsilon:
-            pbar.write(f'Converged after {iteration + 1} iterations')
+        if np.max(np.abs(Vd - Vd_old)) < epsilon:
+            pbar.write(f'Synthesis converged after {iteration + 1} iterations')
             break
+    pbar.close()
 
+    # ------------------------------------------------------------------
+    # Phase 2 — evaluate the synthesised policy undiscounted (gamma = 1)
+    # to obtain its true reach (satisfaction) probability.
+    # ------------------------------------------------------------------
+    V = np.zeros(nr_states, dtype=args.floatprecision)
+    if len(svmdp.goal_regions) > 0:
+        V[:-1][svmdp.goal_regions] = 1.0
+
+    rows = states_to_update
+    cols = policy[states_to_update]
+    pbar = tqdm(desc='Evaluation', total=None, unit='it', dynamic_ncols=True, leave=True)
+    for iteration in range(max_iterations):
+        pbar.update(1)
+        if s0 is not None:
+            pbar.set_postfix({f'V[{s0}]': f'{V[s0]:.6f}'})
+
+        V_old = V.copy()
+        Q = compute_Q(V)                    # undiscounted backup
+        V[rows] = Q[rows, cols]             # follow the fixed policy action
+
+        if np.max(np.abs(V - V_old)) < epsilon:
+            pbar.write(f'Evaluation converged after {iteration + 1} iterations')
+            break
     pbar.close()
 
     # policy[s] already holds the global action ID (argmax over all A columns).

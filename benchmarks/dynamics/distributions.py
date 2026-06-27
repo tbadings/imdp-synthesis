@@ -1,6 +1,9 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _integ_Gauss(x_lb, x_ub, x, stdev):
 	'''
@@ -71,7 +74,7 @@ class GaussianDistr(dict):
 			cov=jnp.diag(cov_diag),
 			cov_diag=cov_diag,
 			stdev=jnp.sqrt(cov_diag),
-			support_radius=3 * jnp.sqrt(cov_diag), # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
+			support_radius=4 * jnp.sqrt(cov_diag), # 3 standard deviations cover 99.9% of the probability mass for a univariate Gaussian
 		)
 
 	def sample(self, size=None, rng=None):
@@ -95,6 +98,9 @@ class GaussianDistr(dict):
 			- probs:     array of shape (prod(num_cells),) with joint probability mass per cell.
 			- remainder: scalar, total probability mass not captured by any cell.
 		'''
+
+		print(f'- Define noise partition with {num_cells} cells')
+
 		mean = self['mean']
 		stdev = self['stdev']
 		support_radius = self['support_radius']
@@ -137,6 +143,12 @@ class GaussianDistr(dict):
 			"probs": all_probs,
 			"remainder": 1.0 - jnp.sum(all_probs)
 		}
+
+		logger.info(
+			'- Noise partition: %d cells total  |  remainder=%.4f',
+			len(all_probs),
+			float(1.0 - jnp.sum(all_probs)),
+		)
 
 		return 
 	

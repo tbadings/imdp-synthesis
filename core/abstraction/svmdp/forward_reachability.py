@@ -1,4 +1,3 @@
-import itertools
 import logging
 import time
 from functools import partial
@@ -12,9 +11,8 @@ from core.utils import create_batches
 
 logger = logging.getLogger(__name__)
 
-
-@partial(jax.jit, static_argnums=(0))
-def forward_reach(step_set, state_min, state_max, input, state_wrap, support_radius, number_per_dim, cell_width, boundary_lb, boundary_ub, shrink_frs):
+def forward_reach_noise(state_min, state_max, input, step_set, cell_width, boundary_lb, shrink_frs,
+                        noise_lb, noise_ub, noise_cells_probs):
     """
     Computes the forward reachable set for a given state region and control input.
 
@@ -22,57 +20,120 @@ def forward_reach(step_set, state_min, state_max, input, state_wrap, support_rad
     step function. It computes both the continuous bounds and the discrete grid indices of the
     resulting forward reachable set.
 
-    :param step_set: Function that computes the minimum and maximum reachable states given the 
-                     state bounds and input. Signature: (state_min, state_max, input_min, input_max) -> (next_min, next_max)
+    The first three arguments (state_min, state_max, input) are the only ones that vary across the
+    state regions / actions loop; the remaining arguments are constant and are intended to be bound
+    once via functools.partial before vmapping (see RectangularForward).
+
     :param state_min: Lower bound of the state box to propagate (shape: [state_dim])
     :param state_max: Upper bound of the state box to propagate (shape: [state_dim])
     :param input: Control input for the dynamical system (shape: [input_dim])
-    :param state_wrap: Boolean indicating whether the state space is wrapped (shape: [state_dim])
-    :param support_radius: Radius of the support of the noise distribution (shape: [state_dim])
-    :param number_per_dim: Number of grid cells per dimension in the state space discretization (shape: [state_dim])
+    :param step_set: Function that computes the minimum and maximum reachable states given the
+                     state bounds and input. Signature: (state_min, state_max, input_min, input_max) -> (next_min, next_max)
     :param cell_width: Width of grid cells along each dimension (shape: [state_dim])
     :param boundary_lb: Lower bound of the state space grid (shape: [state_dim])
-    :param boundary_ub: Upper bound of the state space grid (shape: [state_dim])
-    :return: Tuple containing:
-        - frs_min: Continuous lower bound of the forward reachable set (shape: [state_dim])
-        - frs_max: Continuous upper bound of the forward reachable set (shape: [state_dim])
-        - frs_span: Number of grid cells spanned by the forward reachable set per dimension (shape: [state_dim])
-        - idx_low: Lower grid index bounds of the forward reachable set (shape: [state_dim])
-        - idx_upp: Upper grid index bounds of the forward reachable set (shape: [state_dim])
+    :param shrink_frs: Amount to shrink the forward reachable set by on each side (scalar)
+    :param noise_lb: Lower bound of each noise cell (shape: [num_noise_cells, state_dim])
+    :param noise_ub: Upper bound of each noise cell (shape: [num_noise_cells, state_dim])
+    :param noise_cells_probs: Probability mass of each noise cell (shape: [num_noise_cells])
+    :return: Tuple of arrays, each with a leading axis of size num_noise_cells. Noise cells whose
+        successor box (idx_low, idx_upp) is identical are merged into a single entry; the unique
+        entries are packed at the top of each array and the remaining rows are inactive padding
+        (probability 0). Entries are:
+        - frs_span: Number of grid cells spanned by the forward reachable set per dimension (shape: [num_noise_cells, state_dim])
+        - idx_low: Lower grid index bounds of the forward reachable set (shape: [num_noise_cells, state_dim])
+        - idx_upp: Upper grid index bounds of the forward reachable set (shape: [num_noise_cells, state_dim])
+        - probs: Probability mass of each (merged) entry; merged cells' probabilities are summed and
+                 inactive padding entries are 0 (shape: [num_noise_cells])
+        - num_active: Number of unique (active) entries, i.e. how many leading rows of the arrays
+                      above are populated; the remaining num_noise_cells - num_active rows are padding (scalar)
     """
 
-    # Small epsilon for numerical stability (currently set to zero)
+    # Continuous bounds of the (noise-free) forward reachable set, shrunk slightly for numerical
+    # stability (avoids issues when the FRS lands exactly on a cell boundary). epsilon is currently 0.
     epsilon = 0.0
-
-    # Compute the continuous bounds of the forward reachable set
     frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
-
-    # Shrink frs bounds slightly for numerical stability (avoids issues when frs lands exactly on a cell boundary)
     frs_min = frs_min + shrink_frs
     frs_max = frs_max - shrink_frs
 
-    frs_min_plus_noise = frs_min - support_radius
-    frs_max_plus_noise = frs_max + support_radius
+    # Grid cell index containing each FRS bound after shifting by every noise cell's interval, one
+    # row per noise cell. Broadcasting the (state_dim,) FRS bounds against the (num_noise_cells,
+    # state_dim) noise bounds yields a leading num_noise_cells axis. Indices are left unclipped: they
+    # may fall outside [0, number_per_dim - 1], which is resolved downstream (out-of-grid successors
+    # map to the absorbing state, wrapped dims taken modulo).
+    idx_low = jnp.floor((frs_min + noise_lb - boundary_lb) / cell_width).astype(int)
+    idx_upp = jnp.floor((frs_max + noise_ub - boundary_lb) / cell_width).astype(int)
 
-    # Calculate how many grid cells the forward reachable set spans in each dimension
-    # Note: When covariance is zero, this gives the exact discrete span
-    # The +1 is necessary to get correct upper bounds when the lower bound is just below a grid boundary 
-    # (e.g., cell width of 1, lower bound of 0.8, upper bound of 2.2 spans not 2 but 3 cells)
-    frs_span = jnp.astype(jnp.ceil((frs_max_plus_noise - frs_min_plus_noise) / cell_width) + 1, int)
+    # --- Merge noise cells that map to the same successor box ------------------------------
+    # Noise cells whose (idx_low, idx_upp) grid box is identical describe the same successor set, so
+    # they are merged into one entry whose probability is the sum of the merged cells' probabilities.
+    # The output keeps the original num_noise_cells length (static shape, so the function stays
+    # jit/vmap-able): unique entries are packed at the top and the remaining rows are inactive
+    # padding (probability 0).
+    N, D = idx_low.shape
 
-    # Normalize the minimum bound to grid coordinates
-    state_min_norm = (frs_min_plus_noise - boundary_lb) / (boundary_ub - boundary_lb) * number_per_dim
-    lb_contained_in = state_min_norm // 1
+    # Sort cells so identical successor boxes are adjacent, then label the start of each group.
+    key = jnp.concatenate([idx_low, idx_upp], axis=1)                     # (N, 2D)
+    perm = jnp.lexsort(tuple(key[:, c] for c in reversed(range(2 * D))))  # (N,)
+    key_sorted = key[perm]                                                # (N, 2D)
+    is_first = jnp.concatenate([
+        jnp.array([True]),
+        jnp.any(key_sorted[1:] != key_sorted[:-1], axis=1),
+    ])                                                                    # (N,) start of each group
+    slot = jnp.cumsum(is_first) - 1                                       # (N,) top-packed dest slot
+    num_active = is_first.sum()                                           # scalar: number of unique entries
 
-    # Compute lower grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index is set to 0
-    idx_low = (jnp.clip(lb_contained_in, 0, (number_per_dim - 1)) * (~state_wrap)).astype(int)
-    
-    # Compute upper grid indices (clipped to valid range)
-    # For dimensions with noise (cov_diag != 0), the index spans the entire dimension
-    idx_upp = (jnp.clip(lb_contained_in + frs_span - 1, 0, number_per_dim - 1) * (~state_wrap) + (number_per_dim - 1) * (state_wrap)).astype(int)
+    # Scatter into top-packed slots: the box is identical within a group (a plain set is
+    # well-defined and reuses the already-sorted key), and probabilities are summed. Untouched
+    # padding slots keep their zero initialiser.
+    key_merged = jnp.zeros((N, 2 * D), key.dtype).at[slot].set(key_sorted)
+    idx_low, idx_upp = key_merged[:, :D], key_merged[:, D:]
+    probs = jnp.zeros(N, noise_cells_probs.dtype).at[slot].add(noise_cells_probs[perm])
 
-    return frs_min, frs_max, frs_span, idx_low, idx_upp
+    # Number of grid cells each (merged) forward reachable set spans per dimension.
+    frs_span = idx_upp - idx_low + 1
+
+    return frs_span, idx_low, idx_upp, probs, num_active
+
+def box_to_cell_idxs(idx_lb, idx_ub, n, max_span, wrap, num_per_dim, region_linear_idx, region_linear_state, region_linear_strides, missing_state):
+
+    # For every dimension
+    idx = [[]]*n
+    for i in range(n):
+        # Initialize the list of indices in that dimension, starting at idx_lb and ending at idx_ub.
+        # To make function jittable, add extra values to make the list same size every time.
+        # Having the same indices multiple times makes nu difference as the SVMDP considers a pure nondeterministic choice over them.
+        idx[i] = jnp.minimum(jnp.arange(max_span[i]) + idx_lb[i], idx_ub[i])
+        
+        idx_wrap = idx[i] % num_per_dim[i]
+
+        idx_nonwrap = jnp.maximum(idx[i], -1)
+        idx_nonwrap = jnp.where(idx_nonwrap >= num_per_dim[i], jnp.full(max_span[i], -1), idx_nonwrap)
+
+        # Switch between wrap and nonwrap version
+        idx[i] = wrap[i] * idx_wrap + ~wrap[i] * idx_nonwrap
+
+    # Build the flat list of n-D grid indices matching the outer-product ordering.
+    # indexing='ij' gives shape (max_slice[0], ..., max_slice[n-1]) per grid array;
+    # stacking on axis=-1 and flattening matches C-order of the outer products above.
+    product_idx = jnp.stack(jnp.meshgrid(*idx, indexing='ij'), axis=-1).reshape(-1, n)
+
+    # TODO: Not sure if this look-up works correctly
+
+    # Clip to grid bounds before linearization; out-of-range points are filtered separately below.
+    prob_idx_clip = jnp.clip(product_idx, 0, num_per_dim - 1)
+    # Convert each n-D index to a scalar key using the partition strides.
+    linear_prob_idx = jnp.sum(prob_idx_clip.astype(region_linear_strides.dtype) * region_linear_strides, axis=1)
+    # Binary search in the sorted sparse key array, then verify exact match.
+    pos = jnp.searchsorted(region_linear_idx, linear_prob_idx, side='left')
+    pos_clip = jnp.minimum(pos, region_linear_idx.shape[0] - 1)
+    valid = (pos < region_linear_idx.shape[0]) & (region_linear_idx[pos_clip] == linear_prob_idx)
+
+    # Check which rows are out of bounds and not wrapped. Map these rows to the 'missing_state' as well.
+    out_of_bounds = jnp.any((~wrap * product_idx) < 0, axis=1) # Out of bounds if any nonwrapped dimension has an index of -1.
+
+    product_id = jnp.where(valid * ~out_of_bounds, region_linear_state[pos_clip], missing_state)
+
+    return product_idx, product_id
 
 
 class RectangularForward(object):
@@ -83,13 +144,21 @@ class RectangularForward(object):
     and all discrete control actions. The results are stored for efficient lookup during
     dynamic programming or reachability analysis.
 
+    For SVMDP, one (merged) forward reachable set is produced per noise cell: noise cells that map
+    to the same successor box are merged, so per (state, action) only the leading num_active entries
+    are populated and the remaining num_noise_cells - num_active entries are inactive padding.
+
     Attributes:
-        inputs (jnp.ndarray): Discrete control actions, shape [num_actions, input_dim]
-        frs_lb (np.ndarray): Lower bounds of forward reachable sets, shape [num_regions, num_actions, state_dim]
-        frs_ub (np.ndarray): Upper bounds of forward reachable sets, shape [num_regions, num_actions, state_dim]
-        frs_idx_lb (np.ndarray): Lower grid indices of forward reachable sets, shape [num_regions, num_actions, state_dim], dtype int16
+        frs_idx_lb (np.ndarray): Lower grid indices of forward reachable sets,
+            shape [num_regions, num_actions, num_noise_cells, state_dim], dtype int16
+        frs_idx_ub (np.ndarray): Upper grid indices of forward reachable sets,
+            shape [num_regions, num_actions, num_noise_cells, state_dim], dtype int16
+        probs (np.ndarray): Probability mass of each merged entry (merged cells summed; padding 0),
+            shape [num_regions, num_actions, num_noise_cells]
+        num_active (np.ndarray): Number of populated (merged) entries per (state, action),
+            shape [num_regions, num_actions], dtype int32
         max_slice (tuple): Maximum span of forward reachable sets across all regions and actions per dimension
-        idxs (np.ndarray): Indices of all actions, shape [num_actions]
+        id (np.ndarray): Indices of all actions, shape [num_actions]
     """
 
     def __init__(self, args, partition, model):
@@ -102,40 +171,51 @@ class RectangularForward(object):
         logger.info('Define target points and forward reachable sets...')
         t_total = time.time()
 
-        # Inner vmap over control actions, outer vmap over a batch of state regions.
-        # This reduces Python–JAX round trips from num_regions to ceil(num_regions / frs_batch_size).
-        vmap_over_actions = jax.vmap(
-            forward_reach,
-            in_axes=(None, None, None, 0, None, None, None, None, None, None, None),
-            out_axes=(0, 0, 0, 0, 0),
+        # Noise partition: forward_reach_noise produces one (merged) forward reachable set per
+        # noise cell. cells with shape (C, D, 2) -> per-cell lower/upper bounds and probabilities.
+        noise_cells = np.asarray(model.noise.partition['cells'])                    # (C, D, 2)
+        noise_lb_dev = jax.device_put(noise_cells[:, :, 0])                         # (C, D)
+        noise_ub_dev = jax.device_put(noise_cells[:, :, 1])                         # (C, D)
+        noise_probs_dev = jax.device_put(np.asarray(model.noise.partition['probs']))  # (C,)
+
+        # Pre-load shared (non-batched) tensors to device once to avoid repeated transfers.
+        cw_dev = jax.device_put(partition.cell_width)
+        blb_dev = jax.device_put(partition.boundary_lb)
+
+        # Bind the constant arguments once; only (state_min, state_max, input) vary in the loop.
+        frs_fn = partial(
+            forward_reach_noise,
+            step_set=model.step_set,
+            cell_width=cw_dev,
+            boundary_lb=blb_dev,
+            shrink_frs=args.shrink_frs,
+            noise_lb=noise_lb_dev,
+            noise_ub=noise_ub_dev,
+            noise_cells_probs=noise_probs_dev,
         )
-        batch_forward_reach = jax.jit(
-            jax.vmap(
-                vmap_over_actions,
-                in_axes=(None, 0, 0, 0, None, None, None, None, None, None, None),
-                out_axes=(0, 0, 0, 0, 0),
-            ),
-            static_argnums=(0),
-        )
+
+        # Inner vmap over control actions, outer vmap over a batch of state regions; only the three
+        # varying arguments are mapped. This reduces Python–JAX round trips from num_regions to
+        # ceil(num_regions / frs_batch_size).
+        vmap_over_actions = jax.vmap(frs_fn, in_axes=(None, None, 0))
+        batch_forward_reach = jax.jit(jax.vmap(vmap_over_actions, in_axes=(0, 0, 0)))
 
         t = time.time()
 
-        # Allocate output arrays
+        # Allocate output arrays. Per (state, action) the function returns C entries (one per noise
+        # cell); cells mapping to the same successor box are merged, so only the leading num_active
+        # entries of each (state, action) row are populated and the rest are inactive padding.
         self.num_regions = len(partition.regions['lower_bounds'])
         self.num_actions = partition.regions['actions'].shape[1]
-        self.frs_lb = np.zeros((self.num_regions, self.num_actions, partition.dimension), dtype=args.floatprecision)
-        self.frs_ub = np.zeros_like(self.frs_lb)
-        self.frs_idx_lb = np.zeros((self.num_regions, self.num_actions, partition.dimension), dtype=np.int16)
-        # max_slice is computed incrementally per batch to avoid storing frs_idx_ub
-        max_span = np.zeros(partition.dimension, dtype=int)
-
-        # Pre-load shared (non-batched) tensors to device once to avoid repeated transfers
-        wrap_dev = jax.device_put(model.wrap)
-        support_radius_dev = jax.device_put(model.noise['support_radius'])
-        npd_dev = jax.device_put(partition.number_per_dim)
-        cw_dev = jax.device_put(partition.cell_width)
-        blb_dev = jax.device_put(partition.boundary_lb)
-        bub_dev = jax.device_put(partition.boundary_ub)
+        S, A, C, D = self.num_regions, self.num_actions, noise_cells.shape[0], partition.dimension
+        self.frs_idx_lb = np.zeros((S, A, C, D), dtype=np.int16)
+        self.frs_idx_ub = np.zeros((S, A, C, D), dtype=np.int16)
+        self.frs_noise_probs = np.zeros((S, A, C), dtype=np.float64)
+        self.frs_noise_num_active = np.zeros((S, A), dtype=np.int32)
+        # max_slice is computed incrementally per batch to avoid a second pass over the indices.
+        
+        max_span = np.zeros(D, dtype=int)
+        max_active_noise_cells = 0
 
         # Process state regions in batches: each call handles a [batch, num_actions] computation
         # instead of one [num_actions] computation, reducing Python–JAX round trips by frs_batch_size.
@@ -150,110 +230,72 @@ class RectangularForward(object):
                 actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))
             else:
                 actions_batch = actions_slice[batch_start:batch_end]
-            flb, fub, _, fil, fiu = batch_forward_reach(
-                model.step_set,
+            # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
+            fspan, fil, fiu, fprob, fnact = batch_forward_reach(
                 partition.regions['lower_bounds'][batch_start:batch_end],
                 partition.regions['upper_bounds'][batch_start:batch_end],
                 actions_batch,
-                wrap_dev,
-                support_radius_dev,
-                npd_dev,
-                cw_dev,
-                blb_dev,
-                bub_dev,
-                args.shrink_frs,
             )
-            flb, fub, fil, fiu = jax.device_get((flb, fub, fil, fiu))
-            self.frs_lb[batch_start:batch_end] = flb
-            self.frs_ub[batch_start:batch_end] = fub
+            fspan, fil, fiu, fprob, fnact = jax.device_get((fspan, fil, fiu, fprob, fnact))
             self.frs_idx_lb[batch_start:batch_end] = fil.astype(np.int16)
-            # Update max span incrementally to avoid storing full frs_idx_ub array
-            batch_span = fiu - fil + 1
-            np.maximum(max_span, np.max(batch_span, axis=(0, 1)).astype(int), out=max_span)
+            self.frs_idx_ub[batch_start:batch_end] = fiu.astype(np.int16)
+            self.frs_noise_probs[batch_start:batch_end] = fprob
+            self.frs_noise_num_active[batch_start:batch_end] = fnact
+            # Update max span incrementally (padding entries span 1 cell, so never inflate the max).
+            np.maximum(max_span, np.max(fspan, axis=(0, 1, 2)).astype(int), out=max_span)
+            max_active_noise_cells = np.maximum(max_active_noise_cells, np.max(fnact).astype(int))
+
+        # TODO: With no wrap, max_span is potentially conservative (there may be many indices OOB that can already be ignored)
 
         # Store the maximum span of forward reachable sets
         # This is used to allocate sufficient memory for transition probability computations
         self.max_slice = tuple(max_span.tolist())
-        logger.info(f"- Max state-slice to compute probability intervals over (including noise): {self.max_slice}")
+        self.max_active_noise_cells = max_active_noise_cells
+
+        # Remove noise cells that were merged (after a sanity check that we are only throwing away probability zero cells)
+        assert np.all(self.frs_noise_probs[:, :, self.max_active_noise_cells:] == 0)
+        self.frs_idx_lb = self.frs_idx_lb[:, :, :self.max_active_noise_cells, :]
+        self.frs_idx_ub = self.frs_idx_ub[:, :, :self.max_active_noise_cells, :]
+        self.frs_noise_probs = self.frs_noise_probs[:, :, :self.max_active_noise_cells]
+
+        logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")
+        logger.info(f"- Max number of noise cells state-slice after merging: {self.max_active_noise_cells}")
         logger.info(f'- Forward reachable sets computed (took {(time.time() - t):.3f} sec.)')
+
+        t = time.time()
 
         self.id = np.arange(self.num_actions)
 
         logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
 
-        # For each noise cell in model.noise.partition, shift the FRS by that cell's bounds
-        # and record which partition cells the shifted FRS intersects as flat cell IDs.
-        if hasattr(model.noise, 'partition'):
-            noise_cells = np.asarray(model.noise.partition['cells'])  # (C, D, 2)
-            num_noise_cells = noise_cells.shape[0]
+        # TODO: Below is WIP
 
-            noise_lb = noise_cells[:, :, 0]  # (C, D)
-            noise_ub = noise_cells[:, :, 1]  # (C, D)
+        box2idx_fn = partial(
+            box_to_cell_idxs,
+            n = model.n, 
+            max_span = max_span, 
+            wrap = model.wrap, 
+            num_per_dim=model.partition['number_per_dim'],
+            region_linear_idx=jax.device_put(partition.region_linear_idx),
+            region_linear_state=jax.device_put(partition.region_linear_state),
+            region_linear_strides=jax.device_put(partition.region_linear_strides),
+            missing_state=partition.missing_state,
+        )
 
-            bl   = np.asarray(partition.boundary_lb)
-            cw   = np.asarray(partition.cell_width)
-            npd  = np.asarray(partition.number_per_dim, dtype=int)
-            wrap = np.asarray(model.wrap, dtype=bool)
-            n_dims = len(npd)
+        vmap_over_noise = jax.vmap(box2idx_fn, in_axes=0, out_axes=0)
+        vmap_over_actions = jax.vmap(vmap_over_noise, in_axes=0, out_axes=0)
+        batch_box2idx = jax.jit(jax.vmap(vmap_over_actions, in_axes=0, out_axes=0))
 
-            strides = np.asarray(partition.region_linear_strides, dtype=np.int64)
+        max_successors = np.prod(max_span)
+        self.frs_noise_ids = np.zeros((S, A, self.max_active_noise_cells, max_successors), dtype=np.int32)
 
-            # Shifted bounds: (S, A, C, D)
-            shifted_lb = self.frs_lb[:, :, None, :] + noise_lb[None, None, :, :]
-            shifted_ub = self.frs_ub[:, :, None, :] + noise_ub[None, None, :, :]
+        pbar = tqdm(zip(starts, ends), total=len(starts))
+        for batch_start, batch_end in pbar:
 
-            idx_lo = np.floor((shifted_lb - bl) / cw).astype(int)
-            idx_hi = np.floor((shifted_ub - bl) / cw).astype(int)
+            _, IDs = batch_box2idx(
+                                idx_lb = self.frs_idx_lb[batch_start:batch_end], 
+                                idx_ub = self.frs_idx_ub[batch_start:batch_end])
+            
+            self.frs_noise_ids[batch_start:batch_end] = jax.device_get(IDs)
 
-            # Effective span per dim: for non-wrapped dims clip to grid bounds first
-            clip_lo = np.maximum(idx_lo, 0)
-            clip_hi = np.minimum(idx_hi, npd - 1)
-            eff_span = np.where(
-                wrap,
-                np.minimum(idx_hi - idx_lo + 1, npd),   # wrapped: wrap around at most once
-                np.maximum(0, clip_hi - clip_lo + 1),    # non-wrapped: clip and count
-            )  # (S, A, C, D)
-
-            # Offset table: iterate over the global max span per dim
-            max_span_d = eff_span.max(axis=(0, 1, 2)).astype(int)  # (D,)
-            offset_grids = np.meshgrid(*[np.arange(int(k)) for k in max_span_d], indexing='ij')
-            offsets = np.stack([g.ravel() for g in offset_grids], axis=1).astype(int)  # (K, D)
-
-            self.noise_frs_cell_ids = np.empty(
-                (self.num_regions, self.num_actions, num_noise_cells), dtype=object
-            )
-            self.noise_frs_counts = np.zeros(
-                (self.num_regions, self.num_actions, num_noise_cells), dtype=np.int16
-            )
-
-            # Loop only over (action, noise_cell) pairs; vectorise over all states at once.
-            for a in tqdm(range(self.num_actions), desc="Noise FRS cell IDs"):
-                for c in range(num_noise_cells):
-                    eff = eff_span[:, a, c, :]   # (S, D)
-
-                    # Starting grid index per dim: clipped for non-wrapped, raw for wrapped
-                    start = np.where(wrap, idx_lo[:, a, c, :], clip_lo[:, a, c, :])  # (S, D)
-
-                    # Candidate indices: (S, K, D)
-                    cands = start[:, None, :] + offsets[None, :, :]
-                    for d in range(n_dims):
-                        if wrap[d]:
-                            cands[:, :, d] = cands[:, :, d] % int(npd[d])
-
-                    # Valid if offset is within effective span (bounds are implicit after clipping/wrapping)
-                    valid = (offsets[None, :, :] < eff[:, None, :]).all(axis=-1)  # (S, K)
-
-                    # Flat cell IDs
-                    flat = (cands.astype(np.int64) * strides).sum(axis=-1).astype(np.int32)  # (S, K)
-
-                    # Group valid IDs by state using np.split (no per-state Python loop)
-                    counts = valid.sum(axis=1)          # (S,)
-                    all_ids = flat[valid]               # flat array, row-major order
-                    groups = np.split(all_ids, np.cumsum(counts[:-1]))
-                    for s, ids in enumerate(groups):
-                        self.noise_frs_cell_ids[s, a, c] = ids
-                    self.noise_frs_counts[:, a, c] = counts.astype(np.int16)
-
-            logger.info(f"- Noise FRS cell IDs computed for {num_noise_cells} noise cells.")
-        
         return
