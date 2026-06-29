@@ -168,7 +168,7 @@ class RectangularForward(object):
         S, A, C, D = self.num_regions, self.num_actions, noise_cells.shape[0], partition.dimension
         self.frs_idx_lb = np.zeros((S, A, C, D), dtype=np.int16)
         self.frs_idx_ub = np.zeros((S, A, C, D), dtype=np.int16)
-        self.frs_noise_probs = np.zeros((S, A, C), dtype=np.float64)
+        self.frs_noise_probs = np.zeros((S, A, C), dtype=args.floatprecision)
         self.frs_noise_num_active = np.zeros((S, A), dtype=np.int32)
         # max_slice is computed incrementally per batch to avoid a second pass over the indices.
         
@@ -180,6 +180,8 @@ class RectangularForward(object):
         starts, ends = create_batches(self.num_regions, args.frs_batch_size)
         pbar = tqdm(zip(starts, ends), total=len(starts))
         for batch_start, batch_end in pbar:
+            t = time.time()
+
             batch_size = batch_end - batch_start
             actions_slice = partition.regions['actions']
             # RectangularPartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
@@ -189,11 +191,21 @@ class RectangularForward(object):
             else:
                 actions_batch = actions_slice[batch_start:batch_end]
             # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
+            
+            print(f"  Batch setup: {time.time() - t:.3f}s")
+            t = time.time()
+
             fspan, fil, fiu, fprob, fnact = batch_forward_reach(
                 partition.regions['lower_bounds'][batch_start:batch_end],
                 partition.regions['upper_bounds'][batch_start:batch_end],
                 actions_batch,
             )
+            # JAX dispatches asynchronously; block so the timing reflects actual compute.
+            jax.block_until_ready((fspan, fil, fiu, fprob, fnact))
+
+            print(f"  Forward reach: {time.time() - t:.3f}s")
+            t = time.time()
+
             fspan, fil, fiu, fprob, fnact = jax.device_get((fspan, fil, fiu, fprob, fnact))
             self.frs_idx_lb[batch_start:batch_end] = fil.astype(np.int16)
             self.frs_idx_ub[batch_start:batch_end] = fiu.astype(np.int16)
@@ -202,6 +214,8 @@ class RectangularForward(object):
             # Update max span incrementally (padding entries span 1 cell, so never inflate the max).
             np.maximum(max_span, np.max(fspan, axis=(0, 1, 2)).astype(int), out=max_span)
             max_active_noise_cells = np.maximum(max_active_noise_cells, np.max(fnact).astype(int))
+
+            print(f"  Device get + store: {time.time() - t:.3f}s")
 
         # TODO: With no wrap, max_span is potentially conservative (there may be many indices OOB that can already be ignored)
 

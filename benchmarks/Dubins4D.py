@@ -37,7 +37,7 @@ class Dubins4D(DubinsDynamics4D):
 
         self.partition['boundary'] = np.array([[-10, 0, -np.pi, -3], [10, 10, np.pi, 3]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 20, 20, 20])
+        self.partition['number_per_dim'] = 1.35 * np.array([40, 20, 20, 20])
 
         self.goal = np.array([
             [[6, 6, -np.pi, -3], [9, 9, np.pi, 3]]

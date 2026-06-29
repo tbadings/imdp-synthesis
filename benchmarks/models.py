@@ -221,11 +221,11 @@ class DroneDynamics:
             if args.noise_distr == 'gaussian':
                 cov = np.array([0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1])
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1])
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
             else:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
@@ -238,13 +238,13 @@ class DroneDynamics:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0*0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
+                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[1, 1, 5, 1, 5, 1])
+                self.noise.set_partition_probs(num_cells=[6, 1, 6, 1, 6, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.15, 0, 0.15, 0, 0.15, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
-                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1])
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
             else:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 

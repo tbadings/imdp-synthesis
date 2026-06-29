@@ -81,7 +81,7 @@ class Drone6D(DroneDynamics):
             [[9, v_min, 5, v_min, -7, v_min], [15, v_max, 9, v_max, 1, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, -1.9])
+        self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01])
 
         self.pi_arch = [128, 64, 64]
         self.vf_arch = [128, 64, 64]

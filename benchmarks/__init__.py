@@ -30,6 +30,10 @@ def create_model(args):
 		raise ValueError(f"The passed model '{args.model}' could not be found")
 
 	base_model = model_cls(args)
+
+	if hasattr(base_model, 'inflation_rate'):
+		print(f"- Tube size around RL rollouts: {base_model.inflation_rate}")
+
 	if base_model.linear:
 		return parse_linear_model(base_model)
 	return parse_nonlinear_model(base_model)
