@@ -43,7 +43,7 @@ class Dubins3D(DubinsDynamics3D):
 
         self.partition['boundary'] = np.array([[-10, -10, -np.pi], [10, 10, np.pi]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = 10 * np.array([20, 20, 11])
+        self.partition['number_per_dim'] = 3 * np.array([20, 20, 11])
 
         self.goal = np.array([
             [[-10, 5, -np.pi], [-5, 10, np.pi]]

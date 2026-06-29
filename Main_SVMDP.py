@@ -10,6 +10,7 @@ import torch
 
 import benchmarks
 from core.abstraction.svmdp.forward_reachability import RectangularForward
+from core.abstraction.svmdp.successor_ids import make_box_to_ids
 from core.abstraction.svmdp.svmdp import SVMDP
 from core.abstraction.svmdp.dynprog import SVMDP_DP
 from core.options import parse_arguments
@@ -57,6 +58,7 @@ if __name__ == '__main__':
 
     # Create partition of the continuous state space into convex polytope
     partition = RectangularPartition(model=model)
+    partition.rectangular = False
     # Sparse partition can be created with, e.g.,
     # partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
@@ -73,6 +75,10 @@ if __name__ == '__main__':
 
     # TODO: Action space can be pruned; any action that leads to unsafe state with prob zero can be omitted.
 
+    # Recompose successor IDs on the fly in the DP from the compact boxes (frs_idx_lb/frs_idx_ub)
+    # rather than materialising the [S, A, nc, prod(max_span)] ID array (tens of GB for 3-D models).
+    box_to_ids = make_box_to_ids(max_span=actions.max_slice, wrap=model.wrap, partition=partition)
+
     svmdp = SVMDP(
         partition=partition,
         states=states,
@@ -80,12 +86,16 @@ if __name__ == '__main__':
         goal_regions=np.array(partition.goal['bools']),
         critical_regions=np.array(partition.critical['bools']),
         P_full=actions.frs_noise_probs,
-        S_id=actions.frs_noise_ids,
+        S_idx_lb=actions.frs_idx_lb,
+        S_idx_ub=actions.frs_idx_ub,
+        box_to_ids=box_to_ids,
         A_id=A_id,
         P_absorbing=model.noise.partition['remainder'],
     )
-    
+
+    import gc
     del actions
+    gc.collect()
 
     logger.info('Initial state x0=%s → state index %d', model.x0, s_init)
     logger.info('Generating SVMDP abstraction took %.3f sec.', time.time() - t)

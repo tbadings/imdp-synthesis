@@ -76,8 +76,18 @@ def SVMDP_DP(
 
     vmap_compute_lower_val = jax.jit(jax.vmap(compute_lower_val, in_axes=(0, 0), out_axes=0))
 
+    # On-the-fly recomposition of successor state IDs from the compact forward-reachable boxes.
+    # box_to_ids maps one box (idx_lb[D], idx_ub[D]) -> successor IDs [M = prod(max_span)] without
+    # materialising the [S, A, nc, M] array. We vmap it over noise cells and actions as needed.
+    box_to_ids = svmdp.box_to_ids
+    ids_over_noise = jax.vmap(box_to_ids, in_axes=(0, 0), out_axes=0)              # [nc,D] -> [nc,M]
+    ids_over_actions = jax.vmap(ids_over_noise, in_axes=(0, 0), out_axes=0)        # [A,nc,D] -> [A,nc,M]
+    # Batched composer used by the state-pruning fix-point: [batch,A,nc,D] -> [batch,A,nc,M].
+    batch_ids_over_actions = jax.jit(jax.vmap(ids_over_actions, in_axes=(0, 0), out_axes=0))
+
     def state_policy_improvement(
-        successors_slice: UInt8[Array, "nr_actions nr_noise_cells nr_successors"],
+        idx_lb_slice: UInt8[Array, "nr_actions nr_noise_cells state_dim"],
+        idx_ub_slice: UInt8[Array, "nr_actions nr_noise_cells state_dim"],
         prob_slice: Float32[Array, "nr_actions nr_noise_cells"],
         V: Float32[Array, "nr_states"],
     ) -> Tuple[Float32, UInt8]:
@@ -85,13 +95,15 @@ def SVMDP_DP(
         """
         Perform policy improvement for a given state by computing the robust values for all actions.
 
-        :param successors_slice: Slice of successor states for all actions
+        :param idx_lb_slice: Lower grid-index bounds of the forward-reachable boxes for all actions
+        :param idx_ub_slice: Upper grid-index bounds of the forward-reachable boxes for all actions
         :param prob_slice: Slice of transition probabilities for all actions
         :param V: Current value function
         :return: Tuple of (maximum robust value, index of the action with maximum robust value)
         """
 
-        # Retrieve the values for the successor states, including absorbing state
+        # Recompose successor IDs from the boxes, then retrieve their values (incl. absorbing state)
+        successors_slice = ids_over_actions(idx_lb_slice, idx_ub_slice)
         successor_values = V[successors_slice]
 
         # Compute lower value for all actions in parallel using JAX vectorization
@@ -99,24 +111,27 @@ def SVMDP_DP(
 
         return jnp.max(lower_vals), jnp.argmax(lower_vals)
 
-    vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, None), out_axes=(0, 0)))
+    vmap_state_policy_improvement = jax.jit(jax.vmap(state_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0)))
 
     def state_policy_evaluation(
-        successors_slice: UInt8[Array, "nr_actions nr_noise_cells nr_successors"],
-        prob_slice: Float32[Array, "nr_actions nr_noise_cells"],
+        idx_lb_slice: UInt8[Array, "nr_noise_cells state_dim"],
+        idx_ub_slice: UInt8[Array, "nr_noise_cells state_dim"],
+        prob_slice: Float32[Array, "nr_noise_cells"],
         V: Float32[Array, "nr_states"],
     ) -> Float32:
 
         """
         Perform policy evaluation for a given state by computing the robust value for the action specified by the current policy.
 
-        :param successors_slice: Slice of successor states for all actions
-        :param prob_slice: Slice of transition probabilities for all actions
+        :param idx_lb_slice: Lower grid-index bounds of the forward-reachable boxes for the chosen action
+        :param idx_ub_slice: Upper grid-index bounds of the forward-reachable boxes for the chosen action
+        :param prob_slice: Slice of transition probabilities for the chosen action
         :param V: Current value function
         :return: The robust value for the action specified by the current policy
         """
 
-        # Retrieve the values for the successor states, including absorbing state
+        # Recompose successor IDs from the boxes, then retrieve their values (incl. absorbing state)
+        successors_slice = ids_over_noise(idx_lb_slice, idx_ub_slice)
         successor_values = V[successors_slice]
 
         # Compute lower value for all actions in parallel using JAX vectorization
@@ -124,10 +139,11 @@ def SVMDP_DP(
 
         return lower_vals
 
-    vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, None), out_axes=(0)))
+    vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
 
     #####
-    # Padding the probability intervals and successor values for JAX vectorization
+
+    # Count the total number of actions
     total_actions = np.array([len(svmdp.A_id[s]) for s in svmdp.states if s in svmdp.A_id])
     max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
 
@@ -187,7 +203,8 @@ def SVMDP_DP(
             pbar = tqdm(zip(starts, ends), desc='Prune states', total=len(starts))
             for batch_start, batch_end in pbar:
                 states = states_to_update[batch_start:batch_end]
-                skip = vmap_fn3(svmdp.S_id[states], svmdp.P_full[states], jnp.concatenate((absorbing_mask, jnp.array([True])))) # Add one 'true' for the out-of-bounds state
+                S_id_batch = batch_ids_over_actions(jnp.asarray(svmdp.S_idx_lb[states]), jnp.asarray(svmdp.S_idx_ub[states]))
+                skip = vmap_fn3(S_id_batch, svmdp.P_full[states], jnp.concatenate((absorbing_mask, jnp.array([True])))) # Add one 'true' for the out-of-bounds state
                 skip_mask[states] = skip
                 absorbing_mask[states] = skip
                 if any(skip):
@@ -234,13 +251,14 @@ def SVMDP_DP(
             # Policy evaluation + improvement
             for state_batch in state_batches:
                 V_batch, policy_batch = vmap_state_policy_improvement(
-                                            jax.device_put(svmdp.S_id[state_batch], args.rvi_device), 
+                                            jax.device_put(svmdp.S_idx_lb[state_batch], args.rvi_device),
+                                            jax.device_put(svmdp.S_idx_ub[state_batch], args.rvi_device),
                                             jax.device_put(svmdp.P_full[state_batch], args.rvi_device),
                                             V)
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
-            
+
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
                 pbar.write(f'Converged after {iteration + 1} iterations')
@@ -282,8 +300,9 @@ def SVMDP_DP(
                 for state_batch in state_batches:
                     policy_actions = policy[state_batch]
                     V_eval = vmap_state_policy_evaluation(
-                                                jax.device_put(svmdp.S_id[state_batch, policy_actions], args.rvi_device), 
-                                                jax.device_put(svmdp.P_full[state_batch, policy_actions], args.rvi_device), 
+                                                jax.device_put(svmdp.S_idx_lb[state_batch, policy_actions], args.rvi_device),
+                                                jax.device_put(svmdp.S_idx_ub[state_batch, policy_actions], args.rvi_device),
+                                                jax.device_put(svmdp.P_full[state_batch, policy_actions], args.rvi_device),
                                                 V)
                     V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
 
@@ -304,7 +323,8 @@ def SVMDP_DP(
                     # t = time.time()
 
                     V_batch, policy_batch = vmap_state_policy_improvement(
-                                                jax.device_put(svmdp.S_id[state_batch], args.rvi_device), 
+                                                jax.device_put(svmdp.S_idx_lb[state_batch], args.rvi_device),
+                                                jax.device_put(svmdp.S_idx_ub[state_batch], args.rvi_device),
                                                 jax.device_put(svmdp.P_full[state_batch], args.rvi_device),
                                                 V)
                     V_batch, policy_batch = jax.device_get((V_batch, policy_batch))

@@ -94,48 +94,6 @@ def forward_reach_noise(state_min, state_max, input, step_set, cell_width, bound
 
     return frs_span, idx_low, idx_upp, probs, num_active
 
-def box_to_cell_idxs(idx_lb, idx_ub, n, max_span, wrap, num_per_dim, region_linear_idx, region_linear_state, region_linear_strides, missing_state):
-
-    # For every dimension
-    idx = [[]]*n
-    for i in range(n):
-        # Initialize the list of indices in that dimension, starting at idx_lb and ending at idx_ub.
-        # To make function jittable, add extra values to make the list same size every time.
-        # Having the same indices multiple times makes nu difference as the SVMDP considers a pure nondeterministic choice over them.
-        idx[i] = jnp.minimum(jnp.arange(max_span[i]) + idx_lb[i], idx_ub[i])
-        
-        idx_wrap = idx[i] % num_per_dim[i]
-
-        idx_nonwrap = jnp.maximum(idx[i], -1)
-        idx_nonwrap = jnp.where(idx_nonwrap >= num_per_dim[i], jnp.full(max_span[i], -1), idx_nonwrap)
-
-        # Switch between wrap and nonwrap version
-        idx[i] = wrap[i] * idx_wrap + ~wrap[i] * idx_nonwrap
-
-    # Build the flat list of n-D grid indices matching the outer-product ordering.
-    # indexing='ij' gives shape (max_slice[0], ..., max_slice[n-1]) per grid array;
-    # stacking on axis=-1 and flattening matches C-order of the outer products above.
-    product_idx = jnp.stack(jnp.meshgrid(*idx, indexing='ij'), axis=-1).reshape(-1, n)
-
-    # TODO: Not sure if this look-up works correctly
-
-    # Clip to grid bounds before linearization; out-of-range points are filtered separately below.
-    prob_idx_clip = jnp.clip(product_idx, 0, num_per_dim - 1)
-    # Convert each n-D index to a scalar key using the partition strides.
-    linear_prob_idx = jnp.sum(prob_idx_clip.astype(region_linear_strides.dtype) * region_linear_strides, axis=1)
-    # Binary search in the sorted sparse key array, then verify exact match.
-    pos = jnp.searchsorted(region_linear_idx, linear_prob_idx, side='left')
-    pos_clip = jnp.minimum(pos, region_linear_idx.shape[0] - 1)
-    valid = (pos < region_linear_idx.shape[0]) & (region_linear_idx[pos_clip] == linear_prob_idx)
-
-    # Check which rows are out of bounds and not wrapped. Map these rows to the 'missing_state' as well.
-    out_of_bounds = jnp.any((~wrap * product_idx) < 0, axis=1) # Out of bounds if any nonwrapped dimension has an index of -1.
-
-    product_id = jnp.where(valid * ~out_of_bounds, region_linear_state[pos_clip], missing_state)
-
-    return product_idx, product_id
-
-
 class RectangularForward(object):
     """
     Computes and stores forward reachable sets for a rectangular partition of the state space.
@@ -268,34 +226,9 @@ class RectangularForward(object):
 
         logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
 
-        # TODO: Below is WIP
-
-        box2idx_fn = partial(
-            box_to_cell_idxs,
-            n = model.n, 
-            max_span = max_span, 
-            wrap = model.wrap, 
-            num_per_dim=model.partition['number_per_dim'],
-            region_linear_idx=jax.device_put(partition.region_linear_idx),
-            region_linear_state=jax.device_put(partition.region_linear_state),
-            region_linear_strides=jax.device_put(partition.region_linear_strides),
-            missing_state=partition.missing_state,
-        )
-
-        vmap_over_noise = jax.vmap(box2idx_fn, in_axes=0, out_axes=0)
-        vmap_over_actions = jax.vmap(vmap_over_noise, in_axes=0, out_axes=0)
-        batch_box2idx = jax.jit(jax.vmap(vmap_over_actions, in_axes=0, out_axes=0))
-
-        max_successors = np.prod(max_span)
-        self.frs_noise_ids = np.zeros((S, A, self.max_active_noise_cells, max_successors), dtype=np.int32)
-
-        pbar = tqdm(zip(starts, ends), total=len(starts))
-        for batch_start, batch_end in pbar:
-
-            _, IDs = batch_box2idx(
-                                idx_lb = self.frs_idx_lb[batch_start:batch_end], 
-                                idx_ub = self.frs_idx_ub[batch_start:batch_end])
-            
-            self.frs_noise_ids[batch_start:batch_end] = jax.device_get(IDs)
+        # The successor cell IDs spanned by each box are NOT materialised here: that array has
+        # shape [S, A, max_active_noise_cells, prod(max_span)] and is tens of GB for 3-D models.
+        # Instead the DP recomposes them on the fly from the compact boxes (frs_idx_lb/frs_idx_ub)
+        # via core.abstraction.svmdp.successor_ids.box_to_ids_single (separable linear key).
 
         return
