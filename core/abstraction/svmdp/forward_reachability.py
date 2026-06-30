@@ -12,7 +12,7 @@ from core.utils import create_batches
 logger = logging.getLogger(__name__)
 
 def forward_reach_noise(state_min, state_max, input, step_set, cell_width, boundary_lb, shrink_frs,
-                        noise_lb, noise_ub, noise_cells_probs):
+                        noise_lb, noise_ub, noise_cells_probs, varying_dims, key_dtype):
     """
     Computes the forward reachable set for a given state region and control input.
 
@@ -35,6 +35,12 @@ def forward_reach_noise(state_min, state_max, input, step_set, cell_width, bound
     :param noise_lb: Lower bound of each noise cell (shape: [num_noise_cells, state_dim])
     :param noise_ub: Upper bound of each noise cell (shape: [num_noise_cells, state_dim])
     :param noise_cells_probs: Probability mass of each noise cell (shape: [num_noise_cells])
+    :param varying_dims: Static tuple of state dims in which the noise cells actually differ (the
+                         remaining dims are identical across all cells and carry no grouping
+                         information). Empty tuple means all cells map to the same successor box.
+    :param key_dtype: Integer dtype used for the combined merge key (jnp.int64 if x64 is enabled,
+                      else jnp.int32). When None, fall back to a lexsort over varying_dims (used
+                      only if a single integer key could overflow this dtype; see RectangularForward).
     :return: Tuple of arrays, each with a leading axis of size num_noise_cells. Noise cells whose
         successor box (idx_low, idx_upp) is identical are merged into a single entry; the unique
         entries are packed at the top of each array and the remaining rows are inactive padding
@@ -70,23 +76,45 @@ def forward_reach_noise(state_min, state_max, input, step_set, cell_width, bound
     # jit/vmap-able): unique entries are packed at the top and the remaining rows are inactive
     # padding (probability 0).
     N, D = idx_low.shape
+    vdims = list(varying_dims)
 
     # Sort cells so identical successor boxes are adjacent, then label the start of each group.
-    key = jnp.concatenate([idx_low, idx_upp], axis=1)                     # (N, 2D)
-    perm = jnp.lexsort(tuple(key[:, c] for c in reversed(range(2 * D))))  # (N,)
-    key_sorted = key[perm]                                                # (N, 2D)
-    is_first = jnp.concatenate([
-        jnp.array([True]),
-        jnp.any(key_sorted[1:] != key_sorted[:-1], axis=1),
-    ])                                                                    # (N,) start of each group
+    # The successor box differs across noise cells only in varying_dims (the other dims are
+    # identical for every cell), so only those dims are used to detect duplicates.
+    if key_dtype is not None:
+        # Fast path: pack the (idx_low | idx_upp) of the varying dims into a single integer key and
+        # do ONE argsort, instead of lexsort's one stable sort per column. Each field is offset by
+        # its per-call min (idx may be OOB/negative) so the key stays small and non-negative, then
+        # combined with a mixed radix (cumulative per-field range) — a bijection, so equal key
+        # iff equal box. RectangularForward only selects this path when the radix product is
+        # statically guaranteed to fit key_dtype.
+        if len(vdims) == 0:
+            key = jnp.zeros(N, dtype=key_dtype)                              # all cells share one box
+        else:
+            fields = jnp.concatenate([idx_low[:, vdims], idx_upp[:, vdims]], axis=1)  # (N, 2V)
+            fields = (fields - jnp.min(fields, axis=0)).astype(key_dtype)
+            ranges = jnp.max(fields, axis=0) + 1                            # (2V,) per-field radix
+            strides = jnp.concatenate([jnp.ones(1, key_dtype), jnp.cumprod(ranges[:-1])])
+            key = (fields * strides).sum(axis=1)                           # (N,)
+        perm = jnp.argsort(key)                                            # (N,) single sort
+        key_sorted = key[perm]
+        is_first = jnp.concatenate([jnp.array([True]), key_sorted[1:] != key_sorted[:-1]])
+    else:
+        # Fallback: lexsort over the varying dims only (2*len(vdims) columns, still fewer than 2D).
+        cols = vdims if len(vdims) > 0 else [0]
+        key = jnp.concatenate([idx_low[:, cols], idx_upp[:, cols]], axis=1)           # (N, 2V)
+        perm = jnp.lexsort(tuple(key[:, c] for c in reversed(range(key.shape[1]))))   # (N,)
+        key_sorted = key[perm]                                                        # (N, 2V)
+        is_first = jnp.concatenate([jnp.array([True]), jnp.any(key_sorted[1:] != key_sorted[:-1], axis=1)])
+
     slot = jnp.cumsum(is_first) - 1                                       # (N,) top-packed dest slot
     num_active = is_first.sum()                                           # scalar: number of unique entries
 
-    # Scatter into top-packed slots: the box is identical within a group (a plain set is
-    # well-defined and reuses the already-sorted key), and probabilities are summed. Untouched
-    # padding slots keep their zero initialiser.
-    key_merged = jnp.zeros((N, 2 * D), key.dtype).at[slot].set(key_sorted)
-    idx_low, idx_upp = key_merged[:, :D], key_merged[:, D:]
+    # Scatter into top-packed slots: the box is identical within a group (so .set from any member
+    # is well-defined), and probabilities are summed. Untouched padding slots keep their zero
+    # initialiser. The full box (all dims) is carried through the permutation by gather.
+    idx_low = jnp.zeros((N, D), idx_low.dtype).at[slot].set(idx_low[perm])
+    idx_upp = jnp.zeros((N, D), idx_upp.dtype).at[slot].set(idx_upp[perm])
     probs = jnp.zeros(N, noise_cells_probs.dtype).at[slot].add(noise_cells_probs[perm])
 
     # Number of grid cells each (merged) forward reachable set spans per dimension.
@@ -140,6 +168,32 @@ class RectangularForward(object):
         cw_dev = jax.device_put(partition.cell_width)
         blb_dev = jax.device_put(partition.boundary_lb)
 
+        # The successor box differs across noise cells only in the dims where the noise cells
+        # themselves differ; the rest are identical for every cell and carry no grouping info.
+        # Detecting these statically lets the merge sort on only these dims (see forward_reach_noise).
+        nlb, nub = noise_cells[:, :, 0], noise_cells[:, :, 1]
+        cell_width = np.asarray(partition.cell_width)
+        varying_dims = tuple(
+            d for d in range(noise_cells.shape[1])
+            if not (np.allclose(nlb[:, d], nlb[0, d]) and np.allclose(nub[:, d], nub[0, d]))
+        )
+
+        # Decide whether the single-integer merge key is safe: bound the per-dim spread of the grid
+        # indices across noise cells (floor(a + noise/cw) spreads by at most noise_range/cw + 2,
+        # independent of the action-dependent offset a), and check the radix product fits the int
+        # dtype. Noise is local, so this holds comfortably; otherwise fall back to a lexsort.
+        x64 = jax.config.read('jax_enable_x64')
+        key_dtype = jnp.int64 if x64 else jnp.int32
+        max_key = (2 ** 63 - 1) if x64 else (2 ** 31 - 1)
+        radix_product = 1.0
+        for d in varying_dims:
+            lo_span = int(np.ceil((nlb[:, d].max() - nlb[:, d].min()) / cell_width[d])) + 2
+            up_span = int(np.ceil((nub[:, d].max() - nub[:, d].min()) / cell_width[d])) + 2
+            radix_product *= lo_span * up_span
+        key_dtype = key_dtype if radix_product <= max_key else None
+        if key_dtype is None:
+            logger.info('- FRS merge: single-key radix overflow, using lexsort fallback')
+
         # Bind the constant arguments once; only (state_min, state_max, input) vary in the loop.
         frs_fn = partial(
             forward_reach_noise,
@@ -150,6 +204,8 @@ class RectangularForward(object):
             noise_lb=noise_lb_dev,
             noise_ub=noise_ub_dev,
             noise_cells_probs=noise_probs_dev,
+            varying_dims=varying_dims,
+            key_dtype=key_dtype,
         )
 
         # Inner vmap over control actions, outer vmap over a batch of state regions; only the three
@@ -180,7 +236,7 @@ class RectangularForward(object):
         starts, ends = create_batches(self.num_regions, args.frs_batch_size)
         pbar = tqdm(zip(starts, ends), total=len(starts))
         for batch_start, batch_end in pbar:
-            t = time.time()
+            # t = time.time()
 
             batch_size = batch_end - batch_start
             actions_slice = partition.regions['actions']
@@ -192,8 +248,8 @@ class RectangularForward(object):
                 actions_batch = actions_slice[batch_start:batch_end]
             # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
             
-            print(f"  Batch setup: {time.time() - t:.3f}s")
-            t = time.time()
+            # print(f"  Batch setup: {time.time() - t:.3f}s")
+            # t = time.time()
 
             fspan, fil, fiu, fprob, fnact = batch_forward_reach(
                 partition.regions['lower_bounds'][batch_start:batch_end],
@@ -203,8 +259,8 @@ class RectangularForward(object):
             # JAX dispatches asynchronously; block so the timing reflects actual compute.
             jax.block_until_ready((fspan, fil, fiu, fprob, fnact))
 
-            print(f"  Forward reach: {time.time() - t:.3f}s")
-            t = time.time()
+            # print(f"  Forward reach: {time.time() - t:.3f}s")
+            # t = time.time()
 
             fspan, fil, fiu, fprob, fnact = jax.device_get((fspan, fil, fiu, fprob, fnact))
             self.frs_idx_lb[batch_start:batch_end] = fil.astype(np.int16)
@@ -215,7 +271,7 @@ class RectangularForward(object):
             np.maximum(max_span, np.max(fspan, axis=(0, 1, 2)).astype(int), out=max_span)
             max_active_noise_cells = np.maximum(max_active_noise_cells, np.max(fnact).astype(int))
 
-            print(f"  Device get + store: {time.time() - t:.3f}s")
+            # print(f"  Device get + store: {time.time() - t:.3f}s")
 
         # TODO: With no wrap, max_span is potentially conservative (there may be many indices OOB that can already be ignored)
 

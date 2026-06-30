@@ -238,11 +238,11 @@ class DroneDynamics:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0])**2 # From stdev to covariance
+                cov = np.array([0.1, 0, 0.1, 0, 0.1, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[6, 1, 6, 1, 6, 1])
+                self.noise.set_partition_probs(num_cells=[3, 1, 3, 1, 3, 1])
             elif args.noise_distr == 'triangular':
-                cov = np.array([0.15, 0, 0.15, 0, 0.15, 0]) # Halfwidth
+                cov = np.array([0.1, 0, 0.1, 0, 0.1, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
                 self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1])
             else:

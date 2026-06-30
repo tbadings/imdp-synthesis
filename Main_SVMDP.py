@@ -1,6 +1,8 @@
+import copy
 import datetime
 import logging
 import os
+import pickle
 import random
 import time
 from pathlib import Path
@@ -39,64 +41,96 @@ if __name__ == '__main__':
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
-    run_output_dir.mkdir(parents=True, exist_ok=True)
-    args.output_dir = run_output_dir
-    add_file_handler(run_output_dir, stamp)
-    logger.info('Run %s | model=%s | noise=%s', stamp, args.model, args.noise_distr)
-    logger.info('Output directory: %s', run_output_dir)
+    if args.load_checkpoint:
+        # --- Load SVMDP from checkpoint ---
+        ckpt_path = Path(args.load_checkpoint)
+        logger.info('Loading checkpoint from %s', ckpt_path)
+        with open(ckpt_path, 'rb') as f:
+            ckpt = pickle.load(f)
+        model = ckpt['model']
+        partition = ckpt['partition']
+        svmdp = ckpt['svmdp']
+        args.model = ckpt['args'].model
 
-    logger.info('\n=== Generating SVMDP from scratch ===')
-    logger.debug('Arguments: %s', vars(args))
+        run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        args.output_dir = run_output_dir
+        add_file_handler(run_output_dir, stamp)
+        logger.info('Run %s | model=%s (from checkpoint)', stamp, args.model)
+        logger.info('Output directory: %s', run_output_dir)
 
-    model = benchmarks.create_model(args)
+        logger.info('\n=== SVMDP loaded from checkpoint: %s ===', ckpt_path)
+    else:
+        # --- Build SVMDP from scratch ---
+        run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        args.output_dir = run_output_dir
+        add_file_handler(run_output_dir, stamp)
+        logger.info('Run %s | model=%s | noise=%s', stamp, args.model, args.noise_distr)
+        logger.info('Output directory: %s', run_output_dir)
 
-    t = time.time()
+        logger.info('\n=== Generating SVMDP from scratch ===')
+        logger.debug('Arguments: %s', vars(args))
 
-    active_states, active_actions = find_active(model, args=args, previous_cells=set())
-    logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+        model = benchmarks.create_model(args)
 
-    # Create partition of the continuous state space into convex polytope
-    # partition = RectangularPartition(model=model)
-    # partition.rectangular = False
-    # Sparse partition can be created with, e.g.,
-    partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
+        t = time.time()
 
-    s_init, s_init_exists = partition.x2state(model.x0)
-    if not s_init_exists:
-        raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
+        # active_states, active_actions = find_active(model, args=args, previous_cells=set())
+        # logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
-    # Compute forward reachable sets and noise-shifted successor cell IDs.
-    actions = RectangularForward(args=args, partition=partition, model=model)
+        # Create partition of the continuous state space into convex polytope
+        partition = RectangularPartition(model=model)
+        partition.rectangular = False
+        # Sparse partition can be created with, e.g.,
+        # partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
-    # All partition states have all actions enabled (rectangular partition).
-    states = np.array(partition.regions['idxs'])
-    A_id = {int(s): list(range(actions.num_actions)) for s in states}
+        s_init, s_init_exists = partition.x2state(model.x0)
+        if not s_init_exists:
+            raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
 
-    # TODO: Action space can be pruned; any action that leads to unsafe state with prob zero can be omitted.
+        # Compute forward reachable sets and noise-shifted successor cell IDs.
+        actions = RectangularForward(args=args, partition=partition, model=model)
 
-    # Recompose successor IDs on the fly in the DP from the compact boxes (frs_idx_lb/frs_idx_ub)
-    # rather than materialising the [S, A, nc, prod(max_span)] ID array (tens of GB for 3-D models).
-    box_to_ids = make_box_to_ids(max_span=actions.max_slice, wrap=model.wrap, partition=partition)
+        # All partition states have all actions enabled (rectangular partition).
+        states = np.array(partition.regions['idxs'])
+        A_id = {int(s): list(range(actions.num_actions)) for s in states}
 
-    svmdp = SVMDP(
-        partition=partition,
-        states=states,
-        x0=model.x0,
-        goal_regions=np.array(partition.goal['bools']),
-        critical_regions=np.array(partition.critical['bools']),
-        P_full=actions.frs_noise_probs,
-        S_idx_lb=actions.frs_idx_lb,
-        S_idx_ub=actions.frs_idx_ub,
-        box_to_ids=box_to_ids,
-        A_id=A_id,
-        P_absorbing=model.noise.partition['remainder'],
-    )
+        # TODO: Action space can be pruned; any action that leads to unsafe state with prob zero can be omitted.
 
-    del actions
+        # Recompose successor IDs on the fly in the DP from the compact boxes (frs_idx_lb/frs_idx_ub)
+        # rather than materialising the [S, A, nc, prod(max_span)] ID array (tens of GB for 3-D models).
+        box_to_ids = make_box_to_ids(max_span=actions.max_slice, wrap=model.wrap, partition=partition)
 
-    logger.info('Initial state x0=%s → state index %d', model.x0, s_init)
-    logger.info('Generating SVMDP abstraction took %.3f sec.', time.time() - t)
+        svmdp = SVMDP(
+            partition=partition,
+            states=states,
+            x0=model.x0,
+            goal_regions=np.array(partition.goal['bools']),
+            critical_regions=np.array(partition.critical['bools']),
+            P_full=actions.frs_noise_probs,
+            S_idx_lb=actions.frs_idx_lb,
+            S_idx_ub=actions.frs_idx_ub,
+            box_to_ids=box_to_ids,
+            A_id=A_id,
+            P_absorbing=model.noise.partition['remainder'],
+        )
+
+        del actions
+
+        logger.info('Initial state x0=%s → state index %d', model.x0, s_init)
+        logger.info('Generating SVMDP abstraction took %.3f sec.', time.time() - t)
+
+        if args.save_checkpoint:
+            # Save checkpoint (strip JAX runtime objects that can't be pickled)
+            args_to_save = copy.copy(args)
+            del args_to_save.rvi_device
+            del args_to_save.jax_key
+            ckpt_path = args.output_dir / 'checkpoint.pkl'
+            logger.info('Saving checkpoint to %s', ckpt_path)
+            with open(ckpt_path, 'wb') as f:
+                pickle.dump({'model': model, 'partition': partition, 'svmdp': svmdp, 'args': args_to_save}, f)
+            logger.info('Checkpoint saved.')
 
     # %% Run value iteration on the SVMDP
 
@@ -112,6 +146,7 @@ if __name__ == '__main__':
             RND_SWEEPS=True,
             BATCH_SIZE=10000,
             policy_iteration=args.policy_iteration,
+            prune_states=False
         )
     logger.info('SVMDP dynamic programming took %.3f sec.', time.time() - t)
 

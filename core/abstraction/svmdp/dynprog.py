@@ -155,6 +155,7 @@ def SVMDP_DP(
     logger.info('- Number of states: %d', len(svmdp.states))
     logger.info('- Total number of choices: %d (total number of state-action pairs)', np.sum(total_actions))
     logger.info('- Max number of actions per state: %d', max_actions)
+    logger.info('- Batch size for dynamic programming over states: %d', BATCH_SIZE)
 
     #####
 
@@ -199,7 +200,7 @@ def SVMDP_DP(
         while not done:
             done = True
 
-            starts, ends = create_batches(len(states_to_update), 10000)
+            starts, ends = create_batches(len(states_to_update), BATCH_SIZE)
             pbar = tqdm(zip(starts, ends), desc='Prune states', total=len(starts))
             for batch_start, batch_end in pbar:
                 states = states_to_update[batch_start:batch_end]
@@ -225,9 +226,8 @@ def SVMDP_DP(
     policy = np.zeros(svmdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
     
-    logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s); start robust dynamic programming...')
-
-    pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
+    logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
+    start_time = time.time()
 
     if RND_SWEEPS:
         # Shuffle and batch states_to_update
@@ -236,18 +236,23 @@ def SVMDP_DP(
     else:
         state_batches = [states_to_update]
 
-    # The forward-reachable boxes (S_idx_lb/ub) and per-cell probabilities (P_full) are static across
-    # iterations; only V changes. Move each (fixed) batch to the device once here, instead of
-    # re-transferring the same host arrays every sweep. Each entry is (idx_lb, idx_ub, probs).
-    device_batches = [
-        (
-            jax.device_put(svmdp.S_idx_lb[state_batch], args.rvi_device),
-            jax.device_put(svmdp.S_idx_ub[state_batch], args.rvi_device),
-            jax.device_put(svmdp.P_full[state_batch], args.rvi_device),
-        )
+    # The policy-improvement inputs span all actions per state and depend only on the (fixed) FRS
+    # data, not on V or the policy, so they are identical on every outer iteration. Gather them
+    # into per-batch arrays once here instead of re-slicing the multi-GB [S, A, C, D] arrays every
+    # iteration. Both the improvement step (all actions) and the evaluation step (the policy-
+    # selected action) read from these, so we then drop the original svmdp arrays: imp_batches is
+    # just a re-batched view of the same data (a partition of states_to_update), so the resident
+    # footprint is unchanged. Indexing within a batch uses batch-local row positions.
+    imp_batches = [
+        (svmdp.S_idx_lb[state_batch], svmdp.S_idx_ub[state_batch], svmdp.P_full[state_batch])
         for state_batch in state_batches
     ]
+    # Delete the originals to save memory; everything below works off imp_batches. (Not used after the DP returns.)
+    svmdp.S_idx_lb = svmdp.S_idx_ub = svmdp.P_full = None
 
+    logger.info(f'- Number of batches: {len(state_batches)} (took {time.time() - start_time:.3f}s)')
+
+    pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
     if not policy_iteration:
         # Value iteration
         for iteration in range(max_iterations):
@@ -261,7 +266,7 @@ def SVMDP_DP(
             V_old = V.copy()
                 
             # Policy evaluation + improvement
-            for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, device_batches):
+            for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, imp_batches):
                 V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, V)
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
@@ -282,17 +287,29 @@ def SVMDP_DP(
 
             pbar.update(1)
 
+            t = time.time()
+
             # Policy evaluation
             i = 0
-            # The policy is fixed throughout policy evaluation, so gather the policy-selected boxes
-            # and probabilities from the resident device arrays once per outer iteration (here),
-            # rather than re-slicing host arrays and re-transferring them on every inner sweep.
-            eval_device_batches = []
-            for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, device_batches):
-                sel = jnp.asarray(policy[state_batch])
-                rows = jnp.arange(len(state_batch))
-                eval_device_batches.append((lb_d[rows, sel], ub_d[rows, sel], p_d[rows, sel]))
-            while True: # TODO: Remove this hardcoding
+            # The policy is fixed throughout policy evaluation, so slice the policy-selected action out
+            # of the precomputed imp_batches once here, rather than re-slicing on every inner sweep.
+            # Combined fancy-indexing ([rows, sel]) selects one action per state directly, avoiding the
+            # [B, A, nc, D] intermediate copy that plain [rows][..., sel] would materialise.
+            eval_batches = []
+            for bi, (lb_a, ub_a, p_a) in enumerate(imp_batches):
+                sel = policy[state_batches[bi]]
+                rows = np.arange(len(sel))
+                eval_batches.append((lb_a[rows, sel], ub_a[rows, sel], p_a[rows, sel]))
+
+            print(f'- Prepare policy evaluation (took {time.time() - t:.3f}s)')
+            t = time.time()
+
+            # Keep V resident on the device across the whole evaluation phase. Each batch update is a
+            # functional scatter (Gauss-Seidel: later batches see earlier updates, as before), so we
+            # only pull V back to the host once per sweep for the convergence/postfix checks instead
+            # of blocking on a device_get after every one of the ~len(state_batches) batches.
+            Vd = jnp.asarray(V)
+            while True:
 
                 postfix_dict = {}
                 if s0 is not None:
@@ -310,12 +327,13 @@ def SVMDP_DP(
                 pbar.set_postfix(postfix_dict)
 
                 # print(f'- Policy evaluation iteration {i + 1}...')
-                V_old = V.copy()
-                
-                # Policy evaluation only
-                for state_batch, (ev_lb, ev_ub, ev_p) in zip(state_batches, eval_device_batches):
-                    V_eval = vmap_state_policy_evaluation(ev_lb, ev_ub, ev_p, V)
-                    V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
+                V_old = V
+
+                # Policy evaluation only (V stays on the device; scatter each batch's result back in)
+                for state_batch, (ev_lb, ev_ub, ev_p) in zip(state_batches, eval_batches):
+                    V_eval = vmap_state_policy_evaluation(ev_lb, ev_ub, ev_p, Vd)
+                    Vd = Vd.at[state_batch].set(V_eval)
+                V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
 
                 delta = np.max(np.abs(V - V_old))
                 if delta < epsilon or (
@@ -326,15 +344,33 @@ def SVMDP_DP(
 
                 i += 1
 
+            jax.block_until_ready(V)
+            print(f'- Policy evaluation took {time.time() - t:.3f}s')
+            t = time.time()
+
             # Policy evaluation + improvement
             V_before_improvement = V.copy()
 
+            print(f'- Prepare policy improvement (took {time.time() - t:.3f}s)')
+            t = time.time()
+
             if not sat_policy:
-                for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, device_batches):
-                    V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, V)
-                    V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
-                    V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
+                # Same device-resident, Gauss-Seidel pattern as evaluation: scatter each batch's
+                # improved values back into the on-device V and only sync once at the end (for V and
+                # for the whole policy update) rather than blocking after every batch.
+                Vd = jnp.asarray(V)
+                policy_refs = []
+                for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, imp_batches):
+                    V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, Vd)
+                    Vd = Vd.at[state_batch].set(V_batch)
+                    policy_refs.append(policy_batch)
+                V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
+                for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
+
+            jax.block_until_ready(V)
+            print(f'- Policy improvement took {time.time() - t:.3f}s')
+            t = time.time()
 
             # Check convergence: improvement step is monotone, so max gain suffices
             # TODO: Better validate the convergence criterion based on max gain (rather than checking if the policy is unchanged; which is less stable in case of multiple optimal policies)
@@ -348,6 +384,8 @@ def SVMDP_DP(
                         'Decrease epsilon to refine values...'
                     )
                     partial_convergence_reached = True
+
+            print(f'- Check convergence took {time.time() - t:.3f}s')
 
     pbar.close()
 
