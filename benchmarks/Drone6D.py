@@ -45,31 +45,30 @@ class Drone6D(DroneDynamics):
         self.partition['number_per_dim'] = np.array([68, 14, 36, 14, 28, 14])
 
         self.goal = np.array([
-            # [[11, v_min, 1, v_min, -7, v_min], [15, v_max, 5, v_max, -3, v_max]]
-            [[11, v_min, 1, v_min, 0, v_min], [15, v_max, 5, v_max, 7, v_max]]
+            [[11, v_min, 1, v_min, -7, v_min], [15, v_max, 5, v_max, -3, v_max]]
         ], dtype=float)
 
         self.critical = np.array([
             # Hole 1
-            # [[-11, v_min, -1, v_min, -7, v_min], [-5, v_max, 9, v_max, -5, v_max]],
-            # [[-11, v_min, 5, v_min, -5, v_min], [-5, v_max, 9, v_max, 5, v_max]],
-            # [[-11, v_min, -1, v_min, -5, v_min], [-5, v_max, 3, v_max, 3, v_max]],
+            [[-11, v_min, -1, v_min, -7, v_min], [-5, v_max, 9, v_max, -5, v_max]],
+            [[-11, v_min, 5, v_min, -5, v_min], [-5, v_max, 9, v_max, 5, v_max]],
+            [[-11, v_min, -1, v_min, -5, v_min], [-5, v_max, 3, v_max, 3, v_max]],
 
             # # Hole 2
-            # [[-1, v_min, 1, v_min, -7, v_min], [3, v_max, 9, v_max, -1, v_max]],
-            # [[-1, v_min, 1, v_min, 3, v_min], [3, v_max, 9, v_max, 5, v_max]],
-            # [[-1, v_min, 1, v_min, -1, v_min], [3, v_max, 3, v_max, 3, v_max]],
-            # [[-1, v_min, 7, v_min, -1, v_min], [3, v_max, 9, v_max, 3, v_max]],
+            [[-1, v_min, 1, v_min, -7, v_min], [3, v_max, 9, v_max, -1, v_max]],
+            [[-1, v_min, 1, v_min, 3, v_min], [3, v_max, 9, v_max, 5, v_max]],
+            [[-1, v_min, 1, v_min, -1, v_min], [3, v_max, 3, v_max, 3, v_max]],
+            [[-1, v_min, 7, v_min, -1, v_min], [3, v_max, 9, v_max, 3, v_max]],
 
             # # Tower
-            # [[-1, v_min, -3, v_min, -7, v_min], [3, v_max, 1, v_max, 7, v_max]],
+            [[-1, v_min, -3, v_min, -7, v_min], [3, v_max, 1, v_max, 7, v_max]],
 
             # # Wall between routes
-            # [[3, v_min, -3, v_min, -7, v_min], [9, v_max, 1, v_max, -1, v_max]],
+            [[3, v_min, -3, v_min, -7, v_min], [9, v_max, 1, v_max, -1, v_max]],
 
             # # Long route obstacles
-            # [[-11, v_min, -5, v_min, -7, v_min], [-7, v_max, -1, v_max, 1, v_max]],
-            # [[-1, v_min, -9, v_min, -7, v_min], [3, v_max, -3, v_max, -5, v_max]],
+            [[-11, v_min, -5, v_min, -7, v_min], [-7, v_max, -1, v_max, 1, v_max]],
+            [[-1, v_min, -9, v_min, -7, v_min], [3, v_max, -3, v_max, -5, v_max]],
 
             # Overhanging
             [[-1, v_min, -9, v_min, 3, v_min], [3, v_max, -3, v_max, 7, v_max]],
@@ -83,8 +82,8 @@ class Drone6D(DroneDynamics):
 
         self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01])
 
-        self.pi_arch = [128, 64, 64]
-        self.vf_arch = [128, 64, 64]
+        self.pi_arch = [64, 64, 64]
+        self.vf_arch = [64, 64, 64]
         self.inflation_rate = [(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)]
 
         return

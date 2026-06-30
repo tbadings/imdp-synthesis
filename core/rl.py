@@ -124,10 +124,10 @@ class BenchmarkRLEnv(gym.Env):
 
         return self.state.copy(), {}
 
-    def step(self, action):
+    def step(self, action, noise_factor=2):
         action = np.clip(np.asarray(action, dtype=np.float32), self.action_space.low, self.action_space.high)
 
-        noise = np.asarray(self.model.noise.sample(), dtype=np.float32)
+        noise = noise_factor * np.asarray(self.model.noise.sample(), dtype=np.float32)
         next_state = np.asarray(self.model.step(self.state, action, noise), dtype=np.float32)
         # next_state = self._wrap_periodic_dims(next_state)
 
@@ -203,7 +203,7 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
 
                 # print(f"Original action: {action}, quantized action: {action}")
 
-            obs, _, terminated, truncated, info = eval_env.step(action)
+            obs, _, terminated, truncated, info = eval_env.step(action, noise_factor=1)
 
             visited_cells.add(info["cell"])
             trace.append(obs.copy())
@@ -330,7 +330,7 @@ def find_active(model, args, previous_cells):
         "MlpPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
-        verbose=0,
+        verbose=1,
         ent_coef=args.ent_coef,
         learning_rate=args.learning_rate,
         n_steps=max(2048 // args.n_envs, 128),

@@ -229,26 +229,39 @@ def SVMDP_DP(
     logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
     start_time = time.time()
 
+    # The policy-improvement inputs (lower/upper FRS index boxes and probabilities) span all actions per
+    # state and depend only on the (fixed) FRS data, not on V or the policy, so they are identical on every
+    # outer iteration. Gather them into compact arrays once here instead of re-slicing the multi-GB
+    # [S, A, C, D] source arrays every iteration. Both the improvement step (all actions) and the evaluation
+    # step (the policy-selected action) read from these.
+    #
+    # states_to_update == svmdp.states[~skip_mask] is ascending, so this single gather is a monotonic,
+    # locality-friendly pass over the source (which is contiguous after the FRS truncation now uses
+    # np.ascontiguousarray). We compact *first* and then derive batches, rather than fancy-indexing the
+    # multi-GB source once per batch with scattered (permuted) indices.
+    lb_c = svmdp.S_idx_lb[states_to_update]
+    ub_c = svmdp.S_idx_ub[states_to_update]
+    p_c = svmdp.P_full[states_to_update]
+    # Delete the originals to save memory; everything below works off the compact arrays. (Not used after the DP returns.)
+    svmdp.S_idx_lb = svmdp.S_idx_ub = svmdp.P_full = None
+
+    logger.info(f'- Index arrays sliced (took {time.time() - start_time:.3f}s)')
+    start_time = time.time()
+
     if RND_SWEEPS:
-        # Shuffle and batch states_to_update
-        states_to_update = np.random.permutation(states_to_update)
-        state_batches = [states_to_update[i:i + BATCH_SIZE] for i in range(0, len(states_to_update), BATCH_SIZE)]
+        # Randomise the sweep order by permuting the already-compacted (small, contiguous, in-RAM) rows
+        # rather than re-scattering the source. states_to_update is permuted with the same permutation so
+        # each batch's state IDs stay aligned with its FRS-input rows. The per-batch tuples below are then
+        # plain contiguous slices (views) of the permuted compact arrays — no further copy.
+        perm = np.random.permutation(len(states_to_update))
+        states_to_update = states_to_update[perm]
+        lb_c, ub_c, p_c = lb_c[perm], ub_c[perm], p_c[perm]
+        starts = range(0, len(states_to_update), BATCH_SIZE)
+        state_batches = [states_to_update[i:i + BATCH_SIZE] for i in starts]
+        imp_batches = [(lb_c[i:i + BATCH_SIZE], ub_c[i:i + BATCH_SIZE], p_c[i:i + BATCH_SIZE]) for i in starts]
     else:
         state_batches = [states_to_update]
-
-    # The policy-improvement inputs span all actions per state and depend only on the (fixed) FRS
-    # data, not on V or the policy, so they are identical on every outer iteration. Gather them
-    # into per-batch arrays once here instead of re-slicing the multi-GB [S, A, C, D] arrays every
-    # iteration. Both the improvement step (all actions) and the evaluation step (the policy-
-    # selected action) read from these, so we then drop the original svmdp arrays: imp_batches is
-    # just a re-batched view of the same data (a partition of states_to_update), so the resident
-    # footprint is unchanged. Indexing within a batch uses batch-local row positions.
-    imp_batches = [
-        (svmdp.S_idx_lb[state_batch], svmdp.S_idx_ub[state_batch], svmdp.P_full[state_batch])
-        for state_batch in state_batches
-    ]
-    # Delete the originals to save memory; everything below works off imp_batches. (Not used after the DP returns.)
-    svmdp.S_idx_lb = svmdp.S_idx_ub = svmdp.P_full = None
+        imp_batches = [(lb_c, ub_c, p_c)]
 
     logger.info(f'- Number of batches: {len(state_batches)} (took {time.time() - start_time:.3f}s)')
 

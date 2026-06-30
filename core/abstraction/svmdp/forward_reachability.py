@@ -280,11 +280,15 @@ class RectangularForward(object):
         self.max_slice = tuple(max_span.tolist())
         self.max_active_noise_cells = max_active_noise_cells
 
-        # Remove noise cells that were merged (after a sanity check that we are only throwing away probability zero cells)
+        # Remove noise cells that were merged (after a sanity check that we are only throwing away probability zero cells).
+        # Wrap each truncation in np.ascontiguousarray: a bare slice on the noise axis is a *view* that (a) stays
+        # C-non-contiguous (strided along that axis) and (b) keeps the entire pre-truncation [S, A, Cmax, D] buffer
+        # alive, so resident memory is Cmax/Cact larger than the logical data. Compacting here frees that buffer and
+        # makes every later axis-0 gather (e.g. building imp_batches in the DP) a fast contiguous row copy.
         assert np.all(self.frs_noise_probs[:, :, self.max_active_noise_cells:] == 0)
-        self.frs_idx_lb = self.frs_idx_lb[:, :, :self.max_active_noise_cells, :]
-        self.frs_idx_ub = self.frs_idx_ub[:, :, :self.max_active_noise_cells, :]
-        self.frs_noise_probs = self.frs_noise_probs[:, :, :self.max_active_noise_cells]
+        self.frs_idx_lb = np.ascontiguousarray(self.frs_idx_lb[:, :, :self.max_active_noise_cells, :])
+        self.frs_idx_ub = np.ascontiguousarray(self.frs_idx_ub[:, :, :self.max_active_noise_cells, :])
+        self.frs_noise_probs = np.ascontiguousarray(self.frs_noise_probs[:, :, :self.max_active_noise_cells])
 
         logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")
         logger.info(f"- Max number of noise cells state-slice after merging: {self.max_active_noise_cells}")
