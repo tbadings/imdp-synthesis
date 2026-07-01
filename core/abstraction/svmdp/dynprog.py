@@ -167,7 +167,7 @@ def SVMDP_DP(
     states_to_update = svmdp.states[~skip_mask]
     states_not_to_update = svmdp.states[skip_mask]
 
-    logger.info(f'  - Active states in initial mask: {len(svmdp.states[~skip_mask])}')
+    logger.info(f'  (Active states in initial mask: {len(svmdp.states[~skip_mask])})')
 
     def fn1(successor, mask):
         ''' Check whether a successor is contained in skipped (successor: int)'''
@@ -213,7 +213,7 @@ def SVMDP_DP(
                 states_to_update = svmdp.states[~skip_mask]
                 states_not_to_update = svmdp.states[skip_mask]
 
-        logger.info(f'  - States after pruning: {len(states_to_update)}')
+        logger.info(f'  (States after pruning: {len(states_to_update)})')
 
     # Initialize value function and policy
     V = np.zeros(svmdp.nr_states, dtype=args.floatprecision)
@@ -260,8 +260,9 @@ def SVMDP_DP(
         state_batches = [states_to_update]
         imp_batches = [(lb_c, ub_c, p_c)]
 
-    logger.info(f'- Number of batches: {len(state_batches)} (took {time.time() - start_time:.3f}s)')
+    logger.info(f'- Number of batches: {len(state_batches)} (took {time.time() - start_time:.3f}s)\n')
 
+    logger.info('=== Start dynamic programming iterations ===')
     pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
     if not policy_iteration:
         # Value iteration
@@ -346,6 +347,7 @@ def SVMDP_DP(
 
                     # Check if policy is above the preset threshold quality
                     if V[s0] >= args.satprob:
+                        logger.info(f'Policy is above the satisfaction threshold {args.satprob:.2f} after {iteration + 1} iterations')
                         # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
                         sat_policy = True
                     else:
