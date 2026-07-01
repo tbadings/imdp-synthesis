@@ -74,54 +74,31 @@ def main() -> None:
     #     # "0",
     #     "--RL_actions_per_state",
     #     "25",
-    #     # "--load_checkpoint",
-    #     # "output/2026-06-30_16-54-19_Dubins4D/checkpoint.pkl"
-    # ]
-
-    # fixed_args = [
-    #     "--model",
-    #     "Drone4D",
-    #     # "--batch_size",
-    #     # "1000",
-    #     "--solver",
-    #     "jax",
-    #     # "--eval_episodes",
-    #     # "5000",
-    #     "--total_timesteps",
-    #     "100000",
-    #     "--noise_distr",
-    #     "gaussian",
-    #     # "--no-policy_iteration",
-    #     # "--shrink_frs",
-    #     # "0",
-    #     "--RL_actions_per_state",
-    #     "27"
     # ]
 
     fixed_args = [
         "--model",
-        "Drone6D",
+        "Drone4D",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
-        "--eval_episodes",
-        "1000",
+        # "--eval_episodes",
+        # "5000",
         "--total_timesteps",
-        "500000",
+        "100000",
         "--noise_distr",
         "gaussian",
         # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
         "--RL_actions_per_state",
-        "27",
-        "--save_checkpoint"
+        "27"
     ]
 
     # fixed_args = [
     #     "--model",
-    #     "Drone6D_small",
+    #     "Drone6D",
+    #     "--satprob",
+    #     "0.95",
     #     # "--batch_size",
     #     # "1000",
     #     "--solver",
@@ -129,7 +106,7 @@ def main() -> None:
     #     "--eval_episodes",
     #     "1000",
     #     "--total_timesteps",
-    #     "500000",
+    #     "1000000",
     #     "--noise_distr",
     #     "gaussian",
     #     # "--no-policy_iteration",
@@ -137,8 +114,9 @@ def main() -> None:
     #     # "0",
     #     "--RL_actions_per_state",
     #     "27",
-    #     "--load_checkpoint",
-    #     "output/2026-06-30_10-21-14_Drone6D_small/checkpoint.pkl"
+    #     # "--save_checkpoint",
+    #     # "--load_checkpoint",
+    #     # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
     # ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]

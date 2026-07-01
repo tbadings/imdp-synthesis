@@ -1,16 +1,15 @@
 import logging
 import numpy as np
 from tqdm import tqdm
-from copy import copy, deepcopy
 import jax
 import jax.numpy as jnp
 import time
 import argparse
 from typing import Optional, Tuple
-from jaxtyping import Array, UInt8, Bool, Float32, PyTree
+from jaxtyping import Array, UInt8, Float32
 
 from core.abstraction.svmdp.svmdp import SVMDP
-from core.utils import jit_compile_count, create_batches
+from core.utils import create_batches
 
 logger = logging.getLogger(__name__)
 
@@ -24,31 +23,30 @@ def SVMDP_DP(
     RND_SWEEPS: bool = False, 
     BATCH_SIZE: int = 2000, 
     policy_iteration: bool = False,
-    return_Q_values: bool = False,
     prune_states: bool = True,
+    phase1_initial_it: int = 10,
+    phase1_increment_it: int = 10,
+    phase1_max_it: int = 100,
 ) -> Tuple[Float32[Array, "nr_states"], UInt8[Array, "nr_states"]]:
 
     """
     Robust value iteration for set-valued MDPs.
 
     :param args: Argument namespace
-    :param imdp: Instance of IMDP class
+    :param svmdp: Instance of SVMDP class
     :param s0: Initial state for tracking
     :param max_iterations: Maximum number of iterations
     :param epsilon: Convergence threshold
     :param RND_SWEEPS: Whether to use random state sweeps
     :param BATCH_SIZE: Batch size for state updates
     :param policy_iteration: Whether to use policy iteration instead of value iteration
-    :param return_Q_values: Whether to return Q-values for all state-action pairs
+    :param phase1_initial_it: Base cap on inner policy-evaluation sweeps in the first outer iteration
+    :param phase1_increment_it: Per-outer-iteration growth of the inner-sweep cap
+    :param phase1_max_it: Hard ceiling on the inner-sweep cap (before full convergence)
     :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
 
     start_time = time.time()
-
-    phase1_initial_it = 10
-    phase1_increment_it = 10
-    phase1_max_it = 100
-    fix_policy_above_value = 2 # >1 means this feature is disabled
 
     #####
 
@@ -169,7 +167,7 @@ def SVMDP_DP(
     states_to_update = svmdp.states[~skip_mask]
     states_not_to_update = svmdp.states[skip_mask]
 
-    print(f'  - Active states in initial mask: {len(svmdp.states[~skip_mask])}')
+    logger.info(f'  - Active states in initial mask: {len(svmdp.states[~skip_mask])}')
 
     def fn1(successor, mask):
         ''' Check whether a successor is contained in skipped (successor: int)'''
@@ -209,14 +207,13 @@ def SVMDP_DP(
                 skip_mask[states] = skip
                 absorbing_mask[states] = skip
                 if any(skip):
-                    # print(f'- Skip {np.sum(skip)} states')
                     done = False
 
             if not done:
                 states_to_update = svmdp.states[~skip_mask]
                 states_not_to_update = svmdp.states[skip_mask]
 
-        print(f'  - States after pruning: {len(states_to_update)}')
+        logger.info(f'  - States after pruning: {len(states_to_update)}')
 
     # Initialize value function and policy
     V = np.zeros(svmdp.nr_states, dtype=args.floatprecision)
@@ -295,12 +292,16 @@ def SVMDP_DP(
         sat_policy = False
         delta = float('inf')
 
+        # Persistent caches for the incremental policy-evaluation gather (Opt 1, see prepare block below).
+        # eval_batches holds the policy-selected FRS inputs per batch; eval_policy_state[s] records which
+        # action is currently reflected for state s, so we only re-gather rows whose policy changed.
+        eval_batches = [None] * len(imp_batches)
+        eval_policy_state = np.empty(svmdp.nr_states, dtype=np.int32)
+
         # Policy iteration
         for iteration in range(max_iterations):
 
             pbar.update(1)
-
-            t = time.time()
 
             # Policy evaluation
             i = 0
@@ -308,14 +309,26 @@ def SVMDP_DP(
             # of the precomputed imp_batches once here, rather than re-slicing on every inner sweep.
             # Combined fancy-indexing ([rows, sel]) selects one action per state directly, avoiding the
             # [B, A, nc, D] intermediate copy that plain [rows][..., sel] would materialise.
-            eval_batches = []
+            #
+            # Incremental refresh (Opt 1): the policy stabilises within a few outer iterations, so instead
+            # of rebuilding all eval inputs every iteration (~70s host gather for Drone6D) we only re-gather
+            # the rows whose action changed since eval_batches was last built. The first iteration is a full
+            # build; later ones touch only a handful of rows. Result is identical to a full rebuild.
             for bi, (lb_a, ub_a, p_a) in enumerate(imp_batches):
-                sel = policy[state_batches[bi]]
-                rows = np.arange(len(sel))
-                eval_batches.append((lb_a[rows, sel], ub_a[rows, sel], p_a[rows, sel]))
-
-            print(f'- Prepare policy evaluation (took {time.time() - t:.3f}s)')
-            t = time.time()
+                sb = state_batches[bi]
+                sel = policy[sb]
+                if eval_batches[bi] is None:
+                    rows = np.arange(len(sel))
+                    eval_batches[bi] = [lb_a[rows, sel], ub_a[rows, sel], p_a[rows, sel]]
+                else:
+                    changed = np.flatnonzero(sel != eval_policy_state[sb])
+                    if changed.size:
+                        csel = sel[changed]
+                        ev_lb, ev_ub, ev_p = eval_batches[bi]
+                        ev_lb[changed] = lb_a[changed, csel]
+                        ev_ub[changed] = ub_a[changed, csel]
+                        ev_p[changed] = p_a[changed, csel]
+                eval_policy_state[sb] = sel
 
             # Keep V resident on the device across the whole evaluation phase. Each batch update is a
             # functional scatter (Gauss-Seidel: later batches see earlier updates, as before), so we
@@ -332,14 +345,13 @@ def SVMDP_DP(
                     postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
-                    if V[s0] > fix_policy_above_value:
+                    if V[s0] >= args.satprob:
                         # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
                         sat_policy = True
                     else:
                         sat_policy = False
                 pbar.set_postfix(postfix_dict)
 
-                # print(f'- Policy evaluation iteration {i + 1}...')
                 V_old = V
 
                 # Policy evaluation only (V stays on the device; scatter each batch's result back in)
@@ -357,15 +369,8 @@ def SVMDP_DP(
 
                 i += 1
 
-            jax.block_until_ready(V)
-            print(f'- Policy evaluation took {time.time() - t:.3f}s')
-            t = time.time()
-
             # Policy evaluation + improvement
             V_before_improvement = V.copy()
-
-            print(f'- Prepare policy improvement (took {time.time() - t:.3f}s)')
-            t = time.time()
 
             if not sat_policy:
                 # Same device-resident, Gauss-Seidel pattern as evaluation: scatter each batch's
@@ -381,10 +386,6 @@ def SVMDP_DP(
                 for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            jax.block_until_ready(V)
-            print(f'- Policy improvement took {time.time() - t:.3f}s')
-            t = time.time()
-
             # Check convergence: improvement step is monotone, so max gain suffices
             # TODO: Better validate the convergence criterion based on max gain (rather than checking if the policy is unchanged; which is less stable in case of multiple optimal policies)
             if np.max(V - V_before_improvement) < epsilon:
@@ -397,8 +398,6 @@ def SVMDP_DP(
                         'Decrease epsilon to refine values...'
                     )
                     partial_convergence_reached = True
-
-            print(f'- Check convergence took {time.time() - t:.3f}s')
 
     pbar.close()
 

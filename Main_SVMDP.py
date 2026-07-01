@@ -144,9 +144,9 @@ if __name__ == '__main__':
             max_iterations=10000,
             epsilon=1e-6,
             RND_SWEEPS=True,
-            BATCH_SIZE=10000,
+            BATCH_SIZE=1000,
             policy_iteration=args.policy_iteration,
-            prune_states=False
+            prune_states=True
         )
     logger.info('SVMDP dynamic programming took %.3f sec.', time.time() - t)
 

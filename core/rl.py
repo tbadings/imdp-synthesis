@@ -62,12 +62,12 @@ class BenchmarkRLEnv(gym.Env):
         indices = np.floor((np.asarray(obs, dtype=np.float64) - self.obs_low) / self.bin_widths).astype(int)
         return tuple(np.clip(indices, 0, self.model.partition['number_per_dim'] - 1).tolist())
 
-    def _in_boxes(self, state, boxes):
+    def _in_boxes(self, state, boxes, inflate=0):
         if boxes.size == 0:
             return False
         mins = boxes[:, 0, :]
         maxs = boxes[:, 1, :]
-        return bool(np.any(np.all((state >= mins) & (state <= maxs), axis=1)))
+        return bool(np.any(np.all((state >= mins - inflate) & (state <= maxs + inflate), axis=1)))
 
     def _goal_center(self):
         if self.goal.size == 0:
@@ -135,7 +135,7 @@ class BenchmarkRLEnv(gym.Env):
         self.steps += 1
 
         in_goal = self._in_boxes(self.state, self.goal)
-        in_critical = self._in_boxes(self.state, self.critical)
+        in_critical = self._in_boxes(self.state, self.critical, inflate=1)
         out_of_bounds = bool(np.any(self.state < self.obs_low) or np.any(self.state > self.obs_high))
 
         if in_goal:

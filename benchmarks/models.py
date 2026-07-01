@@ -160,9 +160,8 @@ class DubinsDynamics4D:
 
         action_min, action_max = setmath.box(jnp.array(action_min), jnp.array(action_max))
         [u1_min, u2_min] = jnp.maximum(action_min, self.uMin)
-        [u1_max, u2_max] = jnp.minimum(action_min, self.uMax)
+        [u1_max, u2_max] = jnp.minimum(action_max, self.uMax)
 
-        Vmean = (V_max + V_min) / 2
         x_next = jnp.array([x_min, x_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.cos(theta_min, theta_max)))
         y_next = jnp.array([y_min, y_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.sin(theta_min, theta_max)))
         theta_next = jnp.array([theta_min, theta_max]) + self.tau * jnp.concat(setmath.mult([self.alpha_min, self.alpha_max], [u1_min, u1_max]))
@@ -182,7 +181,7 @@ class DroneDynamics:
     def __init__(self, args, dim=2):
 
         if dim not in [2,3]:
-            assert False
+            raise ValueError(f"DroneDynamics only supports dim in [2, 3], got {dim}")
 
         self.linear = False
         self.independent_state_dims = [[0,1],[2,3]] if dim == 2 else [[0,1],[2,3],[4,5]]
@@ -240,7 +239,7 @@ class DroneDynamics:
             if args.noise_distr == 'gaussian':
                 cov = np.array([0.1, 0, 0.1, 0, 0.1, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[3, 1, 3, 1, 3, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.1, 0, 0.1, 0, 0.1, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
