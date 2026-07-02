@@ -333,7 +333,8 @@ def find_active(model, args, previous_cells):
         verbose=1,
         ent_coef=args.ent_coef,
         learning_rate=args.learning_rate,
-        n_steps=max(2048 // args.n_envs, 128),
+        batch_size=256,
+        n_steps=8,
         seed=args.seed,
     )
 

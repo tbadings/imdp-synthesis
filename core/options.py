@@ -100,7 +100,7 @@ def parse_arguments(argv=None):
 
     parser.add_argument("--ent_coef", type=float, default=0.005)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
-    parser.add_argument("--n_envs", type=int, default=8)
+    parser.add_argument("--n_envs", type=int, default=256)
     parser.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--pi_arch", type=int, nargs='+', default=None,
                         help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128. Defaults to the benchmark's built-in value.")
