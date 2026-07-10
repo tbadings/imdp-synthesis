@@ -82,8 +82,8 @@ class Drone6D(DroneDynamics):
 
         self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01])
 
-        self.pi_arch = [64, 128, 64]
-        self.vf_arch = [64, 128, 64]
+        self.pi_arch = [64, 64]
+        self.vf_arch = [64, 64]
         self.inflation_rate = [(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)]
 
         return
@@ -137,8 +137,8 @@ class Drone6D_small(DroneDynamics):
 
         self.x0 = np.array([-5.5, 0.01, -5.5, 0.01, 0.01, 0.01])
 
-        self.pi_arch = [128, 128]
-        self.vf_arch = [128, 128]
-        self.inflation_rate = [(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)]
+        self.pi_arch = [32, 32]
+        self.vf_arch = [32, 32]
+        self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)]
 
         return

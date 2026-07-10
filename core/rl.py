@@ -80,7 +80,7 @@ class BenchmarkRLEnv(gym.Env):
         if center is None:
             return 0.0
         dist = float(np.linalg.norm(state - center))
-        reward = (self.prev_dist - dist) / max(float(np.linalg.norm(self.obs_high - self.obs_low)), 1e-6)
+        reward = (self.prev_dist - dist)
         self.prev_dist = dist
         return reward
 
@@ -108,10 +108,12 @@ class BenchmarkRLEnv(gym.Env):
             cell_ub = cell_lb + self.bin_widths
 
             # Add a small epsilon, to make sure we appropriately cover the initial state cell
-            eps = 0.25 * self.bin_widths
+            eps = 0.1 * self.bin_widths
             state = self.np_random.uniform(cell_lb - eps, cell_ub + eps).astype(np.float32)
         else:
             state = self.np_random.uniform(self.obs_low, self.obs_high).astype(np.float32)
+            while self._in_boxes(state, self.critical, inflate=0):
+                state = self.np_random.uniform(self.obs_low, self.obs_high).astype(np.float32)
 
         self.state = state
         self.steps = 0
@@ -145,7 +147,7 @@ class BenchmarkRLEnv(gym.Env):
         elif out_of_bounds:
             reward = self.cfg.out_of_bounds_penalty
         else:
-            reward = self._progress_reward(self.state) - 0.1
+            reward = 0
 
         cell = self.state_to_cell(self.state)
         flat_idx = np.ravel_multi_index(cell, self.model.partition['number_per_dim'])
@@ -330,11 +332,10 @@ def find_active(model, args, previous_cells):
         "MlpPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
-        verbose=1,
-        ent_coef=args.ent_coef,
+        target_kl=0.02,
         learning_rate=args.learning_rate,
-        batch_size=256,
-        n_steps=8,
+        batch_size=args.rl_batch_size,
+        n_steps=args.n_steps,
         seed=args.seed,
     )
 

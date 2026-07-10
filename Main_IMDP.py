@@ -230,12 +230,15 @@ if __name__ == '__main__':
 
     from core.validate.simulate import MonteCarloSim
     from core.plotting.traces import plot_traces
+    from core.plotting.traces import plot_traces_3d
     from core.plotting.heatmap import heatmap
 
     sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=100)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
+    if args.model.startswith('Drone6D'):
+        plot_traces_3d(args, stamp, [0, 2, 4], partition, model, sim.results['traces'], num_traces=10, filename="traces_3d")
     heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_values, filename="heatmap_satprob")
     heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
     

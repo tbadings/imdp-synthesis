@@ -171,6 +171,7 @@ if __name__ == '__main__':
     from core.validate.simulate import MonteCarloSim
     from core.plotting.traces import plot_traces
     from core.plotting.heatmap import heatmap
+    from core.plotting.traces import plot_traces_3d
 
     sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=100)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
@@ -187,6 +188,13 @@ if __name__ == '__main__':
         args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n),
         partition=partition, results=policy_inputs[:, 0], filename='heatmap_inputs',
     )
+
+    print(args.model)
+    if args.model.startswith('Drone6D'):
+        plot_traces_3d(
+            args, stamp, [0, 2, 4], partition, model,
+            sim.results['traces'], num_traces=10, filename="traces_3d",
+        )
 
     if args.model == 'Pendulum':
         model.plot_trajectory_gif(

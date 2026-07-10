@@ -106,7 +106,7 @@ def main() -> None:
         "--eval_episodes",
         "1000",
         "--total_timesteps",
-        "1000000",
+        "200000",
         "--noise_distr",
         "gaussian",
         # "--no-policy_iteration",

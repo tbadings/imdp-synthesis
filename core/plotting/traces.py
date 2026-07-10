@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 import numpy as np
 from matplotlib.patches import Rectangle
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from pathlib import Path
 from scipy.interpolate import CubicSpline
 
@@ -21,6 +22,120 @@ def _format_state_label_math(var_name):
         head, tail = var_name.split('_', 1)
         return f'${head}_{{{tail}}}$'
     return f'${var_name}$'
+
+
+def _cuboid_faces(low, high):
+    x0, y0, z0 = low
+    x1, y1, z1 = high
+
+    return [
+        [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)],
+        [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+        [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
+        [(x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)],
+        [(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)],
+        [(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)],
+    ]
+
+
+def _plot_cuboid(ax, low, high, facecolor, edgecolor, alpha):
+    faces = _cuboid_faces(low, high)
+    collection = Poly3DCollection(
+        faces,
+        facecolors=facecolor,
+        edgecolors=edgecolor,
+        linewidths=0.4,
+        alpha=alpha,
+    )
+    ax.add_collection3d(collection)
+
+
+def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=10, filename="traces_3d", show_ticks=None, camera_angles=None):
+    """Plot 3D traces.
+
+    New params:
+    - grid_linewidth: float or None -> line width for grid (very thin if None defaults)
+    - camera_angles: list of (elev, azim) tuples. If provided, saves one file per angle.
+    """
+    fig = plt.figure(figsize=cm2inch(7.5, 6.5), dpi=1000)
+    ax = fig.add_subplot(111, projection='3d')
+
+    font = {'size': 10}
+    mpl.rc('font', **font)
+
+    i1, i2, i3 = np.array(idx_show, dtype=int)
+
+    # ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), labelpad=4)
+    # ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), labelpad=4)
+    # ax.set_zlabel(_format_state_label_math(model.state_variables[i3]), labelpad=4)
+
+    state_lb = np.array(partition.boundary_lb)[[i1, i2, i3]]
+    state_ub = np.array(partition.boundary_ub)[[i1, i2, i3]]
+
+    for set_ in model.goal:
+        low = np.array(set_[0])[[i1, i2, i3]]
+        high = np.array(set_[1])[[i1, i2, i3]]
+        _plot_cuboid(ax, low, high, facecolor='green', edgecolor='none', alpha=0.48)
+
+    for set_ in model.critical:
+        low = np.array(set_[0])[[i1, i2, i3]]
+        high = np.array(set_[1])[[i1, i2, i3]]
+        _plot_cuboid(ax, low, high, facecolor='red', edgecolor='none', alpha=0.44)
+
+    for trace in traces.values():
+        state_trace = np.array(trace['x'])[:, [i1, i2, i3]]
+        ax.scatter(state_trace[:, 0], state_trace[:, 1], state_trace[:, 2], s=1, color='black', edgecolors='none', alpha=0.7)
+
+    ax.set_xlim(state_lb[0], state_ub[0])
+    ax.set_ylim(state_lb[1], state_ub[1])
+    ax.set_zlim(state_lb[2], state_ub[2])
+    try:
+        ax.set_box_aspect((state_ub - state_lb).tolist())
+    except Exception:
+        pass
+
+    widths = np.array(partition.cell_width)[[i1, i2, i3]]
+    lowers = np.array(partition.boundary_lb)[[i1, i2, i3]]
+    uppers = np.array(partition.boundary_ub)[[i1, i2, i3]]
+    counts = np.array(partition.number_per_dim)[[i1, i2, i3]]
+
+    tick_sets = []
+    for lower, upper, width in zip(lowers, uppers, widths):
+        ticks = np.arange(lower, upper + width, width)
+        tick_sets.append(ticks)
+
+    formatter = FuncFormatter(lambda value, pos: f'{value:.3g}')
+    ax.set_xticks(tick_sets[0])
+    ax.set_yticks(tick_sets[1])
+    ax.set_zticks(tick_sets[2])
+    ax.xaxis.set_major_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+    ax.zaxis.set_major_formatter(formatter)
+    ax.tick_params(axis='both', which='major', labelsize=0, direction='in', length=3)
+
+    # Use a very thin default grid line width unless overridden
+    ax.grid(True, linestyle='--', linewidth=1, opacity=0.5)
+
+    # Default to one sensible view if no camera angles provided
+    if camera_angles is None:
+        camera_angles = [(60, 15)]
+    if args.plot_title:
+        ax.set_title(f"Simulation for {args.model}")
+
+    output_dir = Path(getattr(args, 'output_dir', 'output'))
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save one file per camera angle
+    for vi, (elev, azim) in enumerate(camera_angles):
+        ax.view_init(elev=elev, azim=azim)
+        fig.tight_layout()
+
+        pdf_name = output_dir / f'{filename}_{stamp}_view{vi}_{stamp}.pdf'
+        png_name = output_dir / f'{filename}_{stamp}_view{vi}_{stamp}.png'
+        plt.savefig(pdf_name, format='pdf', bbox_inches='tight')
+        plt.savefig(png_name, format='png', bbox_inches='tight')
+
+    plt.close(fig)
 
 
 def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=10, add_unsafe_box=True, filename="traces", show_ticks=None):

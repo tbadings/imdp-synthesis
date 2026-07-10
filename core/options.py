@@ -89,19 +89,22 @@ def parse_arguments(argv=None):
     parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=True,
                         help="If True, plot ticks in figures")
 
-    parser.add_argument("--total_timesteps", type=int, default=20000)
+    parser.add_argument("--total_timesteps", type=int, default=200000)
     parser.add_argument("--eval_episodes", type=int, default=2500)
-    parser.add_argument("--max_steps", type=int, default=200)
+    parser.add_argument("--max_steps", type=int, default=32)
 
-    parser.add_argument("--goal_reward", type=float, default=10.0)
-    parser.add_argument("--unsafe_penalty", type=float, default=-5.0)
-    parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
+    parser.add_argument("--goal_reward", type=float, default=100.0)
+    parser.add_argument("--unsafe_penalty", type=float, default=-100.0)
+    parser.add_argument("--out_of_bounds_penalty", type=float, default=-100.0)
     parser.add_argument("--revisit_penalty", type=float, default=0.05)
 
-    parser.add_argument("--ent_coef", type=float, default=0.005)
     parser.add_argument("--learning_rate", type=float, default=3e-4)
-    parser.add_argument("--n_envs", type=int, default=256)
+    parser.add_argument("--rl_batch_size", type=int, default=256, help="Batch size for PPO")
+    parser.add_argument("--n_steps", type=int, default=128, help="Number of steps to run for each environment per update in PPO")
+    parser.add_argument("--n_envs", type=int, default=32)
     parser.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--finetune_steps", type=int, default=0,
+                        help="Number of training steps for fine-tuning the policy to stay within active states. Set to 0 to skip fine-tuning.")
     parser.add_argument("--pi_arch", type=int, nargs='+', default=None,
                         help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128. Defaults to the benchmark's built-in value.")
     parser.add_argument("--vf_arch", type=int, nargs='+', default=None,

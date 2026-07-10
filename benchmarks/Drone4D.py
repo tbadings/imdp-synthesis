@@ -41,7 +41,7 @@ class Drone4D(DroneDynamics):
 
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min], [7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([42, 28, 42, 28]) # 7 not enough
+        self.partition['number_per_dim'] = np.array([28, 14, 28, 14]) # 7 not enough
 
         self.goal = np.array([
             [[3, v_min, 3, v_min], [7, v_max, 7, v_max]]
