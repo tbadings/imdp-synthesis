@@ -256,6 +256,21 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
                 )
             )
 
+    if eval_env.model.charging_station.size > 0:
+        for idx, box in enumerate(eval_env.model.charging_station):
+            x0, x1 = box[0, dims[0]], box[1, dims[0]]
+            y0, y1 = box[0, dims[1]], box[1, dims[1]]
+            ax.add_patch(
+                plt.Rectangle(
+                    (x0, y0),
+                    x1 - x0,
+                    y1 - y0,
+                    color="blue",
+                    alpha=0.25,
+                    label="Charging station" if idx == 0 else None,
+                )
+            )
+
     # Only plot max 100 trajectories
     # i_max = 100
     # i = 0
@@ -332,7 +347,7 @@ def find_active(model, args, previous_cells):
         "MlpPolicy",
         vec_env,
         policy_kwargs=policy_kwargs,
-        target_kl=0.02,
+        verbose=1,
         learning_rate=args.learning_rate,
         batch_size=args.rl_batch_size,
         n_steps=args.n_steps,

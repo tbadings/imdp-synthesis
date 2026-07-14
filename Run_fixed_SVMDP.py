@@ -96,7 +96,7 @@ def main() -> None:
 
     fixed_args = [
         "--model",
-        "Drone6D",
+        "Drone4D_battery",
         "--satprob",
         "0.95",
         # "--batch_size",

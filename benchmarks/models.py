@@ -272,6 +272,137 @@ class DroneDynamics:
 
         return state_next_min, state_next_max
 
+class DroneDynamics_battery:
+    def __init__(self, args, dim=2):
+
+        if dim not in [2,3]:
+            raise ValueError(f"DroneDynamics only supports dim in [2, 3], got {dim}")
+
+        self.linear = False
+        self.independent_state_dims = [[0,1],[2,3],[4]] if dim == 2 else [[0,1],[2,3],[4,5],[6]]
+        self.independent_input_dims = [[0],[1]] if dim == 2 else [[0],[1],[2]]
+
+        if dim == 2:
+            self.n = 5
+            self.p = 2
+            self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'battery']
+            self.wrap = jnp.array([False, False, False, False, False], dtype=bool)
+            self.pos_idx = [0, 2]
+            self.charging_station = None
+        else:
+            self.n = 7
+            self.p = 3
+            self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel', 'battery']
+            self.wrap = jnp.array([False, False, False, False, False, False, False], dtype=bool)
+            self.pos_idx = [0, 2, 4]
+            self.charging_station = None
+
+        # Discretization step size
+        self.tau = 1.0
+
+        # State transition matrix
+        Ablock = np.array([[1, self.tau],
+                          [0, 1]])
+        
+        # Input matrix
+        Bblock = np.array([[self.tau**2/2],
+                           [self.tau]])
+        
+        if dim == 2:
+            self.A  = scipy.linalg.block_diag(Ablock, Ablock, 1)
+            self.B  = np.zeros((5, 2))
+            self.B[:4, :2] = scipy.linalg.block_diag(Bblock, Bblock)
+
+            # Disturbance matrix
+            self.Q  = np.array([[0],[0],[0],[0],[0]])
+
+            # Covariance of the process noise
+            if args.noise_distr == 'gaussian':
+                cov = np.array([0.15, 0, 0.15, 0, 0])**2 # From stdev to covariance
+                self.noise = GaussianDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 1])
+            elif args.noise_distr == 'triangular':
+                cov = np.array([0.15, 0, 0.15, 0, 0]) # Halfwidth
+                self.noise = TriangularDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 1])
+            else:
+                raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+        else:
+            self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock, 1)
+            self.B  = np.zeros((7, 3))
+            self.B[:6, :3] = scipy.linalg.block_diag(Bblock, Bblock, Bblock)
+
+            # Disturbance matrix
+            self.Q  = np.array([[0],[0],[0],[0],[0],[0],[0]])
+
+            # Covariance of the process noise
+            if args.noise_distr == 'gaussian':
+                cov = np.array([0.1, 0, 0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
+                self.noise = GaussianDistr(cov)
+                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1, 1])
+            elif args.noise_distr == 'triangular':
+                cov = np.array([0.1, 0, 0.1, 0, 0.1, 0, 0]) # Halfwidth
+                self.noise = TriangularDistr(cov)
+                self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 10, 1, 1])
+            else:
+                raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+    def inbox(self, state, box):
+        return jnp.all((state >= box[0]) & (state <= box[1]))
+
+    def step(self, state, action, noise):
+        state_next = self.A @ state + self.B @ action + noise
+        battery_idx = self.n - 1
+
+        if isinstance(state_next, jnp.ndarray):
+            state_next = state_next.at[battery_idx].add(-10.0)
+            if self.inbox(state[:-1], self.charging_station[0]):
+                state_next = state_next.at[battery_idx].add(20.0)
+        else:
+            state_next = np.array(state_next)
+            state_next[battery_idx] -= 10.0
+            if self.inbox(state[:-1], self.charging_station[0]):
+                state_next[battery_idx] += 20.0
+
+        return state_next
+
+    @partial(jax.jit, static_argnums=(0))
+    def step_set(self, state_min, state_max, action_min, action_max):
+
+        action_min = jnp.maximum(action_min, self.uMin)
+        action_max = jnp.minimum(action_max, self.uMax)
+
+        # Get vertices of the state and action boxes
+        state_vertices = setmath.box2vertices(state_min, state_max)
+        action_vertices = setmath.box2vertices(action_min, action_max)
+        
+        # Propogate dynamics for all vertices
+        Ax = jnp.dot(self.A, state_vertices.T).T  # Shape (2^n, n)
+        Bu = jnp.dot(self.B, action_vertices.T).T  # Shape (2^p, n)
+
+        # Combine min/max to get the reachable set
+        state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
+        state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
+
+        # Battery charging calculation
+        pos_min = state_min[:-1]
+        pos_max = state_max[:-1]
+        cs_min = self.charging_station[0][0]
+        cs_max = self.charging_station[0][1]
+
+        entirely_inside = jnp.all((pos_min >= cs_min) & (pos_max <= cs_max))
+        intersects = jnp.all((pos_max >= cs_min) & (pos_min <= cs_max))
+
+        min_charge = jnp.where(entirely_inside, 20.0, 0.0)
+        max_charge = jnp.where(intersects, 20.0, 0.0)
+
+        battery_idx = self.n - 1
+        state_next_min = state_next_min.at[battery_idx].add(-10.0 + min_charge)
+        state_next_max = state_next_max.at[battery_idx].add(-10.0 + max_charge)
+
+        return state_next_min, state_next_max
+
 class PendulumDynamics:
     def __init__(self, args):
         self.linear = False

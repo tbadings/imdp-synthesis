@@ -1,7 +1,7 @@
 # Load the benchmarks from the subfiles
 from .Dubins3D import Dubins3D
 from .Dubins4D import Dubins4D
-from .Drone4D import Drone4D
+from .Drone4D import Drone4D, Drone4D_battery
 from .Drone6D import Drone6D, Drone6D_small
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
@@ -16,6 +16,7 @@ def create_model(args):
 		'Dubins3D': Dubins3D,
 		'Dubins4D': Dubins4D,
 		'Drone4D': Drone4D,
+		'Drone4D_battery': Drone4D_battery,
 		'Drone6D': Drone6D,
 		'Drone6D_small': Drone6D_small,
 		'Pendulum': Pendulum,
