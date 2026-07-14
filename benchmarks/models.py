@@ -279,8 +279,8 @@ class DroneDynamics_battery:
             raise ValueError(f"DroneDynamics only supports dim in [2, 3], got {dim}")
 
         self.linear = False
-        self.independent_state_dims = [[0,1],[2,3],[4]] if dim == 2 else [[0,1],[2,3],[4,5],[6]]
-        self.independent_input_dims = [[0],[1]] if dim == 2 else [[0],[1],[2]]
+        self.independent_state_dims = None # No independent dimensions due to battery dynamics
+        self.independent_input_dims = None
 
         if dim == 2:
             self.n = 5
@@ -318,11 +318,11 @@ class DroneDynamics_battery:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0.15, 0, 0.15, 0, 0])**2 # From stdev to covariance
+                cov = np.array([0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
                 self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 1])
             elif args.noise_distr == 'triangular':
-                cov = np.array([0.15, 0, 0.15, 0, 0]) # Halfwidth
+                cov = np.array([0.1, 0, 0.1, 0, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
                 self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 1])
             else:
