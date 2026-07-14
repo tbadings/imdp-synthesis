@@ -288,14 +288,14 @@ class DroneDynamics_battery:
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'battery']
             self.wrap = jnp.array([False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2]
-            self.charging_station = None
+            # self.charging_station = None
         else:
             self.n = 7
             self.p = 3
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel', 'battery']
             self.wrap = jnp.array([False, False, False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2, 4]
-            self.charging_station = None
+            # self.charging_station = None
 
         # Discretization step size
         self.tau = 1.0
@@ -355,16 +355,10 @@ class DroneDynamics_battery:
         state_next = self.A @ state + self.B @ action + noise
         battery_idx = self.n - 1
 
-        if isinstance(state_next, jnp.ndarray):
-            state_next = state_next.at[battery_idx].add(-10.0)
-            if self.inbox(state[:-1], self.charging_station[0]):
-                state_next = state_next.at[battery_idx].add(20.0)
+        if self.inbox(state, self.charging_station[0]):
+            state_next[battery_idx] = np.minimum(state_next[battery_idx] + 10, self.max_charge)
         else:
-            state_next = np.array(state_next)
-            state_next[battery_idx] -= 10.0
-            if self.inbox(state[:-1], self.charging_station[0]):
-                state_next[battery_idx] += 20.0
-
+            state_next[battery_idx] -= 5
         return state_next
 
     @partial(jax.jit, static_argnums=(0))
@@ -385,21 +379,24 @@ class DroneDynamics_battery:
         state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
         state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
 
-        # Battery charging calculation
-        pos_min = state_min[:-1]
-        pos_max = state_max[:-1]
+        # Battery charging calculation (+10 when charging, capped at max_charge; -5 otherwise)
         cs_min = self.charging_station[0][0]
         cs_max = self.charging_station[0][1]
 
-        entirely_inside = jnp.all((pos_min >= cs_min) & (pos_max <= cs_max))
-        intersects = jnp.all((pos_max >= cs_min) & (pos_min <= cs_max))
+        entirely_inside = jnp.all((state_min >= cs_min) & (state_max <= cs_max))
+        intersects = jnp.all((state_max >= cs_min) & (state_min <= cs_max))
 
-        min_charge = jnp.where(entirely_inside, 20.0, 0.0)
-        max_charge = jnp.where(intersects, 20.0, 0.0)
+        # entirely_inside: every state charges -> both bounds +10
+        # partial overlap: some states charge, some drain -> min -5, max +10
+        # no overlap: every state drains -> both bounds -5
+        delta_min = jnp.where(entirely_inside, 10.0, -5.0)
+        delta_max = jnp.where(intersects, 10.0, -5.0)
 
         battery_idx = self.n - 1
-        state_next_min = state_next_min.at[battery_idx].add(-10.0 + min_charge)
-        state_next_max = state_next_max.at[battery_idx].add(-10.0 + max_charge)
+        new_min = jnp.minimum(state_next_min[battery_idx] + delta_min, self.max_charge)
+        new_max = jnp.minimum(state_next_max[battery_idx] + delta_max, self.max_charge)
+        state_next_min = state_next_min.at[battery_idx].set(new_min)
+        state_next_max = state_next_max.at[battery_idx].set(new_max)
 
         return state_next_min, state_next_max
 

@@ -92,24 +92,26 @@ class Drone4D_battery(DroneDynamics_battery):
         v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
         v_max = 3.5
 
-        self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, 100]])
+        self.max_charge = 100
+
+        self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, self.max_charge]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
         self.partition['number_per_dim'] = np.array([28, 14, 28, 14, 30]) # 7 not enough
         
         self.goal = np.array([
-            [[7, v_min, 7, v_min, 0], [10, v_max, 10, v_max, 100]]
+            [[7, v_min, 7, v_min, 50], [10, v_max, 10, v_max, self.max_charge]]
         ], dtype=float)
 
         self.critical = np.array([
-            # [[-7, v_min, 1, v_min, 0], [-1, v_max, 3, v_max, 100]],
-            # [[3, v_min, -7, v_min, 0], [7, v_max, -3, v_max, 100]],
+            # [[-7, v_min, 1, v_min, 0], [-1, v_max, 3, v_max, self.max_charge]],
+            # [[3, v_min, -7, v_min, 0], [7, v_max, -3, v_max, self.max_charge]],
         ], dtype=float)
 
         self.charging_station = np.array([
-            [[-8.5, v_min, 5.0, v_min], [-5, v_max, 8.5, v_max]]
+            [[-8.5, v_min, -3.5, v_min, 0], [-5, v_max, 0, v_max, self.max_charge]]
         ], dtype=float)
 
-        self.x0 = np.array([-9.5, 0.01, -9.5, 0.01, 50])
+        self.x0 = np.array([-5, 0.01, -9, 0.01, 50])
 
         self.pi_arch = [64, 64]
         self.vf_arch = [64, 64]
