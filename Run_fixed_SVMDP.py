@@ -10,27 +10,31 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     runfile = root / "Main_SVMDP.py"
 
-    # fixed_args = [
-    #     "--model",
-    #     "MountainCar",
-    #     # "--batch_size",
-    #     # "1000",
-    #     # "--noise_distr",
-    #     # "normal",
-    #     "--solver",
-    #     "jax",
-    #     # "--eval_episodes",
-    #     # "5000",
-    #     "--total_timesteps",
-    #     "200000",
-    #     "--noise_distr",
-    #     "gaussian",
-    #     # "--no-policy_iteration",
-    #     # "--shrink_frs",
-    #     # "0",
-    #     "--RL_actions_per_state",
-    #     "100"
-    # ]
+    fixed_args = [
+        "--model",
+        "MountainCar",
+        # "--batch_size",
+        # "1000",
+        # "--noise_distr",
+        # "normal",
+        "--solver",
+        "jax",
+        # "--eval_episodes",
+        # "5000",
+        "--total_timesteps",
+        "100000",
+        "--noise_distr",
+        "gaussian",
+        # "--no-policy_iteration",
+        # "--shrink_frs",
+        # "0",
+        "--RL_actions_per_state",
+        "100",
+        "--max_steps",
+        "200",
+        "--eval_episodes",
+        "100",
+    ]
 
     # fixed_args = [
     #     "--model",
@@ -94,30 +98,30 @@ def main() -> None:
     #     "27"
     # ]
 
-    fixed_args = [
-        "--model",
-        "Drone4D_battery",
-        "--satprob",
-        "0.95",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        "--eval_episodes",
-        "1000",
-        "--total_timesteps",
-        "200000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "27",
-        # "--save_checkpoint",
-        # "--load_checkpoint",
-        # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
-    ]
+    # fixed_args = [
+    #     "--model",
+    #     "Drone4D_battery",
+    #     "--satprob",
+    #     "0.95",
+    #     # "--batch_size",
+    #     # "1000",
+    #     "--solver",
+    #     "jax",
+    #     "--eval_episodes",
+    #     "1000",
+    #     "--total_timesteps",
+    #     "200000",
+    #     "--noise_distr",
+    #     "gaussian",
+    #     # "--no-policy_iteration",
+    #     # "--shrink_frs",
+    #     # "0",
+    #     "--RL_actions_per_state",
+    #     "27",
+    #     # "--save_checkpoint",
+    #     # "--load_checkpoint",
+    #     # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
+    # ]
 
     cmd = [sys.executable, str(runfile), *fixed_args]
     subprocess.run(cmd, check=True, cwd=root)

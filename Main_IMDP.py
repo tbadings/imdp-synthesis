@@ -253,3 +253,9 @@ if __name__ == '__main__':
             np.array(sim.results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
         )
+
+    if args.model == 'CartPole':
+        model.plot_trajectory_gif(
+            np.array(sim.results['traces'][0]['x'])[:, [0, 2]],
+            filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
+        )

@@ -255,8 +255,8 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
                     label="Goal" if idx == 0 else None,
                 )
             )
-
-    if eval_env.model.charging_station.size > 0:
+            
+    if hasattr(eval_env.model, "charging_station") and eval_env.model.charging_station.size > 0:
         for idx, box in enumerate(eval_env.model.charging_station):
             x0, x1 = box[0, dims[0]], box[1, dims[0]]
             y0, y1 = box[0, dims[1]], box[1, dims[1]]

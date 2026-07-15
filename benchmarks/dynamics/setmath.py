@@ -73,6 +73,44 @@ def mult(X, Y):
 
 
 @jax.jit
+def square(x_min, x_max):
+    '''
+    Compute min/max of x**2 over the interval [x_min, x_max].
+
+    :param x_min:
+    :param x_max:
+    :return: min/max of x**2.
+    '''
+    x_min, x_max = box(x_min, x_max)
+
+    lo2 = x_min * x_min
+    hi2 = x_max * x_max
+    y_max = jnp.maximum(lo2, hi2)
+
+    # The minimum is 0 whenever the interval contains 0.
+    spans_zero = (x_min <= 0) & (x_max >= 0)
+    y_min = jnp.where(spans_zero, 0.0, jnp.minimum(lo2, hi2))
+
+    return y_min, y_max
+
+
+@jax.jit
+def div(X, Y):
+    '''
+    Divide interval X by interval Y. Assumes Y does not contain 0
+    (the caller is responsible for guaranteeing this).
+
+    :param X:
+    :param Y:
+    :return: X/Y (sorted)
+    '''
+    y_min, y_max = box(Y[0], Y[1])
+    # Reciprocal of an interval that does not contain 0.
+    recip = (1.0 / y_max, 1.0 / y_min)
+    return mult(X, recip)
+
+
+@jax.jit
 def sin(x_min, x_max):
     '''
     Compute min/max of sin(x) over the interval [x_min, x_max].

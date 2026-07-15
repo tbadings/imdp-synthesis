@@ -288,14 +288,12 @@ class DroneDynamics_battery:
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'battery']
             self.wrap = jnp.array([False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2]
-            # self.charging_station = None
         else:
             self.n = 7
             self.p = 3
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel', 'battery']
             self.wrap = jnp.array([False, False, False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2, 4]
-            # self.charging_station = None
 
         # Discretization step size
         self.tau = 1.0
@@ -527,6 +525,117 @@ class MountainCarDynamics:
 
         return state_next_min, state_next_max
     
+class CartPoleDynamics:
+    def __init__(self, args):
+        self.linear = False
+        self.independent_state_dims = None
+        self.independent_input_dims = None
+
+        self.n = 4
+        self.p = 1
+        self.state_variables = ['position', 'velocity', 'angle', 'angular_velocity']
+        self.wrap = jnp.array([False, False, False, False], dtype=bool)
+
+        # Discretization step size
+        self.tau = 0.02
+
+        # CartPole parameters (Gymnasium CartPole convention)
+        self.gravity = 9.8
+        self.masscart = 1.0
+        self.masspole = 0.1
+        self.total_mass = self.masspole + self.masscart
+        self.length = 0.5  # Actually half the pole's length
+        self.polemass_length = self.masspole * self.length
+
+        # Covariance of the process noise (on cart position and pole angle)
+        if args.noise_distr == 'gaussian':
+            self.noise = GaussianDistr(np.array([0.005, 0, 0.005, 0])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
+        elif args.noise_distr == 'triangular':
+            self.noise = TriangularDistr(np.array([0.005, 0, 0.005, 0])) # Halfwidth
+            self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
+        else:
+            raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
+
+    def step(self, state, action, noise):
+        x, x_dot, theta, theta_dot = state
+        force = action[0]
+
+        costheta = np.cos(theta)
+        sintheta = np.sin(theta)
+
+        temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
+        thetaacc = (self.gravity * sintheta - costheta * temp) / (
+            self.length * (4.0 / 3.0 - self.masspole * costheta**2 / self.total_mass))
+        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+
+        # Euler integration
+        x = x + self.tau * x_dot
+        x_dot = x_dot + self.tau * xacc
+        theta = theta + self.tau * theta_dot
+        theta_dot = theta_dot + self.tau * thetaacc
+
+        return np.array([x, x_dot, theta, theta_dot]) + noise
+
+    @partial(jax.jit, static_argnums=(0))
+    def step_set(self, state_min, state_max, action_min, action_max):
+        state_min, state_max = setmath.box(jnp.array(state_min), jnp.array(state_max))
+        [x_min, xd_min, th_min, thd_min] = state_min
+        [x_max, xd_max, th_max, thd_max] = state_max
+
+        action_min, action_max = setmath.box(jnp.array(action_min), jnp.array(action_max))
+        F_min = jnp.maximum(action_min, self.uMin)[0]
+        F_max = jnp.minimum(action_max, self.uMax)[0]
+
+        # Interval bounds on the trigonometric terms of the pole angle
+        s_min, s_max = setmath.sin(th_min, th_max)
+        c_min, c_max = setmath.cos(th_min, th_max)
+
+        # theta_dot^2
+        thd2_min, thd2_max = setmath.square(thd_min, thd_max)
+
+        # temp = (F + polemass_length * theta_dot^2 * sin(theta)) / total_mass
+        # (setmath.mult/div return shape-(1,) arrays, so we squeeze back to scalars)
+        q_min, q_max = setmath.mult((thd2_min, thd2_max), (s_min, s_max))
+        q_min, q_max = q_min[0], q_max[0]
+        temp_min = (F_min + self.polemass_length * q_min) / self.total_mass
+        temp_max = (F_max + self.polemass_length * q_max) / self.total_mass
+
+        # thetaacc = (g*sin - cos*temp) / (length * (4/3 - masspole*cos^2/total_mass))
+        b_min, b_max = setmath.mult((c_min, c_max), (temp_min, temp_max))
+        b_min, b_max = b_min[0], b_max[0]
+        num_min = self.gravity * s_min - b_max
+        num_max = self.gravity * s_max - b_min
+
+        c2_min, c2_max = setmath.square(c_min, c_max)
+        k = self.masspole / self.total_mass
+        # Denominator is guaranteed positive (4/3 - k*cos^2 >= 4/3 - k > 0)
+        denom_min = self.length * (4.0 / 3.0 - k * c2_max)
+        denom_max = self.length * (4.0 / 3.0 - k * c2_min)
+
+        thacc_min, thacc_max = setmath.div((num_min, num_max), (denom_min, denom_max))
+        thacc_min, thacc_max = thacc_min[0], thacc_max[0]
+
+        # xacc = temp - polemass_length * thetaacc * cos / total_mass
+        e_min, e_max = setmath.mult((thacc_min, thacc_max), (c_min, c_max))
+        e_min, e_max = e_min[0], e_max[0]
+        coef = self.polemass_length / self.total_mass
+        xacc_min = temp_min - coef * e_max
+        xacc_max = temp_max - coef * e_min
+
+        # Euler integration
+        x_next = jnp.array([x_min + self.tau * xd_min, x_max + self.tau * xd_max])
+        xd_next = jnp.array([xd_min + self.tau * xacc_min, xd_max + self.tau * xacc_max])
+        th_next = jnp.array([th_min + self.tau * thd_min, th_max + self.tau * thd_max])
+        thd_next = jnp.array([thd_min + self.tau * thacc_min, thd_max + self.tau * thacc_max])
+
+        state_next = jnp.vstack((x_next, xd_next, th_next, thd_next))
+
+        state_next_min = jnp.min(state_next, axis=1)
+        state_next_max = jnp.max(state_next, axis=1)
+
+        return state_next_min, state_next_max
+
 class DoubleIntegratorDynamics:
     def __init__(self, args):
         self.linear = False
