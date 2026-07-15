@@ -176,10 +176,6 @@ if __name__ == '__main__':
     sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=100)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
-    plot_traces(
-        args, stamp, model.plot_dimensions, partition, model,
-        sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,
-    )
     heatmap(
         args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n),
         partition=partition, results=V, filename='heatmap_satprob',
@@ -187,6 +183,10 @@ if __name__ == '__main__':
     heatmap(
         args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n),
         partition=partition, results=policy_inputs[:, 0], filename='heatmap_inputs',
+    )
+    plot_traces(
+        args, stamp, model.plot_dimensions, partition, model,
+        sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,
     )
 
     print(args.model)

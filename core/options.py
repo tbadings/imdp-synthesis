@@ -97,7 +97,11 @@ def parse_arguments(argv=None):
     parser.add_argument("--unsafe_penalty", type=float, default=-100.0)
     parser.add_argument("--out_of_bounds_penalty", type=float, default=-100.0)
     parser.add_argument("--revisit_penalty", type=float, default=0.05)
+    parser.add_argument("--progress_reward", action=argparse.BooleanOptionalAction, default=False,
+                        help="If True, use dense distance-to-goal shaping (progress reward minus a per-step penalty) for non-terminal steps instead of a flat 0.")
 
+    parser.add_argument("--ent_coef", type=float, default=0.0,
+                        help="PPO entropy coefficient. SB3 default is 0.0; increase (e.g. 0.005) to encourage exploration ")
     parser.add_argument("--learning_rate", type=float, default=3e-4)
     parser.add_argument("--rl_batch_size", type=int, default=256, help="Batch size for PPO")
     parser.add_argument("--n_steps", type=int, default=128, help="Number of steps to run for each environment per update in PPO")

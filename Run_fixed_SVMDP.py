@@ -19,10 +19,8 @@ def main() -> None:
         # "normal",
         "--solver",
         "jax",
-        # "--eval_episodes",
-        # "5000",
         "--total_timesteps",
-        "100000",
+        "200000",
         "--noise_distr",
         "gaussian",
         # "--no-policy_iteration",
@@ -34,6 +32,13 @@ def main() -> None:
         "200",
         "--eval_episodes",
         "100",
+        "--goal_reward",
+        "5",
+        "--unsafe_penalty",
+        "-5",
+        "--out_of_bounds_penalty",
+        "-5",
+        "--progress_reward",
     ]
 
     # fixed_args = [

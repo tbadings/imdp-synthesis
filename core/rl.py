@@ -24,6 +24,7 @@ class RLConfig:
     unsafe_penalty: float
     out_of_bounds_penalty: float
     revisit_penalty: float
+    progress_reward: bool = False
 
 class BenchmarkRLEnv(gym.Env):
     metadata = {"render_modes": []}
@@ -80,7 +81,7 @@ class BenchmarkRLEnv(gym.Env):
         if center is None:
             return 0.0
         dist = float(np.linalg.norm(state - center))
-        reward = (self.prev_dist - dist)
+        reward = (self.prev_dist - dist) / max(float(np.linalg.norm(self.obs_high - self.obs_low)), 1e-6)
         self.prev_dist = dist
         return reward
 
@@ -146,6 +147,8 @@ class BenchmarkRLEnv(gym.Env):
             reward = self.cfg.unsafe_penalty
         elif out_of_bounds:
             reward = self.cfg.out_of_bounds_penalty
+        elif self.cfg.progress_reward:
+            reward = self._progress_reward(self.state) - 0.1
         else:
             reward = 0
 
@@ -325,7 +328,8 @@ def find_active(model, args, previous_cells):
         unsafe_penalty=args.unsafe_penalty,
         out_of_bounds_penalty=args.out_of_bounds_penalty,
         revisit_penalty=args.revisit_penalty,
-    )    
+        progress_reward=args.progress_reward,
+    )
 
     vec_env = _build_vec_env(
         base_model=model,
@@ -348,6 +352,7 @@ def find_active(model, args, previous_cells):
         vec_env,
         policy_kwargs=policy_kwargs,
         verbose=1,
+        ent_coef=args.ent_coef,
         learning_rate=args.learning_rate,
         batch_size=args.rl_batch_size,
         n_steps=args.n_steps,

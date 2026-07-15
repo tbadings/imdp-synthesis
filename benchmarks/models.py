@@ -474,7 +474,7 @@ class MountainCarDynamics:
         self.wrap = jnp.array([False, False], dtype=bool)
 
         # Discretization step size
-        self.tau = 2
+        self.tau = 1
 
         # Parameters
         self.max_speed = 0.07
@@ -514,7 +514,13 @@ class MountainCarDynamics:
         velo_next = jnp.array([velo_min, velo_max]) + \
                     setmath.tuple2box(self.tau * -self.gravity * setmath.tuple2box(setmath.cos(3 * pos_min, 3 * pos_max)) ) + \
                     setmath.tuple2box(self.tau * self.power * jnp.array([u_min, u_max]))
-        
+
+        # Match the real dynamics (see step): velocity saturates at the speed limit before it
+        # drives the position update. The clip is monotone, so applying it to the [lb, ub]
+        # interval is exact. Without it, high-velocity cells (the goal-approach corridor) overshoot
+        # the velocity grid boundary (±max_speed) and get mapped to the absorbing/failure state.
+        velo_next = jnp.clip(velo_next, -self.max_speed + 1e-4, self.max_speed - 1e-4)
+
         pos_next = jnp.array([pos_min, pos_max]) + self.tau * velo_next
 
         state_next = jnp.vstack((pos_next,
