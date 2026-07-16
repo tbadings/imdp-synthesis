@@ -10,9 +10,42 @@ def main() -> None:
     root = Path(__file__).resolve().parent
     runfile = root / "Main_SVMDP.py"
 
+    # fixed_args = [
+    #     "--model",
+    #     "MountainCar",
+    #     # "--batch_size",
+    #     # "1000",
+    #     # "--noise_distr",
+    #     # "normal",
+    #     "--solver",
+    #     "jax",
+    #     "--total_timesteps",
+    #     "200000",
+    #     "--noise_distr",
+    #     "gaussian",
+    #     # "--no-policy_iteration",
+    #     # "--shrink_frs",
+    #     # "0",
+    #     "--RL_actions_per_state",
+    #     "100",
+    #     "--max_steps",
+    #     "200",
+    #     "--eval_episodes",
+    #     "100",
+    #     "--goal_reward",
+    #     "5",
+    #     "--unsafe_penalty",
+    #     "-5",
+    #     "--out_of_bounds_penalty",
+    #     "-5",
+    #     "--progress_reward",
+    # ]
+
     fixed_args = [
         "--model",
-        "MountainCar",
+        "CartPole",
+        "--satprob",
+        "0.99",
         # "--batch_size",
         # "1000",
         # "--noise_distr",
@@ -31,7 +64,7 @@ def main() -> None:
         "--max_steps",
         "200",
         "--eval_episodes",
-        "100",
+        "2500",
         "--goal_reward",
         "5",
         "--unsafe_penalty",
@@ -39,6 +72,8 @@ def main() -> None:
         "--out_of_bounds_penalty",
         "-5",
         "--progress_reward",
+        # "--ent_coef",
+        # "0.005",
     ]
 
     # fixed_args = [

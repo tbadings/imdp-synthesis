@@ -111,7 +111,7 @@ if __name__ == '__main__':
             P_full=actions.frs_noise_probs,
             S_idx_lb=actions.frs_idx_lb,
             S_idx_ub=actions.frs_idx_ub,
-            box_to_ids=box_to_ids,
+            box_to_ids=box_to_ids,  
             A_id=A_id,
             P_absorbing=model.noise.partition['remainder'],
         )
@@ -189,7 +189,6 @@ if __name__ == '__main__':
         sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,
     )
 
-    print(args.model)
     if args.model.startswith('Drone6D'):
         plot_traces_3d(
             args, stamp, [0, 2, 4], partition, model,
@@ -206,4 +205,11 @@ if __name__ == '__main__':
         model.plot_trajectory_gif(
             np.array(sim.results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
+        )
+
+    if args.model == 'CartPole':
+        print('Plot gif...')
+        model.plot_trajectory_gif(
+            np.array(sim.results['traces'][0]['x'])[:, [0, 2]],
+            filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
         )

@@ -194,6 +194,7 @@ def SVMDP_DP(
     vmap_fn3 = jax.jit(jax.vmap(fn3, in_axes=(0, 0, None), out_axes=(0)))
 
     if prune_states:
+        s_init_skipped_before_pruning = skip_mask[svmdp.s_init]
         done = False
         while not done:
             done = True
@@ -214,6 +215,9 @@ def SVMDP_DP(
                 states_not_to_update = svmdp.states[skip_mask]
 
         logger.info(f'  (States after pruning: {len(states_to_update)})')
+
+        if skip_mask[svmdp.s_init] and not s_init_skipped_before_pruning:
+            logger.warning(f'  Initial state ({svmdp.s_init}) was pruned (all actions directly lead to absorbing states)')
 
     # Initialize value function and policy
     V = np.zeros(svmdp.nr_states, dtype=args.floatprecision)

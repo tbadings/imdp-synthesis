@@ -104,13 +104,26 @@ class BenchmarkRLEnv(gym.Env):
         testing = bool(options.get("testing", False)) if options else False
 
         if testing:
-            cell = self.state_to_cell(self.model.x0)
-            cell_lb = self.obs_low + np.asarray(cell, dtype=np.float32) * self.bin_widths
+            cell = np.asarray(self.state_to_cell(self.model.x0), dtype=np.float32)
+            cell_lb = self.obs_low + cell * self.bin_widths
             cell_ub = cell_lb + self.bin_widths
+
+            # Inflate the initial-state cell by a per-dim (lo, hi) number of cells (same format
+            # as inflation_rate), so the active-set rollouts fan across a neighborhood of x0
+            # rather than a single trajectory. Defaults to zero -> exactly the single-cell reset.
+            reset_infl = getattr(self.model, "reset_inflation", None)
+            if reset_infl is None:
+                reset_infl = [(0, 0)] * self.model.n
+            lo = np.array([l for l, h in reset_infl], dtype=np.float32)
+            hi = np.array([h for l, h in reset_infl], dtype=np.float32)
 
             # Add a small epsilon, to make sure we appropriately cover the initial state cell
             eps = 0.1 * self.bin_widths
-            state = self.np_random.uniform(cell_lb - eps, cell_ub + eps).astype(np.float32)
+            low = np.clip(cell_lb + lo * self.bin_widths - eps, self.obs_low, self.obs_high)
+            high = np.clip(cell_ub + hi * self.bin_widths + eps, self.obs_low, self.obs_high)
+            state = self.np_random.uniform(low, high).astype(np.float32)
+            while self._in_boxes(state, self.critical, inflate=0):
+                state = self.np_random.uniform(low, high).astype(np.float32)
         else:
             state = self.np_random.uniform(self.obs_low, self.obs_high).astype(np.float32)
             while self._in_boxes(state, self.critical, inflate=0):
@@ -148,7 +161,7 @@ class BenchmarkRLEnv(gym.Env):
         elif out_of_bounds:
             reward = self.cfg.out_of_bounds_penalty
         elif self.cfg.progress_reward:
-            reward = self._progress_reward(self.state) - 0.1
+            reward = self._progress_reward(self.state)
         else:
             reward = 0
 

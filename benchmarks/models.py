@@ -543,7 +543,7 @@ class CartPoleDynamics:
         self.wrap = jnp.array([False, False, False, False], dtype=bool)
 
         # Discretization step size
-        self.tau = 0.02
+        self.tau = 0.1
 
         # CartPole parameters (Gymnasium CartPole convention)
         self.gravity = 9.8
@@ -555,7 +555,7 @@ class CartPoleDynamics:
 
         # Covariance of the process noise (on cart position and pole angle)
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0.005, 0, 0.005, 0])**2) # From stdev to covariance
+            self.noise = GaussianDistr(0.0001*np.array([0.005, 0, 0.005, 0])**2) # From stdev to covariance
             self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0.005, 0, 0.005, 0])) # Halfwidth
