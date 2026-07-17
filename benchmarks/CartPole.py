@@ -35,36 +35,29 @@ class CartPole(CartPoleDynamics):
         # Authority limit for the control u (force on the cart), both positive and negative
         self.uMin = [-10]
         self.uMax = [10]
-        self.num_actions = [15]
+        self.num_actions = [41]
 
         self.partition['boundary'] = np.array([[-2.4, -3.0, -0.25, -3.0],
                                                [2.4, 3.0, 0.25, 3.0]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = 40*np.array([12, 8, 6, 10])
+        self.partition['number_per_dim'] = 20*np.array([12, 8, 6, 10]) + 1
 
         # Goal: balance the pole upright, close to the center of the track
         self.goal = np.array([
-            [[0, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
+            [[1, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
         ], dtype=float)
 
         self.critical = np.array([
         ], dtype=float)
 
         # Start with the pole tilted away from upright
-        self.x0 = np.array([-0.5, 0.0, 0.15, 0.0])
+        self.x0 = np.array([-1, 0.0, 0, 0.0])
 
         self.pi_arch = [64, 64]
         self.vf_arch = [64, 64]
-        # Widen the tube in the two dims the reach-avoid spec leaves free (velocity,
-        # angular velocity): the single RL rollout barely samples them, so a controlled-
-        # invariant funnel needs slack there. Position/angle stay at +-5.
+        
         self.inflation_rate = [(-3, 3), (-3, 3), (-3, 3), (-3, 3)]
-
-        # Expand the initial-state cell that the testing rollouts sample x0 from, so the
-        # active set is a fan of real (control-invariant) trajectories rather than a single
-        # curve. Per-dim (lo, hi) in cells; on grid [480,320,240,400] this is roughly
-        # [+-0.4, +-1.1, +-0.06, +-1.2] in state units.
-        self.reset_inflation = [(-1, 1), (-1, 1), (-1, 1), (-1, 1)]
+        self.reset_inflation = [(-10, 10), (-10, 10), (-10, 10), (-10, 10)]
 
         return
 

@@ -533,6 +533,17 @@ class MountainCarDynamics:
     
 class CartPoleDynamics:
     def __init__(self, args):
+        '''
+        CartPole dynamics model, based on the Gymnasium CartPole environment. 
+        The state consists of the cart position, cart velocity, pole angle, and pole angular velocity. 
+        The action is a force applied to the cart. The dynamics are nonlinear and include process noise.
+        
+        Differences with the original CartPole environment:
+        - The time step is 0.02 * 5 seconds instead of 0.02 seconds.
+        - Original environment has no process noise.
+        - Original environment has a discrete action space (left/right), while this model uses a continuous action space (force).
+        '''
+        
         self.linear = False
         self.independent_state_dims = None
         self.independent_input_dims = None
@@ -543,7 +554,7 @@ class CartPoleDynamics:
         self.wrap = jnp.array([False, False, False, False], dtype=bool)
 
         # Discretization step size
-        self.tau = 0.1
+        self.tau = 0.02 * 5
 
         # CartPole parameters (Gymnasium CartPole convention)
         self.gravity = 9.8
@@ -555,8 +566,8 @@ class CartPoleDynamics:
 
         # Covariance of the process noise (on cart position and pole angle)
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(0.0001*np.array([0.005, 0, 0.005, 0])**2) # From stdev to covariance
-            self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])
+            self.noise = GaussianDistr(np.array([0, 0.001, 0, 0])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[1, 1, 1, 1])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0.005, 0, 0.005, 0])) # Halfwidth
             self.noise.set_partition_probs(num_cells=[10, 1, 10, 1])

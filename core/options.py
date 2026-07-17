@@ -97,8 +97,10 @@ def parse_arguments(argv=None):
     parser.add_argument("--unsafe_penalty", type=float, default=-100.0)
     parser.add_argument("--out_of_bounds_penalty", type=float, default=-100.0)
     parser.add_argument("--revisit_penalty", type=float, default=0.05)
-    parser.add_argument("--progress_reward", action=argparse.BooleanOptionalAction, default=False,
-                        help="If True, use dense distance-to-goal shaping (progress reward minus a per-step penalty) for non-terminal steps instead of a flat 0.")
+    parser.add_argument("--distance_reward", type=float, default=0.0,
+                        help="Gain on the dense distance-to-goal progress shaping applied on non-terminal steps. 0 disables it.")
+    parser.add_argument("--per_step_reward", type=float, default=0.0,
+                        help="Value added to the reward on every non-terminal step. 0 disables it; -x imposes cost of x per step.")
 
     parser.add_argument("--ent_coef", type=float, default=0.0,
                         help="PPO entropy coefficient. SB3 default is 0.0; increase (e.g. 0.005) to encourage exploration ")

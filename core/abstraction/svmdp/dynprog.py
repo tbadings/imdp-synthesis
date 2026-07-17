@@ -195,9 +195,17 @@ def SVMDP_DP(
 
     if prune_states:
         s_init_skipped_before_pruning = skip_mask[svmdp.s_init]
+        # Track the fix-point generation at which each sweep prunes states (and specifically when
+        # s_init is pruned). The generation of s_init is the depth of the dead-end funnel from x0:
+        # generation 1 means all of s_init's own successors are already absorbing; a larger value
+        # means the tube reaches k cells deep before dead-ending. Diagnostic logging only.
+        prune_generation = 0
+        s_init_prune_generation = -1
         done = False
         while not done:
             done = True
+            prune_generation += 1
+            pruned_this_gen = 0
 
             starts, ends = create_batches(len(states_to_update), BATCH_SIZE)
             pbar = tqdm(zip(starts, ends), desc='Prune states', total=len(starts))
@@ -207,6 +215,7 @@ def SVMDP_DP(
                 skip = vmap_fn3(S_id_batch, svmdp.P_full[states], jnp.concatenate((absorbing_mask, jnp.array([True])))) # Add one 'true' for the out-of-bounds state
                 skip_mask[states] = skip
                 absorbing_mask[states] = skip
+                pruned_this_gen += int(np.sum(np.asarray(skip)))
                 if any(skip):
                     done = False
 
@@ -214,10 +223,22 @@ def SVMDP_DP(
                 states_to_update = svmdp.states[~skip_mask]
                 states_not_to_update = svmdp.states[skip_mask]
 
+            if pruned_this_gen > 0:
+                if s_init_prune_generation == -1 and skip_mask[svmdp.s_init] and not s_init_skipped_before_pruning:
+                    s_init_prune_generation = prune_generation
+                logger.info(f'  Prune generation {prune_generation}: pruned {pruned_this_gen} states '
+                            f'(remaining active {len(states_to_update)})'
+                            + ('  *** s_init pruned here ***' if s_init_prune_generation == prune_generation else ''))
+                
+                if len(states_to_update) == 0 or pruned_this_gen / len(states_to_update) < 0.01:
+                    break  # Stop pruning if less than 1% of the remaining states were pruned in this generation
+
         logger.info(f'  (States after pruning: {len(states_to_update)})')
 
         if skip_mask[svmdp.s_init] and not s_init_skipped_before_pruning:
-            logger.warning(f'  Initial state ({svmdp.s_init}) was pruned (all actions directly lead to absorbing states)')
+            logger.warning(f'  Initial state ({svmdp.s_init}) was pruned (all actions directly lead to '
+                           f'absorbing states) at prune generation {s_init_prune_generation} '
+                           f'(dead-end funnel depth from x0)')
 
     # Initialize value function and policy
     V = np.zeros(svmdp.nr_states, dtype=args.floatprecision)

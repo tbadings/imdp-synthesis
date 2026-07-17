@@ -190,25 +190,28 @@ if __name__ == '__main__':
     )
 
     if args.model.startswith('Drone6D'):
+        print('Plot Drone6D traces in 3D...')
         plot_traces_3d(
             args, stamp, [0, 2, 4], partition, model,
             sim.results['traces'], num_traces=10, filename="traces_3d",
         )
 
     if args.model == 'Pendulum':
+        print('Plot Pendulum gif...')
         model.plot_trajectory_gif(
             np.array(sim.results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'pendulum_{stamp}.gif'),
         )
 
     if args.model == 'MountainCar':
+        print('Plot MountainCar gif...')
         model.plot_trajectory_gif(
             np.array(sim.results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
         )
 
     if args.model == 'CartPole':
-        print('Plot gif...')
+        print('Plot CartPole gif...')
         model.plot_trajectory_gif(
             np.array(sim.results['traces'][0]['x'])[:, [0, 2]],
             filename=str(args.output_dir / f'cartpole_{stamp}.gif'),

@@ -199,6 +199,9 @@ class RectangularForward(object):
         key_dtype = key_dtype if radix_product <= max_key else None
         if key_dtype is None:
             logger.info('- FRS merge: single-key radix overflow, using lexsort fallback')
+        else:
+            logger.info('- FRS merge key: %s (radix product %s)',
+                        np.dtype(key_dtype).name, f'{int(radix_product):,}')
 
         # Bind the constant arguments once; only (state_min, state_max, input) vary in the loop.
         frs_fn = partial(

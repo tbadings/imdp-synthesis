@@ -6,16 +6,24 @@ from time import time
 
 import gymnasium as gym
 from gymnasium import spaces
+import jax
+import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
+from tqdm import tqdm
 import itertools
 import benchmarks
 
+from core.abstraction.partition import _compute_linear_strides
+
 logger = logging.getLogger(__name__)
+
+# Candidate neighbors held per batch when inflating visited cells, which bounds peak memory there.
+INFLATE_IDS_PER_BATCH = 1 << 23
 
 @dataclass
 class RLConfig:
@@ -24,7 +32,8 @@ class RLConfig:
     unsafe_penalty: float
     out_of_bounds_penalty: float
     revisit_penalty: float
-    progress_reward: bool = False
+    distance_reward: float = 0.0
+    per_step_reward: float = 0.0
 
 class BenchmarkRLEnv(gym.Env):
     metadata = {"render_modes": []}
@@ -76,12 +85,13 @@ class BenchmarkRLEnv(gym.Env):
         first_goal = self.goal[0]
         return 0.5 * (first_goal[0] + first_goal[1])
 
-    def _progress_reward(self, state):
+    def _distance_reward(self, state):
         center = self._goal_center()
         if center is None:
             return 0.0
         dist = float(np.linalg.norm(state - center))
-        reward = (self.prev_dist - dist) / max(float(np.linalg.norm(self.obs_high - self.obs_low)), 1e-6)
+        scale = max(float(np.linalg.norm(self.obs_high - self.obs_low)), 1e-6)
+        reward = self.cfg.distance_reward * (self.prev_dist - dist) / scale
         self.prev_dist = dist
         return reward
 
@@ -160,10 +170,8 @@ class BenchmarkRLEnv(gym.Env):
             reward = self.cfg.unsafe_penalty
         elif out_of_bounds:
             reward = self.cfg.out_of_bounds_penalty
-        elif self.cfg.progress_reward:
-            reward = self._progress_reward(self.state)
         else:
-            reward = 0
+            reward = self._distance_reward(self.state) + self.cfg.per_step_reward
 
         cell = self.state_to_cell(self.state)
         flat_idx = np.ravel_multi_index(cell, self.model.partition['number_per_dim'])
@@ -288,13 +296,13 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
             )
 
     # Only plot max 100 trajectories
-    # i_max = 100
-    # i = 0
+    i_max = 100
+    i = 0
     for trace in trajectories:
-        # if i >= i_max:
-        #     break
-        ax.plot(trace[:, dims[0]], trace[:, dims[1]], linewidth=1.0, alpha=0.9, color="black")
-        # i += 1
+        if i >= i_max:
+            break
+        ax.plot(trace[:, dims[0]], trace[:, dims[1]], linewidth=1.0, alpha=0.9, color="black", marker=".", markersize=3.0, markeredgecolor="red", markerfacecolor="red")
+        i += 1
 
     ax.set_xlim(eval_env.obs_low[dims[0]], eval_env.obs_high[dims[0]])
     ax.set_ylim(eval_env.obs_low[dims[1]], eval_env.obs_high[dims[1]])
@@ -334,6 +342,66 @@ def find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num):
     top_k_idx = np.argsort(dists, axis=1)[:, :num]                       # (N, num)
     return discrete_actions[top_k_idx]                                   # (N, num, action_dim)
 
+def _inflation_offsets(inflation_rate):
+    '''
+    Every integer offset inside the inflation box, shape (num_offsets, dim). The box is identical for
+    every cell, so it is built once and broadcast against all visited cells at once.
+    '''
+    axes = [np.arange(int(lo), int(hi) + 1) for lo, hi in inflation_rate]
+    grids = np.meshgrid(*axes, indexing='ij')
+    return np.stack([grid.ravel() for grid in grids], axis=1)
+
+
+@jax.jit
+def _neighbors_in_bounds(cells, offsets, number_per_dim):
+    '''
+    Mask of the neighbors of each cell that lie inside the partition, shape (num_cells, num_offsets).
+    '''
+    def in_bounds_of(cell):
+        neighbors = cell + offsets
+        return jnp.all((neighbors >= 0) & (neighbors < number_per_dim), axis=1)
+
+    return jax.vmap(in_bounds_of)(cells)
+
+
+def _inflate_cells(visited_cells, inflation_rate, number_per_dim):
+    '''
+    Inflate every visited cell into its neighborhood and return the unique in-bounds cells, shape
+    (num_states, dim), ordered by linear id.
+    '''
+    dim = len(number_per_dim)
+    cells = np.asarray(list(visited_cells), dtype=np.int64).reshape(-1, dim)
+    offsets = _inflation_offsets(inflation_rate)
+    strides = _compute_linear_strides(number_per_dim)
+
+    # Cells are deduplicated through their linear id. That id indexes the full nominal grid (~6e11
+    # cells for CartPole) however few cells are active, so it needs int64 and stays in numpy: JAX
+    # truncates to int32 unless x64 is on. The id is linear in the coordinates, so
+    # id(cell + offset) == id(cell) + id(offset), and a batch of ids is one outer sum.
+    base_ids = cells @ strides
+    offset_ids = offsets @ strides
+
+    # The coordinates themselves always fit int32, so the bounds check can run on device.
+    offsets_jax = jnp.asarray(offsets, dtype=jnp.int32)
+    number_per_dim_jax = jnp.asarray(number_per_dim, dtype=jnp.int32)
+    batch = max(1, INFLATE_IDS_PER_BATCH // len(offsets))
+
+    # Deduplicate per batch, not just at the end: the inflation boxes of nearby cells overlap heavily,
+    # which keeps the accumulated ids far below num_cells * num_offsets.
+    batches = []
+    for start in tqdm(range(0, len(cells), batch), desc='Inflate visited cells'):
+        in_bounds = _neighbors_in_bounds(
+            jnp.asarray(cells[start:start + batch], dtype=jnp.int32), offsets_jax, number_per_dim_jax)
+        ids = base_ids[start:start + batch, None] + offset_ids[None, :]
+        batches.append(np.unique(np.where(np.asarray(in_bounds), ids, -1)))
+
+    ids = np.unique(np.concatenate(batches)) if batches else np.zeros(0, dtype=np.int64)
+    ids = ids[ids >= 0]
+
+    # Undo the linearization: strides are row-major, so entry d is (id // stride[d]) % number[d].
+    return ((ids[:, None] // strides) % number_per_dim).astype(int)
+
+
 def find_active(model, args, previous_cells):
     cfg = RLConfig(
         max_steps=args.max_steps,
@@ -341,7 +409,8 @@ def find_active(model, args, previous_cells):
         unsafe_penalty=args.unsafe_penalty,
         out_of_bounds_penalty=args.out_of_bounds_penalty,
         revisit_penalty=args.revisit_penalty,
-        progress_reward=args.progress_reward,
+        distance_reward=args.distance_reward,
+        per_step_reward=args.per_step_reward,
     )
 
     vec_env = _build_vec_env(
@@ -395,38 +464,23 @@ def find_active(model, args, previous_cells):
     logger.info(f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
     t = time()
 
-    active_states = set()
     number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
 
-    #inflating visited cells to include neighbors within a certain radius to account for discretization errors and encourage exploration of nearby states
-    for cell in newly_visited:
-        ranges = [range(c + int(lo), c + int(hi) + 1) for c, (lo, hi) in zip(cell, model.inflation_rate)]
-        # print(f"Cell {cell} with neighbors {list(itertools.product(*ranges))}")
-        for neighbor in itertools.product(*ranges):
-            neighbor = tuple(int(v) for v in neighbor)
-            valid = True
-            for i, val in enumerate(neighbor):
-                limit = int(number_per_dim[i])
-                if val < 0 or val >= limit:
-                    valid = False
-                    break
-            if valid:
-                active_states.add(neighbor)
+    # Inflate visited cells to include neighbors within a certain radius to account for discretization
+    # errors and encourage exploration of nearby states.
+    active_states = _inflate_cells(newly_visited, model.inflation_rate, number_per_dim)
 
     logger.info(f"- Active states extraction completed in {time() - t:.2f} seconds.")
     t = time()
 
     # One batched forward pass for all active states instead of one call per state.
-    active_states_list = list(active_states)
-    obs_batch = np.array(
-        [val_env.obs_low + (np.asarray(s, dtype=np.float32) + 0.5) * val_env.bin_widths
-         for s in active_states_list],
+    obs_batch = np.asarray(
+        val_env.obs_low + (active_states.astype(np.float32) + 0.5) * val_env.bin_widths,
         dtype=np.float32,
     )
     top_k = find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num=args.RL_actions_per_state)
-    active_actions = {s: top_k[i] for i, s in enumerate(active_states_list)}
+    active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
 
     logger.info(f"- Active state/action extraction completed in {time() - t:.2f} seconds.")
 
-    active_states = np.array(active_states_list, dtype=int)
     return active_states, active_actions

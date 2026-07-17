@@ -112,6 +112,31 @@ def _compute_linear_strides(number_per_dim):
     return strides
 
 
+def _linear_key_dtype(number_per_dim):
+    '''
+    Integer dtype able to hold every linear key of this grid. The key indexes the *nominal* grid, so it
+    scales with prod(number_per_dim) however few cells are actually kept: a sparse partition over a
+    fine grid still needs the wide dtype. int32 keys that silently wrap collide two distinct cells onto
+    one key, which searchsorted then resolves to the wrong state without erroring.
+    '''
+    max_key = int(np.prod(np.asarray(number_per_dim, dtype=np.int64))) - 1
+    grid = 'x'.join(str(n) for n in np.asarray(number_per_dim).tolist())
+    if max_key <= np.iinfo(np.int32).max:
+        logger.info(f'- Partition cell keys: int32 (grid {grid} = {max_key + 1:,} cells)')
+        return np.int32
+
+    # JAX truncates int64 to int32 unless it is allowed to keep it (see core/jax_config.py), and only
+    # warns while doing so. Fail loudly rather than build an index that quietly aliases cells.
+    if jnp.zeros(1, dtype=jnp.int64).dtype != jnp.int64:
+        raise ValueError(
+            f"Grid {np.asarray(number_per_dim).tolist()} needs int64 cell keys (max key {max_key} exceeds "
+            f"int32), but JAX is configured to truncate them to int32. Call core.jax_config."
+            f"configure_jax first, or set jax.config.update('jax_explicit_x64_dtypes', 'allow')."
+        )
+    logger.info(f'- Partition cell keys: int64 (grid {grid} = {max_key + 1:,} cells, exceeds int32)')
+    return np.int64
+
+
 def _build_sparse_region_index(centers):
     centers_np = np.asarray(centers, dtype=np.int64)
     # Membership and lookup tables for Python-side indexing without allocating dense tensors.
@@ -163,18 +188,20 @@ class RectangularPartition(object):
 
         # JAX-friendly sparse index map via linearized coordinates and searchsorted.
         # We store sorted linear keys and aligned state IDs so lookup can stay inside JIT.
-        idx_np_dtype = np.int64 if jax.config.read('jax_enable_x64') else np.int32
-        idx_jnp_dtype = jnp.int64 if jax.config.read('jax_enable_x64') else jnp.int32
+        idx_np_dtype = _linear_key_dtype(self.number_per_dim)
+        idx_jnp_dtype = jnp.int64 if idx_np_dtype == np.int64 else jnp.int32
         region_linear_strides = _compute_linear_strides(self.number_per_dim).astype(idx_np_dtype)
         centers_np = np.asarray(centers, dtype=idx_np_dtype)
         # Linear key for each kept cell index tuple.
         region_linear_idx = np.sum(centers_np * region_linear_strides, axis=1, dtype=idx_np_dtype)
         order = np.argsort(region_linear_idx)
         
-        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted).
-        self.region_linear_idx = jnp.array(region_linear_idx[order], dtype=idx_jnp_dtype)
-        self.region_linear_state = jnp.array(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
-        self.region_linear_strides = jnp.array(region_linear_strides, dtype=idx_jnp_dtype)
+        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted). Keys must go
+        # through jnp.asarray: jnp.array() canonicalizes an int64 host array to int32 *before* applying
+        # dtype, so it would hand back int64-typed keys whose values have already wrapped.
+        self.region_linear_idx = jnp.asarray(region_linear_idx[order], dtype=idx_jnp_dtype)
+        self.region_linear_state = jnp.asarray(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
+        self.region_linear_strides = jnp.asarray(region_linear_strides, dtype=idx_jnp_dtype)
         
         # Define list with each element containing its index elements
         self.region_idx_inv = centers
@@ -371,8 +398,8 @@ class SparsePartition(object):
 
         # JAX-friendly sparse index map via linearized coordinates and searchsorted.
         # We store sorted linear keys and aligned state IDs so lookup can stay inside JIT.
-        idx_np_dtype = np.int64 if jax.config.read('jax_enable_x64') else np.int32
-        idx_jnp_dtype = jnp.int64 if jax.config.read('jax_enable_x64') else jnp.int32
+        idx_np_dtype = _linear_key_dtype(self.number_per_dim)
+        idx_jnp_dtype = jnp.int64 if idx_np_dtype == np.int64 else jnp.int32
         region_linear_strides = _compute_linear_strides(self.number_per_dim).astype(idx_np_dtype)
         centers_np = np.asarray(centers, dtype=idx_np_dtype)
         
@@ -380,10 +407,12 @@ class SparsePartition(object):
         region_linear_idx = np.sum(centers_np * region_linear_strides, axis=1, dtype=idx_np_dtype)
         order = np.argsort(region_linear_idx)
         
-        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted).
-        self.region_linear_idx = jnp.array(region_linear_idx[order], dtype=idx_jnp_dtype)
-        self.region_linear_state = jnp.array(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
-        self.region_linear_strides = jnp.array(region_linear_strides, dtype=idx_jnp_dtype)
+        # Sorted keys -> sorted state IDs (parallel arrays used by jnp.searchsorted). Keys must go
+        # through jnp.asarray: jnp.array() canonicalizes an int64 host array to int32 *before* applying
+        # dtype, so it would hand back int64-typed keys whose values have already wrapped.
+        self.region_linear_idx = jnp.asarray(region_linear_idx[order], dtype=idx_jnp_dtype)
+        self.region_linear_state = jnp.asarray(np.arange(len(centers_np), dtype=np.int32)[order], dtype=jnp.int32)
+        self.region_linear_strides = jnp.asarray(region_linear_strides, dtype=idx_jnp_dtype)
         # Define list with each element containing its index elements
         self.region_idx_inv = centers
 
