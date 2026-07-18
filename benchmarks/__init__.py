@@ -2,7 +2,7 @@
 from .Dubins3D import Dubins3D
 from .Dubins4D import Dubins4D
 from .Drone4D import Drone4D, Drone4D_battery
-from .Drone6D import Drone6D, Drone6D_small
+from .Drone6D import Drone6D, Drone6D_small, Drone6D_battery
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
 from .CartPole import CartPole
@@ -20,6 +20,7 @@ def create_model(args):
 		'Drone4D_battery': Drone4D_battery,
 		'Drone6D': Drone6D,
 		'Drone6D_small': Drone6D_small,
+		'Drone6D_battery': Drone6D_battery,
 		'Pendulum': Pendulum,
 		'MountainCar': MountainCar,
 		'CartPole': CartPole,
