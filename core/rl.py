@@ -340,7 +340,7 @@ def find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num):
         actions[:, None, :] - discrete_actions[None, :, :], axis=2       # (N, N_discrete)
     )
     top_k_idx = np.argsort(dists, axis=1)[:, :num]                       # (N, num)
-    return discrete_actions[top_k_idx]                                   # (N, num, action_dim)
+    return discrete_actions[top_k_idx], discrete_actions[top_k_idx[:, 0]]
 
 def _inflation_offsets(inflation_rate):
     '''
@@ -478,9 +478,9 @@ def find_active(model, args, previous_cells):
         val_env.obs_low + (active_states.astype(np.float32) + 0.5) * val_env.bin_widths,
         dtype=np.float32,
     )
-    top_k = find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num=args.RL_actions_per_state)
+    top_k, rl_policy = find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num=args.RL_actions_per_state)
     active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
 
     logger.info(f"- Active state/action extraction completed in {time() - t:.2f} seconds.")
 
-    return active_states, active_actions
+    return active_states, active_actions, rl_policy
