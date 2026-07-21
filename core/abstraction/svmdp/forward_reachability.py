@@ -254,7 +254,7 @@ class RectangularForward(object):
         for batch_start, batch_end in pbar:
             batch_size = batch_end - batch_start
             actions_slice = partition.regions['actions']
-            # RectangularPartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
+            # DensePartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
             # SparsePartition stores (num_states, num_actions, action_dim); slice normally.
             if actions_slice.shape[0] == 1:
                 actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))

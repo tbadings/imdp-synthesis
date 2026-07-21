@@ -11,7 +11,7 @@ from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.model import parse_nonlinear_model
-from core.abstraction.partition import RectangularPartition
+from core.abstraction.partition import DensePartition
 
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
@@ -50,7 +50,7 @@ def _compute_initial_value(model_name: str):
     base_model = getattr(benchmarks, model_name)(args)
     model = parse_nonlinear_model(base_model)
 
-    partition = RectangularPartition(model=model)
+    partition = DensePartition(model=model)
     actions = RectangularForward(args=args, partition=partition, model=model)
 
     P_full, S_id, A_id, P_absorbing = compute_probability_intervals(

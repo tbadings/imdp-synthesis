@@ -14,7 +14,7 @@ import benchmarks
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
 from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.options import parse_arguments
-from core.abstraction.partition import RectangularPartition, SparsePartition
+from core.abstraction.partition import DensePartition, SparsePartition
 from core.abstraction.imdp.imdp import IMDP
 from core.abstraction.imdp.rvi_jax import RVI_JAX
 from core.abstraction.imdp.rvi_storm import RVI_STORM
@@ -82,7 +82,7 @@ if __name__ == '__main__':
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         # Create partition of the continuous state space into convex polytope
-        # partition = RectangularPartition(model=model)
+        # partition = DensePartition(model=model)
         # Sparse partition can be created with, e.g.,
         partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
@@ -212,7 +212,7 @@ if __name__ == '__main__':
     float_dtype = getattr(args, "floatprecision", np.float32)
     # Define concrete policy (but exclude final IMDP state, which is absorbing and has no actions)
     actions_np = np.array(partition.regions['actions'])
-    # RectangularPartition stores (1, num_actions, action_dim); SparsePartition stores (num_states, ...).
+    # DensePartition stores (1, num_actions, action_dim); SparsePartition stores (num_states, ...).
     if actions_np.shape[0] == 1:
         actions_np = np.broadcast_to(actions_np, (imdp.nr_states - 1, *actions_np.shape[1:]))
     policy_inputs = np.full((imdp.nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype)

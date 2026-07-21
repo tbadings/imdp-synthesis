@@ -8,7 +8,7 @@ import numpy as np
 import benchmarks
 from core.abstraction.imdp.forward_reachability import RectangularForward
 from core.abstraction.model import parse_nonlinear_model
-from core.abstraction.partition import RectangularPartition
+from core.abstraction.partition import DensePartition
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
 
 
@@ -49,7 +49,7 @@ class TestTest1DProbabilityIntervals(unittest.TestCase):
         base_model = benchmarks.Test1D(args)
         model = parse_nonlinear_model(base_model)
 
-        partition = RectangularPartition(model=model)
+        partition = DensePartition(model=model)
         actions = RectangularForward(args=args, partition=partition, model=model)
 
         print(actions.frs_lb[0,1])

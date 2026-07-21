@@ -16,7 +16,7 @@ from core.abstraction.svmdp.successor_ids import make_box_to_ids
 from core.abstraction.svmdp.svmdp import SVMDP
 from core.abstraction.svmdp.dynprog import SVMDP_DP
 from core.options import parse_arguments
-from core.abstraction.partition import RectangularPartition, SparsePartition
+from core.abstraction.partition import DensePartition, SparsePartition
 from core.jax_config import configure_jax
 from core.utils import configure_logging, add_file_handler
 from core.rl import find_active
@@ -76,14 +76,19 @@ if __name__ == '__main__':
 
         t = time.time()
 
-        active_states, active_actions, rl_policy = find_active(model, args=args, previous_cells=set())
+        active_states, active_actions, _ = find_active(model, args=args, previous_cells=set())
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         # Create partition of the continuous state space into convex polytope
-        # partition = RectangularPartition(model=model)
+        # partition = DensePartition(model=model)
         # partition.rectangular = False
         # Sparse partition can be created with, e.g.,
         partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
+
+        # The RL exploration outputs are only needed to build the partition; free them
+        # (and let the PPO model / vec envs held internally be reclaimed) before the
+        # large forward-reachability arrays are allocated below.
+        del active_states, active_actions
 
         s_init, s_init_exists = partition.x2state(model.x0)
         if not s_init_exists:
@@ -92,11 +97,10 @@ if __name__ == '__main__':
         # Compute forward reachable sets and noise-shifted successor cell IDs.
         actions = RectangularForward(args=args, partition=partition, model=model)
 
-        # All partition states have all actions enabled (rectangular partition).
+        # All partition states have all actions enabled (rectangular partition),
+        # so a single shared list of action ids describes every state.
         states = np.array(partition.regions['idxs'])
-        A_id = {int(s): list(range(actions.num_actions)) for s in states}
-
-        # TODO: Action space can be pruned; any action that leads to unsafe state with prob zero can be omitted.
+        A_id = list(range(actions.num_actions))
 
         # Recompose successor IDs on the fly in the DP from the compact boxes (frs_idx_lb/frs_idx_ub)
         # rather than materialising the [S, A, nc, prod(max_span)] ID array (tens of GB for 3-D models).
@@ -157,7 +161,7 @@ if __name__ == '__main__':
 
     float_dtype = getattr(args, 'floatprecision', np.float32)
     actions_np = np.array(partition.regions['actions'])
-    # RectangularPartition stores (1, num_actions, action_dim); broadcast to all states.
+    # DensePartition stores (1, num_actions, action_dim); broadcast to all states.
     if actions_np.shape[0] == 1:
         actions_np = np.broadcast_to(actions_np, (svmdp.nr_states - 1, *actions_np.shape[1:]))
     policy_inputs = np.full(

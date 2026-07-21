@@ -141,9 +141,11 @@ def SVMDP_DP(
 
     #####
 
-    # Count the total number of actions
-    total_actions = np.array([len(svmdp.A_id[s]) for s in svmdp.states if s in svmdp.A_id])
-    max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
+    # Count the total number of actions. A_id is a single shared list of action ids:
+    # every state has the same actions enabled.
+    num_actions = len(svmdp.A_id)
+    total_actions = np.full(len(svmdp.states), num_actions)
+    max_actions = num_actions
 
     if policy_iteration:
         logger.info('=== Run robust policy iteration ===')
@@ -158,7 +160,7 @@ def SVMDP_DP(
     #####
 
     logger.info('- Set states to update...')
-    states_with_enabled_actions = np.array([True if s in svmdp.A_id and len(svmdp.A_id[s]) > 0 else False for s in svmdp.states])
+    states_with_enabled_actions = np.full(len(svmdp.states), num_actions > 0)
 
     absorbing_mask = svmdp.critical_regions | (svmdp.states == svmdp.absorbing_state) | ~states_with_enabled_actions
     goal_mask = svmdp.goal_regions
@@ -428,9 +430,11 @@ def SVMDP_DP(
 
     pbar.close()
 
-    # Extract policy inputs from policy
+    # Extract policy inputs from policy. A_id is the shared list of action ids, so the
+    # chosen action index maps directly through it (identity when A_id == range(num_actions)).
+    A_id_arr = np.asarray(svmdp.A_id)
     policy_labels = np.full_like(policy, fill_value=-1)
-    for s in svmdp.states:
-        policy_labels[s] = svmdp.A_id[s][int(policy[s])] if policy[s] != -1 and s in svmdp.A_id else -1
+    valid = policy != -1
+    policy_labels[valid] = A_id_arr[policy[valid]]
 
     return V, policy_labels

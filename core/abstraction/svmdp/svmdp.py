@@ -21,7 +21,8 @@ class SVMDP:
         :param box_to_ids: Single-box -> successor state IDs function (shape [D] -> [prod(max_span)])
             with the static partition/grid data bound (see successor_ids.make_box_to_ids). The DP
             recomposes successor IDs on the fly from the boxes instead of storing them materialised.
-        :param A_id:
+        :param A_id: Single shared list of enabled action ids (every state has all actions
+            enabled). The action index chosen by the DP maps to a label through this list.
         :param P_absorbing:
         '''
 
