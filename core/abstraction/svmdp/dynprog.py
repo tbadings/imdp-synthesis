@@ -148,9 +148,9 @@ def SVMDP_DP(
     max_actions = num_actions
 
     if policy_iteration:
-        logger.info('=== Run robust policy iteration ===')
+        logger.info('(Algorithm: robust policy iteration)')
     else:
-        logger.info('=== Run robust value iteration ===')
+        logger.info('(Algorithm: robust value iteration)')
 
     logger.info('- Number of states: %d', len(svmdp.states))
     logger.info('- Total number of choices: %d (total number of state-action pairs)', np.sum(total_actions))
@@ -249,9 +249,6 @@ def SVMDP_DP(
 
     policy = np.zeros(svmdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
-    
-    logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
-    start_time = time.time()
 
     # The policy-improvement inputs (lower/upper FRS index boxes and probabilities) span all actions per
     # state and depend only on the (fixed) FRS data, not on V or the policy, so they are identical on every
@@ -269,9 +266,6 @@ def SVMDP_DP(
     # Delete the originals to save memory; everything below works off the compact arrays. (Not used after the DP returns.)
     svmdp.S_idx_lb = svmdp.S_idx_ub = svmdp.P_full = None
 
-    logger.info(f'- Index arrays sliced (took {time.time() - start_time:.3f}s)')
-    start_time = time.time()
-
     if RND_SWEEPS:
         # Randomise the sweep order by permuting the already-compacted (small, contiguous, in-RAM) rows
         # rather than re-scattering the source. states_to_update is permuted with the same permutation so
@@ -287,9 +281,9 @@ def SVMDP_DP(
         state_batches = [states_to_update]
         imp_batches = [(lb_c, ub_c, p_c)]
 
-    logger.info(f'- Number of batches: {len(state_batches)} (took {time.time() - start_time:.3f}s)\n')
-
-    logger.info('=== Start dynamic programming iterations ===')
+    logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
+    start_time = time.time()
+    
     pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
     if not policy_iteration:
         # Value iteration
@@ -436,5 +430,7 @@ def SVMDP_DP(
     policy_labels = np.full_like(policy, fill_value=-1)
     valid = policy != -1
     policy_labels[valid] = A_id_arr[policy[valid]]
+
+    logger.info(f'- Policy synthesis finished (took {time.time() - start_time:.3f}s)\n')
 
     return V, policy_labels

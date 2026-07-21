@@ -99,7 +99,7 @@ class RectangularForward(object):
         :param partition: Partition object containing the discretized state space
         :param model: Model object containing the dynamics and control action specifications
         """
-        logger.info('Define target points and forward reachable sets...')
+        logger.info('=== Start forward reachability computations ===')
         t_total = time.time()
 
         # Inner vmap over control actions, outer vmap over a batch of state regions.
@@ -179,6 +179,6 @@ class RectangularForward(object):
 
         self.id = np.arange(self.num_actions)
 
-        logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
+        logger.info(f'Reachability computations took {(time.time() - t_total):.3f} sec.')
         
         return

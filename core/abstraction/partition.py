@@ -132,7 +132,7 @@ def _linear_key_dtype(number_per_dim):
     max_key = int(np.prod(np.asarray(number_per_dim, dtype=np.int64))) - 1
     grid = 'x'.join(str(n) for n in np.asarray(number_per_dim).tolist())
     if max_key <= np.iinfo(np.int32).max:
-        logger.info(f'- Partition cell keys: int32 (grid {grid} = {max_key + 1:,} cells)')
+        logger.info(f'- Partition cell keys: int32 (dense grid {grid} = {max_key + 1:,} cells)')
         return np.int32
 
     # JAX truncates int64 to int32 unless it is allowed to keep it (see core/jax_config.py), and only
@@ -143,7 +143,7 @@ def _linear_key_dtype(number_per_dim):
             f"int32), but JAX is configured to truncate them to int32. Call core.jax_config."
             f"configure_jax first, or set jax.config.update('jax_explicit_x64_dtypes', 'allow')."
         )
-    logger.info(f'- Partition cell keys: int64 (grid {grid} = {max_key + 1:,} cells, exceeds int32)')
+    logger.info(f'- Partition cell keys: int64 (dense grid {grid} = {max_key + 1:,} cells, exceeds int32)')
     return np.int64
 
 
@@ -350,8 +350,10 @@ class DensePartition(_HyperrectangularPartition):
     rectangular = True
 
     def __init__(self, model, verbose=False):
-        logger.info('Define rectangular partition...')
+        logger.info('Define dense partition...')
         super().__init__(model)
+
+        print('')
 
     def _cells_and_actions(self, model):
         # Full dense grid where each region is a unit cube.
@@ -377,10 +379,12 @@ class SparsePartition(_HyperrectangularPartition):
     rectangular = False
 
     def __init__(self, model, active_states, active_actions, verbose=False):
-        logger.info('Define non-rectangular (sparse) partition...')
+        logger.info('=== Define sparse partition ===')
         self._active_states = active_states
         self._active_actions = active_actions
         super().__init__(model)
+
+        print('')
 
     def _cells_and_actions(self, model):
         # The sparse partition is defined directly by the RL-explored active states.

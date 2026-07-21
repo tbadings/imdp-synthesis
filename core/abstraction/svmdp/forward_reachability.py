@@ -160,7 +160,7 @@ class RectangularForward(object):
         :param partition: Partition object containing the discretized state space
         :param model: Model object containing the dynamics and control action specifications
         """
-        logger.info('Define target points and forward reachable sets...')
+        logger.info('=== Start forward reachability computations ===')
         t_total = time.time()
 
         # Noise partition: forward_reach_noise produces one (merged) forward reachable set per
@@ -312,7 +312,7 @@ class RectangularForward(object):
 
         self.id = np.arange(self.num_actions)
 
-        logger.info(f'Defining actions took {(time.time() - t_total):.3f} sec.')
+        logger.info(f'Reachability computations took {(time.time() - t_total):.3f} sec.')
 
         # The successor cell IDs spanned by each box are NOT materialised here: that array has
         # shape [S, A, max_active_noise_cells, prod(max_span)] and is tens of GB for 3-D models.

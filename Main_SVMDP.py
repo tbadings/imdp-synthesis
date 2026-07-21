@@ -61,6 +61,8 @@ if __name__ == '__main__':
 
         logger.info('\n=== SVMDP loaded from checkpoint: %s ===', ckpt_path)
     else:
+        t = time.time()
+        
         # --- Build SVMDP from scratch ---
         run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
         run_output_dir.mkdir(parents=True, exist_ok=True)
@@ -69,15 +71,16 @@ if __name__ == '__main__':
         logger.info('Run %s | model=%s | noise=%s', stamp, args.model, args.noise_distr)
         logger.info('Output directory: %s', run_output_dir)
 
-        logger.info('\n=== Generating SVMDP from scratch ===')
+        logger.info('\n=== Generate SVMDP from scratch ===')
         logger.debug('Arguments: %s', vars(args))
 
         model = benchmarks.create_model(args)
 
-        t = time.time()
-
         active_states, active_actions, _ = find_active(model, args=args, previous_cells=set())
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+
+        logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
+        t = time.time()
 
         # Create partition of the continuous state space into convex polytope
         # partition = DensePartition(model=model)
@@ -122,8 +125,8 @@ if __name__ == '__main__':
 
         del actions
 
-        logger.info('Initial state x0=%s → state index %d', model.x0, s_init)
-        logger.info('Generating SVMDP abstraction took %.3f sec.', time.time() - t)
+        logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
+        logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', time.time() - t)
 
         if args.save_checkpoint:
             # Save checkpoint (strip JAX runtime objects that can't be pickled)
@@ -134,11 +137,11 @@ if __name__ == '__main__':
             logger.info('Saving checkpoint to %s', ckpt_path)
             with open(ckpt_path, 'wb') as f:
                 pickle.dump({'model': model, 'partition': partition, 'svmdp': svmdp, 'args': args_to_save}, f)
-            logger.info('Checkpoint saved.')
+            logger.info('Checkpoint saved.\n')
 
     # %% Run value iteration on the SVMDP
 
-    logger.info('\n=== Computing optimal policy via SVMDP value iteration ===')
+    logger.info('=== SVMDP policy synthesis ===')
     t = time.time()
     with jax.default_device(args.rvi_device):
         V, policy = SVMDP_DP(
@@ -152,10 +155,10 @@ if __name__ == '__main__':
             policy_iteration=args.policy_iteration,
             prune_states=False
         )
-    logger.info('SVMDP dynamic programming took %.3f sec.', time.time() - t)
+    logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', time.time() - t)
 
     s0 = partition.x2state(model.x0)[0]
-    logger.info('=== SVMDP value in initial state s0=%d: %.6f ===', s0, V[s0])
+    logger.info('Value in initial state s0=%d: %.6f\n', s0, V[s0])
 
     # %% Extract policy inputs
 

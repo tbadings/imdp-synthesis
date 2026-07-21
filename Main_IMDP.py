@@ -170,7 +170,7 @@ if __name__ == '__main__':
                     A_id=A_id,
                     P_absorbing=P_absorbing)
 
-        logger.info('Generating abstraction took %.3f sec.', (time.time() - t))
+        logger.info('<<< Generating abstraction took %.3f sec. >>>', (time.time() - t))
 
         if args.save_checkpoint:
             # Save checkpoint (strip JAX runtime objects that can't be pickled)
@@ -185,7 +185,7 @@ if __name__ == '__main__':
 
     # %% Run dynamic programming to compute optimal policy
 
-    logger.info('\n=== Computing optimal policy via robust dynamic programming (solver=%s) ===', args.solver)
+    logger.info('\n=== IMDP policy synthesis (solver=%s) ===', args.solver)
     if args.solver == 'jax':
         t = time.time()
         with jax.default_device(args.rvi_device):
