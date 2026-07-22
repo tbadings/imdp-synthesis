@@ -168,6 +168,26 @@ def main() -> None:
     #     # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
     # ]
 
+    fixed_args = [
+        "--model",
+        "Drone6D_small",
+        # "--batch_size",
+        # "1000",
+        "--solver",
+        "jax",
+        "--eval_episodes",
+        "500",
+        "--total_timesteps",
+        "50000",
+        "--noise_distr",
+        "gaussian",
+        # "--no-policy_iteration",
+        "--RL_actions_per_state",
+        "27",
+        "--tube_method",
+        "smart"
+    ]
+
     # fixed_args = [
     #     "--model",
     #     "Drone6D_battery",

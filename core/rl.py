@@ -1,6 +1,8 @@
 import logging
 import multiprocessing
+from collections import deque
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from time import time
 
@@ -336,10 +338,12 @@ def find_policy_actions_batch(obs_batch, ppo, vec_env, discrete_actions, num):
     """
     norm_obs = vec_env.normalize_obs(obs_batch)                          # (N, obs_dim)
     actions, _ = ppo.predict(norm_obs, deterministic=True)               # (N, action_dim)
-    dists = np.linalg.norm(
-        actions[:, None, :] - discrete_actions[None, :, :], axis=2       # (N, N_discrete)
-    )
-    top_k_idx = np.argsort(dists, axis=1)[:, :num]                       # (N, num)
+    if num >= discrete_actions.shape[0]:
+        top_k_idx = np.tile(np.arange(discrete_actions.shape[0]), (obs_batch.shape[0], 1))
+    else:
+        diff = actions[:, None, :] - discrete_actions[None, :, :]
+        sq_dists = np.sum(diff * diff, axis=2)                            # (N, N_discrete)
+        top_k_idx = np.argpartition(sq_dists, num - 1, axis=1)[:, :num]     # (N, num)
     return discrete_actions[top_k_idx], discrete_actions[top_k_idx[:, 0]]
 
 def _inflation_offsets(inflation_rate):
@@ -401,6 +405,327 @@ def _inflate_cells(visited_cells, inflation_rate, number_per_dim):
     # Undo the linearization: strides are row-major, so entry d is (id // stride[d]) % number[d].
     return ((ids[:, None] // strides) % number_per_dim).astype(int)
 
+
+def _build_prefix_sum(active_mask, number_per_dim, wrap):
+    """Build a D-dimensional prefix sum (summed area table) from a flat boolean mask.
+
+    For wrapping dimensions, the grid is tiled (doubled) along that axis so that
+    any contiguous sub-range of length <= num_d can be queried without splitting.
+
+    Returns (prefix_flat, prefix_strides) where:
+    - prefix_flat: 1-D int32 array, the flattened padded prefix sum
+    - prefix_strides: (D,) int64 array, row-major strides for flat indexing
+    """
+    nd = np.asarray(number_per_dim, dtype=np.int64)
+    D = len(nd)
+
+    grid = active_mask.reshape(tuple(nd)).astype(np.int32)
+
+    for d in range(D):
+        if wrap[d]:
+            grid = np.concatenate([grid, grid], axis=d)
+
+    grid_shape = grid.shape
+    padded_shape = tuple(s + 1 for s in grid_shape)
+    P = np.zeros(padded_shape, dtype=np.int32)
+    slices = tuple(slice(1, None) for _ in range(D))
+    P[slices] = grid
+
+    for d in range(D):
+        np.cumsum(P, axis=d, out=P)
+
+    padded_strides = np.ones(D, dtype=np.int64)
+    for d in range(D - 2, -1, -1):
+        padded_strides[d] = padded_strides[d + 1] * padded_shape[d + 1]
+
+    return P.ravel(), padded_strides
+
+
+def _box_count_prefix_sum(prefix_flat, prefix_strides, raw_lbs, raw_ubs,
+                           number_per_dim, wrap):
+    """Count active cells in axis-aligned boxes via inclusion-exclusion on a prefix sum.
+
+    For D dimensions, each box query requires only 2^D lookups (e.g. 64 for D=6)
+    instead of enumerating potentially hundreds or thousands of cells.
+
+    Parameters
+    ----------
+    prefix_flat : 1-D int32 array
+        Flattened padded prefix sum from _build_prefix_sum.
+    prefix_strides : (D,) int64 array
+        Row-major strides for flat indexing into the padded prefix sum.
+    raw_lbs, raw_ubs : (..., D) int arrays
+        Lower and upper bounds of the boxes (may be outside the grid).
+    number_per_dim : (D,) int-like array
+        Grid dimensions.
+    wrap : (D,) bool array
+        Which dimensions wrap periodically.
+
+    Returns
+    -------
+    counts : (...) int64 array
+        Number of active cells in each box.
+    """
+    D = len(number_per_dim)
+    nd = np.asarray(number_per_dim, dtype=np.int64)
+    batch_shape = raw_lbs.shape[:-1]
+
+    query_lbs = np.empty_like(raw_lbs, dtype=np.int64)
+    query_ubs = np.empty_like(raw_ubs, dtype=np.int64)
+    empty = np.zeros(batch_shape, dtype=bool)
+
+    for d in range(D):
+        if wrap[d]:
+            raw_span = raw_ubs[..., d] - raw_lbs[..., d] + 1
+            span = np.clip(raw_span, 0, nd[d])
+            query_lbs[..., d] = raw_lbs[..., d] % nd[d]
+            query_ubs[..., d] = query_lbs[..., d] + span - 1
+            empty |= (span <= 0)
+        else:
+            empty |= (raw_ubs[..., d] < 0) | (raw_lbs[..., d] >= nd[d])
+            query_lbs[..., d] = np.clip(raw_lbs[..., d], 0, nd[d] - 1)
+            query_ubs[..., d] = np.clip(raw_ubs[..., d], 0, nd[d] - 1)
+
+    # Precompute per-dimension contributions for lb and ub+1 corners
+    lb_contrib = query_lbs * prefix_strides
+    ub_contrib = (query_ubs + 1) * prefix_strides
+
+    # 2^D inclusion-exclusion corners
+    corners = np.array(list(itertools.product([False, True], repeat=D)))
+    signs = np.where(np.sum(corners, axis=1) % 2 == 0, 1, -1).astype(np.int64)
+
+    counts = np.zeros(batch_shape, dtype=np.int64)
+    for i in range(len(corners)):
+        contrib = np.where(corners[i], lb_contrib, ub_contrib)
+        flat_idx = np.sum(contrib, axis=-1)
+        counts += signs[i] * prefix_flat[flat_idx].astype(np.int64)
+
+    counts[empty] = 0
+    return counts
+
+
+def _smart_inflate_cells(
+    visited,
+    model,
+    val_env,
+    ppo,
+    vec_env,
+    discrete_actions,
+    args,
+    number_per_dim,
+    noise_support_ratio=0.0,
+):
+    dim = len(number_per_dim)
+    visited_arr = (
+        np.asarray(list(visited), dtype=np.int64).reshape(-1, dim)
+        if len(visited) > 0
+        else np.zeros((0, dim), dtype=np.int64)
+    )
+
+    strides = _compute_linear_strides(number_per_dim)
+    total_grid_size = int(np.prod(number_per_dim))
+
+    active_states_mask = np.zeros(total_grid_size, dtype=bool)
+    if len(visited_arr) > 0:
+        visited_flats = np.dot(visited_arr, strides)
+        active_states_mask[visited_flats] = True
+
+    wrap = np.asarray(getattr(model, "wrap", np.zeros(model.n, dtype=bool)), dtype=bool)
+
+    @partial(jax.jit, static_argnums=(0,))
+    def _compute_batch_frs_bounds(step_set_fn, s_mins, s_maxs, actions_batch):
+        def _per_state(s_min, s_max, actions):
+            return jax.vmap(lambda u: step_set_fn(s_min, s_max, u, u))(actions)
+        return jax.vmap(_per_state)(s_mins, s_maxs, actions_batch)
+
+    def _extract_frs_cells_vectorized(raw_idx_lbs, raw_idx_ubs):
+        N, K, D = raw_idx_lbs.shape
+        spans = np.maximum(1, raw_idx_ubs - raw_idx_lbs + 1)
+        max_spans = np.max(spans, axis=(0, 1))
+
+        offset_axes = [np.arange(s, dtype=np.int64) for s in max_spans]
+        if D == 1:
+            offsets = offset_axes[0][:, None]
+        else:
+            grids = np.meshgrid(*offset_axes, indexing='ij')
+            offsets = np.stack([g.ravel() for g in grids], axis=-1)
+
+        M = offsets.shape[0]
+        flat_cells = np.zeros((N, K, M), dtype=np.int64)
+        valid_mask = np.ones((N, K, M), dtype=bool)
+
+        for d in range(D):
+            coord_d = raw_idx_lbs[:, :, d, None] + offsets[:, d][None, None, :]
+            ub_d = raw_idx_ubs[:, :, d, None]
+            num_d = number_per_dim[d]
+            stride_d = strides[d]
+
+            if wrap[d]:
+                valid_mask &= (coord_d <= ub_d)
+                flat_cells += (coord_d % num_d) * stride_d
+            else:
+                valid_mask &= (coord_d <= ub_d) & (coord_d >= 0) & (coord_d < num_d)
+                flat_cells += np.clip(coord_d, 0, num_d - 1) * stride_d
+
+        return flat_cells, valid_mask
+
+    if len(visited_arr) > 0:
+        obs_batch_init = np.asarray(
+            val_env.obs_low + (visited_arr.astype(np.float32) + 0.5) * val_env.bin_widths,
+            dtype=np.float32,
+        )
+        _, init_rl_actions = find_policy_actions_batch(obs_batch_init, ppo, vec_env, discrete_actions, num=1)
+    else:
+        init_rl_actions = np.zeros((0, discrete_actions.shape[1]), dtype=np.float32)
+
+    noise_support = 0.0
+    if hasattr(model, 'noise') and isinstance(model.noise, dict) and 'support_radius' in model.noise:
+        noise_support = model.noise['support_radius'] * noise_support_ratio
+
+    CHUNK_SIZE = 16384
+
+    phase1_added_count = 0
+    pbar_p1 = tqdm(total=len(visited_arr), desc="Phase 1: Batched FRS expansion")
+
+    visited_arr_all = np.asarray(visited_arr, dtype=np.float32)
+    init_rl_actions_all_batch = init_rl_actions[:, None, :]  # shape (M, 1, action_dim)
+    p1_new_queue_flats = []
+
+    for ch_start in range(0, len(visited_arr), CHUNK_SIZE):
+        ch_end = min(ch_start + CHUNK_SIZE, len(visited_arr))
+        visited_chunk = visited_arr_all[ch_start:ch_end]
+        init_actions_chunk = init_rl_actions_all_batch[ch_start:ch_end]
+
+        s_mins_p1 = val_env.obs_low + visited_chunk * val_env.bin_widths
+        s_maxs_p1 = s_mins_p1 + val_env.bin_widths
+
+        frs_mins_p1, frs_maxs_p1 = _compute_batch_frs_bounds(
+            model.step_set, s_mins_p1, s_maxs_p1, jnp.asarray(init_actions_chunk, dtype=jnp.float32)
+        )
+        frs_mins_p1_noise = np.asarray(frs_mins_p1[:, 0, :], dtype=np.float32) - noise_support
+        frs_maxs_p1_noise = np.asarray(frs_maxs_p1[:, 0, :], dtype=np.float32) + noise_support
+
+        raw_idx_lbs_p1 = np.floor((frs_mins_p1_noise - val_env.obs_low) / val_env.bin_widths).astype(int)[:, None, :]
+        raw_idx_ubs_p1 = np.floor((frs_maxs_p1_noise - val_env.obs_low) / val_env.bin_widths).astype(int)[:, None, :]
+
+        flat_cells_p1, valid_mask_p1 = _extract_frs_cells_vectorized(raw_idx_lbs_p1, raw_idx_ubs_p1)
+
+        flats_p1 = flat_cells_p1[:, 0, :]
+        valid_p1 = valid_mask_p1[:, 0, :]
+
+        is_new_p1 = valid_p1 & (~active_states_mask[flats_p1])
+        new_flats_p1 = flats_p1[is_new_p1]
+
+        if len(new_flats_p1) > 0:
+            unique_flats = np.unique(new_flats_p1)
+            active_states_mask[unique_flats] = True
+            p1_new_queue_flats.append(unique_flats)
+            phase1_added_count += len(unique_flats)
+
+        pbar_p1.update(ch_end - ch_start)
+
+    pbar_p1.close()
+
+    if len(p1_new_queue_flats) > 0:
+        queue_flats = np.unique(np.concatenate(p1_new_queue_flats))
+    else:
+        queue_flats = np.array([], dtype=np.int64)
+
+    logger.info(f"- Phase 1 complete: Added {phase1_added_count} states. Queue size: {len(queue_flats)}.")
+
+    # Build initial prefix sum for Phase 2 box-counting.
+    # Uses a summed area table (N-D prefix sum) to count active cells in any
+    # axis-aligned box in O(2^D) lookups instead of enumerating all cells.
+    prefix_flat, prefix_strides = _build_prefix_sum(active_states_mask, number_per_dim, wrap)
+
+    phase2_added_count = 0
+    p2_iter = 0
+    while len(queue_flats) > 0:
+        p2_iter += 1
+        N_q = len(queue_flats)
+        pbar_p2 = tqdm(total=N_q, desc=f"Phase 2 (iter {p2_iter}): Queue FRS expansion", unit="state")
+
+        # Vectorized inverse lookup: flat integer indices to 6D grid coordinates
+        queue_coords = np.stack(np.unravel_index(queue_flats, number_per_dim), axis=-1)
+
+        obs_batch_queue = np.asarray(
+            val_env.obs_low + (queue_coords.astype(np.float32) + 0.5) * val_env.bin_widths,
+            dtype=np.float32,
+        )
+        queue_actions_all, _ = find_policy_actions_batch(
+            obs_batch_queue, ppo, vec_env, discrete_actions, num=args.RL_actions_per_state
+        )
+
+        p2_iter_new_flats = []
+        for ch_start in range(0, N_q, CHUNK_SIZE):
+            ch_end = min(ch_start + CHUNK_SIZE, N_q)
+            queue_chunk = queue_coords[ch_start:ch_end]
+            actions_chunk = queue_actions_all[ch_start:ch_end]
+
+            s_mins_q = val_env.obs_low + queue_chunk.astype(np.float32) * val_env.bin_widths
+            s_maxs_q = s_mins_q + val_env.bin_widths
+            actions_batch_jnp = jnp.asarray(actions_chunk, dtype=jnp.float32)
+
+            frs_mins_q, frs_maxs_q = _compute_batch_frs_bounds(
+                model.step_set, s_mins_q, s_maxs_q, actions_batch_jnp
+            )
+            frs_mins_q_noise = np.asarray(frs_mins_q, dtype=np.float32) - noise_support
+            frs_maxs_q_noise = np.asarray(frs_maxs_q, dtype=np.float32) + noise_support
+
+            raw_idx_lbs_q = np.floor((frs_mins_q_noise - val_env.obs_low) / val_env.bin_widths).astype(int)
+            raw_idx_ubs_q = np.floor((frs_maxs_q_noise - val_env.obs_low) / val_env.bin_widths).astype(int)
+
+            # --- COUNT PHASE: O(2^D) prefix-sum box queries instead of cell enumeration ---
+            active_counts = _box_count_prefix_sum(
+                prefix_flat, prefix_strides, raw_idx_lbs_q, raw_idx_ubs_q,
+                number_per_dim, wrap
+            )
+
+            best_act_indices = np.argmax(active_counts, axis=1)
+
+            # --- EXPAND PHASE: Only enumerate cells for the winning action (1 not K) ---
+            N_chunk = ch_end - ch_start
+            row_idx = np.arange(N_chunk)
+            win_lbs = raw_idx_lbs_q[row_idx, best_act_indices][:, None, :]
+            win_ubs = raw_idx_ubs_q[row_idx, best_act_indices][:, None, :]
+
+            flat_cells_q, valid_mask_q = _extract_frs_cells_vectorized(win_lbs, win_ubs)
+            win_flats = flat_cells_q[:, 0, :]
+            win_valid = valid_mask_q[:, 0, :]
+
+            is_new_cell = win_valid & (~active_states_mask[win_flats])
+            chunk_new_flats = win_flats[is_new_cell]
+
+            if len(chunk_new_flats) > 0:
+                p2_iter_new_flats.append(chunk_new_flats)
+
+            pbar_p2.update(N_chunk)
+
+        if len(p2_iter_new_flats) > 0:
+            combined_new = np.concatenate(p2_iter_new_flats)
+            unique_new = np.unique(combined_new)
+            active_states_mask[unique_new] = True
+            queue_flats = unique_new
+            added_this_iter = len(unique_new)
+            phase2_added_count += added_this_iter
+            # Rebuild prefix sum for next BFS iteration
+            prefix_flat, prefix_strides = _build_prefix_sum(
+                active_states_mask, number_per_dim, wrap
+            )
+        else:
+            queue_flats = np.array([], dtype=np.int64)
+            added_this_iter = 0
+
+        pbar_p2.set_postfix({
+            "added_iter": added_this_iter,
+            "total_active": int(np.sum(active_states_mask))
+        })
+        pbar_p2.close()
+    logger.info(f"- Phase 2 complete: Added {phase2_added_count} states. Total active states: {int(np.sum(active_states_mask))}.")
+
+    all_active_flats = np.where(active_states_mask)[0]
+    active_states = np.stack(np.unravel_index(all_active_flats, number_per_dim), axis=-1).astype(int)
+    return active_states
 
 def find_active(model, args, previous_cells):
     cfg = RLConfig(
@@ -464,11 +789,25 @@ def find_active(model, args, previous_cells):
     logger.info(f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
     t = time()
 
-    number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=int)
-
     # Inflate visited cells to include neighbors within a certain radius to account for discretization
     # errors and encourage exploration of nearby states.
-    active_states = _inflate_cells(newly_visited, model.inflation_rate, number_per_dim)
+    if args.tube_method == "inflation":
+        number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=np.int64)
+        active_states = _inflate_cells(newly_visited, model.inflation_rate, number_per_dim)
+    elif args.tube_method == "smart":
+        number_per_dim = np.asarray(model.partition['number_per_dim'], dtype=np.int64)
+        active_states = _smart_inflate_cells(
+            visited=newly_visited,
+            model=model,
+            val_env=val_env,
+            ppo=ppo,
+            vec_env=vec_env,
+            discrete_actions=discrete_actions,
+            args=args,
+            number_per_dim=number_per_dim,
+        )
+    else:
+        raise ValueError(f"Unknown tube_method: {args.tube_method}")
 
     logger.info(f"- Active states extraction completed in {time() - t:.2f} seconds.")
     t = time()

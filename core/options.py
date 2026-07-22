@@ -80,7 +80,8 @@ def parse_arguments(argv=None):
                         help="If True, save checkpoints during execution")
     parser.add_argument('--RL_actions_per_state', type=_positive_int, default=4,
                         help="The number of active actions to keep per state based on the RL policy's action preferences. This is used to create a sparse abstraction focused on the most relevant actions for each state.")
-
+    parser.add_argument('--tube_method', type=str, default="inflation", choices=["inflation", "smart"],
+                        help="Method for creating the state-space tube around the policy's trajectories used for abstraction.")
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot unit grids in figures")
