@@ -11,6 +11,8 @@ from gymnasium import spaces
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.collections import PatchCollection
 import numpy as np
 import torch
 from stable_baselines3 import PPO
@@ -252,66 +254,69 @@ def evaluate_policy(model, norm_env, base_model, cfg, episodes, dims, args, disc
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
 
-    if eval_env.critical.size > 0:
-        for idx, box in enumerate(eval_env.critical):
-            x0, x1 = box[0, dims[0]], box[1, dims[0]]
-            y0, y1 = box[0, dims[1]], box[1, dims[1]]
-            ax.add_patch(
-                plt.Rectangle(
-                    (x0, y0),
-                    x1 - x0,
-                    y1 - y0,
-                    color="red",
-                    alpha=0.15,
-                    label="Critical" if idx == 0 else None,
-                )
+    legend_handles = []
+
+    def add_boxes_collection(ax, boxes, dims, color, alpha, label):
+        if boxes is None or boxes.size == 0:
+            return None
+        rects = [
+            mpatches.Rectangle(
+                (box[0, dims[0]], box[0, dims[1]]),
+                box[1, dims[0]] - box[0, dims[0]],
+                box[1, dims[1]] - box[0, dims[1]],
             )
+            for box in boxes
+        ]
+        collection = PatchCollection(
+            rects, facecolor=color, edgecolor="none", alpha=alpha, rasterized=True
+        )
+        ax.add_collection(collection)
+        return mpatches.Patch(color=color, alpha=alpha, label=label)
+
+    if eval_env.critical.size > 0:
+        h = add_boxes_collection(ax, eval_env.critical, dims, "red", 0.15, "Critical")
+        if h:
+            legend_handles.append(h)
 
     if eval_env.goal.size > 0:
-        for idx, box in enumerate(eval_env.goal):
-            x0, x1 = box[0, dims[0]], box[1, dims[0]]
-            y0, y1 = box[0, dims[1]], box[1, dims[1]]
-            ax.add_patch(
-                plt.Rectangle(
-                    (x0, y0),
-                    x1 - x0,
-                    y1 - y0,
-                    color="green",
-                    alpha=0.25,
-                    label="Goal" if idx == 0 else None,
-                )
-            )
-            
+        h = add_boxes_collection(ax, eval_env.goal, dims, "green", 0.25, "Goal")
+        if h:
+            legend_handles.append(h)
+
     if hasattr(eval_env.model, "charging_station") and eval_env.model.charging_station.size > 0:
-        for idx, box in enumerate(eval_env.model.charging_station):
-            x0, x1 = box[0, dims[0]], box[1, dims[0]]
-            y0, y1 = box[0, dims[1]], box[1, dims[1]]
-            ax.add_patch(
-                plt.Rectangle(
-                    (x0, y0),
-                    x1 - x0,
-                    y1 - y0,
-                    color="blue",
-                    alpha=0.25,
-                    label="Charging station" if idx == 0 else None,
-                )
-            )
+        h = add_boxes_collection(ax, eval_env.model.charging_station, dims, "blue", 0.25, "Charging station")
+        if h:
+            legend_handles.append(h)
 
     # Only plot max 100 trajectories
     i_max = 100
-    i = 0
-    for trace in trajectories:
-        if i >= i_max:
-            break
-        ax.plot(trace[:, dims[0]], trace[:, dims[1]], linewidth=1.0, alpha=0.9, color="black", marker=".", markersize=3.0, markeredgecolor="red", markerfacecolor="red")
-        i += 1
+    if len(trajectories) > 0:
+        selected_traces = [trace[:, dims] for trace in trajectories[:i_max]]
+        nan_pad = np.full((1, 2), np.nan)
+        stacked_traces = []
+        for trace in selected_traces:
+            stacked_traces.append(trace)
+            stacked_traces.append(nan_pad)
+        combined = np.vstack(stacked_traces)
+        ax.plot(
+            combined[:, 0],
+            combined[:, 1],
+            linewidth=1.0,
+            alpha=0.9,
+            color="black",
+            marker=".",
+            markersize=3.0,
+            markeredgecolor="red",
+            markerfacecolor="red",
+        )
 
     ax.set_xlim(eval_env.obs_low[dims[0]], eval_env.obs_high[dims[0]])
     ax.set_ylim(eval_env.obs_low[dims[1]], eval_env.obs_high[dims[1]])
     ax.set_xlabel(base_model.state_variables[dims[0]])
     ax.set_ylabel(base_model.state_variables[dims[1]])
     ax.set_title(f"PPO trajectories ({base_model.__class__.__name__})")
-    ax.legend(loc="best")
+    if legend_handles:
+        ax.legend(handles=legend_handles, loc="best")
     plt.tight_layout()
     output_dir = Path(getattr(args, 'output_dir', 'output'))
     output_dir.mkdir(parents=True, exist_ok=True)
