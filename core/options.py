@@ -94,19 +94,18 @@ def parse_arguments(argv=None):
     parser.add_argument("--eval_episodes", type=int, default=2500)
     parser.add_argument("--max_steps", type=int, default=128)
 
-    parser.add_argument("--goal_reward", type=float, default=100.0)
-    parser.add_argument("--unsafe_penalty", type=float, default=-100.0)
-    parser.add_argument("--out_of_bounds_penalty", type=float, default=-100.0)
-    parser.add_argument("--revisit_penalty", type=float, default=0.05)
+    parser.add_argument("--goal_reward", type=float, default=5.0)
+    parser.add_argument("--unsafe_penalty", type=float, default=-5.0)
+    parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
     parser.add_argument("--distance_reward", type=float, default=0.0,
                         help="Gain on the dense distance-to-goal progress shaping applied on non-terminal steps. 0 disables it.")
-    parser.add_argument("--per_step_reward", type=float, default=-5.0,
+    parser.add_argument("--per_step_reward", type=float, default=-0.05,
                         help="Value added to the reward on every non-terminal step. 0 disables it; -x imposes cost of x per step.")
 
-    parser.add_argument("--ent_coef", type=float, default=0.0005,
+    parser.add_argument("--ent_coef", type=float, default=0.005,
                         help="PPO entropy coefficient. Increase (e.g. 0.005) to encourage exploration.")
     parser.add_argument("--learning_rate", type=float, default=3e-4)
-    parser.add_argument("--rl_batch_size", type=int, default=128, help="Batch size for PPO updates across minibatches")
+    parser.add_argument("--rl_batch_size", type=int, default=1024, help="Batch size for PPO updates across minibatches")
     parser.add_argument("--n_steps", type=int, default=128, help="Number of steps to run for each environment per update in PPO")
     parser.add_argument("--n_envs", type=int, default=32, help="Number of parallel vectorized environments in JAX (increase to use more CPU cores)")
     parser.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=False)

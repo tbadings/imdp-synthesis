@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
         t = time.time()
 
-        active_states, active_actions, _ = find_active(model, args=args, previous_cells=set())
+        active_states, active_actions, _ = find_active(model, args=args)
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         # Create partition of the continuous state space into convex polytope

@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
         model = benchmarks.create_model(args)
 
-        active_states, active_actions, _ = find_active(model, args=args, previous_cells=set())
+        active_states, active_actions, _ = find_active(model, args=args)
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
