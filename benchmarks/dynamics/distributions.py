@@ -81,6 +81,14 @@ class GaussianDistr(dict):
 		rng = np.random if rng is None else rng
 		return rng.multivariate_normal(self['mean'], self['cov'], size=size)
 
+	def sample_jax(self, rng, shape=()):
+		mean = jnp.asarray(self['mean'])
+		stdev = jnp.asarray(self['stdev'])
+		if isinstance(shape, int):
+			shape = (shape,)
+		sample_shape = tuple(shape) + (mean.shape[0],)
+		return mean + stdev * jax.random.normal(rng, shape=sample_shape)
+
 	def set_partition_probs(self, num_cells):
 		'''
 		Partition the truncated support into a grid of cells and compute the joint
@@ -271,6 +279,17 @@ class TriangularDistr(dict):
 
 		sampled = rng.triangular(mean - halfwidth_safe, mean, mean + halfwidth_safe, size=sample_size)
 		return np.where(nonzero, sampled, mean)
+
+	def sample_jax(self, rng, shape=()):
+		mean = jnp.asarray(self['mean'])
+		halfwidth = jnp.asarray(self['halfwidth'])
+		if isinstance(shape, int):
+			shape = (shape,)
+		sample_shape = tuple(shape) + (mean.shape[0],)
+		rng1, rng2 = jax.random.split(rng)
+		u1 = jax.random.uniform(rng1, shape=sample_shape)
+		u2 = jax.random.uniform(rng2, shape=sample_shape)
+		return mean + halfwidth * (u1 - u2)
 
 	def set_partition_probs(self, num_cells):
 		'''

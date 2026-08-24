@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def wrap_theta(theta):
-    return (theta + np.pi) % (2 * np.pi) - np.pi
+    return (theta + jnp.pi) % (2 * jnp.pi) - jnp.pi
 
 class DubinsDynamics3D:
     def __init__(self, args):
@@ -48,10 +48,10 @@ class DubinsDynamics3D:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        [x, y, theta] = state
-        [u1, u2] = action
-        x_next = x + self.tau * u2 * np.cos(theta)
-        y_next = y + self.tau * u2 * np.sin(theta)
+        x, y, theta = state[0], state[1], state[2]
+        u1, u2 = action[0], action[1]
+        x_next = x + self.tau * u2 * jnp.cos(theta)
+        y_next = y + self.tau * u2 * jnp.sin(theta)
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
 
         state_next = jnp.array([x_next, y_next, theta_next])
@@ -138,17 +138,17 @@ class DubinsDynamics4D:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        [x, y, theta, V] = state
-        [u1, u2] = action
-        x_next = x + self.tau * V * np.cos(theta)
-        y_next = y + self.tau * V * np.sin(theta)
+        x, y, theta, V = state[0], state[1], state[2], state[3]
+        u1, u2 = action[0], action[1]
+        x_next = x + self.tau * V * jnp.cos(theta)
+        y_next = y + self.tau * V * jnp.sin(theta)
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
         V_next = self.beta * V + self.tau * u2
 
         state_next = jnp.array([x_next,
                                 y_next,
                                 theta_next,
-                                np.clip(V_next, self.partition['boundary_jnp'][0][3] + 1e-3, self.partition['boundary_jnp'][1][3] - 1e-3)])
+                                jnp.clip(V_next, self.partition['boundary_jnp'][0][3] + 1e-3, self.partition['boundary_jnp'][1][3] - 1e-3)])
         return state_next
 
     @partial(jax.jit, static_argnums=(0))
@@ -248,7 +248,7 @@ class DroneDynamics:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        state_next = self.A @ state + self.B @ action + noise
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
 
         return state_next
 
@@ -350,14 +350,16 @@ class DroneDynamics_battery:
         return jnp.all((state >= box[0]) & (state <= box[1]))
 
     def step(self, state, action, noise):
-        state_next = self.A @ state + self.B @ action + noise
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
         battery_idx = self.n - 1
 
-        if self.inbox(state, self.charging_station[0]):
-            state_next[battery_idx] = np.minimum(state_next[battery_idx] + 10, self.max_charge)
-        else:
-            state_next[battery_idx] -= 5
-        return state_next
+        in_cs = self.inbox(state, self.charging_station[0])
+        new_battery = jnp.where(
+            in_cs,
+            jnp.minimum(state_next[battery_idx] + 10, self.max_charge),
+            state_next[battery_idx] - 5
+        )
+        return state_next.at[battery_idx].set(new_battery)
 
     @partial(jax.jit, static_argnums=(0))
     def step_set(self, state_min, state_max, action_min, action_max):
@@ -431,12 +433,12 @@ class PendulumDynamics:
     def step(self, state, action, noise):
 
         new_velo = (1 - self.b) * state[1] + \
-                   (3 * self.G / (2 * self.l) * np.sin(state[0])) * self.tau + \
+                   (3 * self.G / (2 * self.l) * jnp.sin(state[0])) * self.tau + \
                    (3.0 / (self.m * self.l**2) * action[0]) * self.tau
         new_angle = wrap_theta(state[0] + self.tau * new_velo + noise[0])
         new_velo = new_velo + noise[1]
 
-        return np.array([new_angle, new_velo])
+        return jnp.array([new_angle, new_velo])
 
     @partial(jax.jit, static_argnums=(0))
     def step_set(self, state_min, state_max, action_min, action_max):
@@ -492,14 +494,14 @@ class MountainCarDynamics:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
     def step(self, state, action, noise):
 
-        position, velocity = state
+        position, velocity = state[0], state[1]
 
-        velocity = velocity + self.tau * (action[0] * self.power - self.gravity * np.cos(3 * position))
-        velocity = np.clip(velocity, -self.max_speed+1e-4, self.max_speed-1e-4)
-        position += self.tau * velocity + noise[0]
-        velocity += noise[1]
+        velocity = velocity + self.tau * (action[0] * self.power - self.gravity * jnp.cos(3 * position))
+        velocity = jnp.clip(velocity, -self.max_speed+1e-4, self.max_speed-1e-4)
+        position = position + self.tau * velocity + noise[0]
+        velocity = velocity + noise[1]
 
-        return np.array([position, velocity])
+        return jnp.array([position, velocity])
 
     @partial(jax.jit, static_argnums=(0))
     def step_set(self, state_min, state_max, action_min, action_max):
@@ -575,11 +577,11 @@ class CartPoleDynamics:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        x, x_dot, theta, theta_dot = state
+        x, x_dot, theta, theta_dot = state[0], state[1], state[2], state[3]
         force = action[0]
 
-        costheta = np.cos(theta)
-        sintheta = np.sin(theta)
+        costheta = jnp.cos(theta)
+        sintheta = jnp.sin(theta)
 
         temp = (force + self.polemass_length * theta_dot**2 * sintheta) / self.total_mass
         thetaacc = (self.gravity * sintheta - costheta * temp) / (
@@ -592,7 +594,7 @@ class CartPoleDynamics:
         theta = theta + self.tau * theta_dot
         theta_dot = theta_dot + self.tau * thetaacc
 
-        return np.array([x, x_dot, theta, theta_dot]) + noise
+        return jnp.array([x, x_dot, theta, theta_dot]) + noise
 
     @partial(jax.jit, static_argnums=(0))
     def step_set(self, state_min, state_max, action_min, action_max):
@@ -689,7 +691,7 @@ class DoubleIntegratorDynamics:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        state_next = self.A @ state + self.B @ action + noise
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
 
         return state_next
 
@@ -741,7 +743,7 @@ class Test1DDynamics:
             raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
     def step(self, state, action, noise):
-        state_next = self.A @ state + self.B @ action + noise
+        state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
 
         return state_next
 

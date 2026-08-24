@@ -8,7 +8,6 @@ import time
 from pathlib import Path
 import jax
 import numpy as np
-import torch
 
 import benchmarks
 from core.abstraction.imdp.probability_intervals import compute_probability_intervals
@@ -31,9 +30,6 @@ if __name__ == '__main__':
 
     random.seed(args.seed)
     np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
     args.jax_key = jax.random.PRNGKey(args.seed)
 
     # Set current working directory
@@ -78,7 +74,7 @@ if __name__ == '__main__':
 
         t = time.time()
 
-        active_states, active_actions = find_active(model, args=args, previous_cells=set())
+        active_states, active_actions, _ = find_active(model, args=args, previous_cells=set())
         logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
         # Create partition of the continuous state space into convex polytope

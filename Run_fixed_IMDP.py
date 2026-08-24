@@ -18,7 +18,7 @@ def main() -> None:
         # "--noise_distr",
         # "normal",
         "--solver",
-        "storm",
+        "jax",
         # "--eval_episodes",
         # "5000",
         # "--total_timesteps",
