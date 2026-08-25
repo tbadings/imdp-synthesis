@@ -105,9 +105,8 @@ def find_policy_actions_batch(obs_batch, actor_critic, params, rms_obs, discrete
     obs_batch_jnp = jnp.asarray(obs_batch, dtype=jnp.float32)
     actions = np.asarray(_predict_policy_mean(actor_critic.apply, params, rms_obs, obs_batch_jnp))
 
-    if num >= discrete_actions.shape[0]:
-        top_k_idx = np.tile(np.arange(discrete_actions.shape[0]), (obs_batch.shape[0], 1))
-    else:
-        diff = actions[:, None, :] - discrete_actions[None, :, :]
-        top_k_idx = np.argpartition(np.sum(diff * diff, axis=2), num - 1, axis=1)[:, :num]
+    num = min(num, discrete_actions.shape[0])
+    diff = actions[:, None, :] - discrete_actions[None, :, :]
+    top_k_idx = np.argsort(np.sum(diff * diff, axis=2), axis=1)[:, :num]
+    
     return discrete_actions[top_k_idx], discrete_actions[top_k_idx[:, 0]]

@@ -57,7 +57,6 @@ class CartPole(CartPoleDynamics):
         self.vf_arch = [64, 64]
         
         self.inflation_rate = [(-3, 3), (-3, 3), (-3, 3), (-3, 3)]
-        self.reset_inflation = [(-10, 10), (-10, 10), (-10, 10), (-10, 10)]
 
         return
 

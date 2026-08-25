@@ -4,9 +4,9 @@ from time import time
 import numpy as np
 
 from .config import RLConfig
-from .env import JaxBenchmarkEnv
+from .env import BenchmarkEnv
 from .evaluation import evaluate_policy
-from .models import find_policy_actions_batch
+from .policy import find_policy_actions_batch
 from .ppo import train_ppo
 from .tube import _inflate_cells, _smart_inflate_cells
 
@@ -21,7 +21,7 @@ def find_active(model, args):
         distance_reward=args.distance_reward,
         per_step_reward=args.per_step_reward,
     )
-    env = JaxBenchmarkEnv(model, cfg)
+    env = BenchmarkEnv(model, cfg)
 
     actor_critic, params, rms_obs = train_ppo(
         env=env,
@@ -47,7 +47,7 @@ def find_active(model, args):
     )
     logger.info(f"Goal reached in {goal_reached}/{args.eval_episodes} episodes.")
 
-    # Cell expansion
+    # Compute the tube (active states)
     number_per_dim = np.asarray(model.partition["number_per_dim"], dtype=np.int64)
     if args.tube_method == "inflation":
         active_states = _inflate_cells(newly_visited, model.inflation_rate, number_per_dim)
@@ -60,14 +60,12 @@ def find_active(model, args):
     else:
         raise ValueError(f"Unknown tube_method: {args.tube_method}")
 
-    # Top-K discrete actions extraction
+    # Obtain the policy (active actions)
     obs_batch = np.asarray(env.obs_low + (active_states.astype(np.float32) + 0.5) * env.bin_widths, dtype=np.float32)
     top_k, rl_policy = find_policy_actions_batch(
         obs_batch, actor_critic, params, rms_obs, discrete_actions, num=args.RL_actions_per_state
     )
     active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
-
     return active_states, active_actions, rl_policy
-
 
 __all__ = ["find_active"]

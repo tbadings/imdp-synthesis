@@ -172,29 +172,9 @@ def main() -> None:
     #     "smart"
     # ]
 
-    # fixed_args = [
-    #     "--model",
-    #     "Drone6D_small",
-    #     # "--batch_size",
-    #     # "1000",
-    #     "--solver",
-    #     "jax",
-    #     "--eval_episodes",
-    #     "500",
-    #     "--total_timesteps",
-    #     "50000",
-    #     "--noise_distr",
-    #     "gaussian",
-    #     # "--no-policy_iteration",
-    #     "--RL_actions_per_state",
-    #     "27",
-    #     "--tube_method",
-    #     "smart"
-    # ]
-
     fixed_args = [
         "--model",
-        "Drone6D",
+        "Drone6D_small",
         # "--batch_size",
         # "1000",
         "--solver",
@@ -202,13 +182,35 @@ def main() -> None:
         "--eval_episodes",
         "1000",
         "--total_timesteps",
-        "1000000",
+        "100000",
         "--noise_distr",
         "gaussian",
         # "--no-policy_iteration",
         "--RL_actions_per_state",
         "27",
+        "--tube_method",
+        "smart",
+        "--satprob",
+        "0.95",
     ]
+
+    # fixed_args = [
+    #     "--model",
+    #     "Drone6D",
+    #     # "--batch_size",
+    #     # "1000",
+    #     "--solver",
+    #     "jax",
+    #     "--eval_episodes",
+    #     "1000",
+    #     "--total_timesteps",
+    #     "1000000",
+    #     "--noise_distr",
+    #     "gaussian",
+    #     # "--no-policy_iteration",
+    #     "--RL_actions_per_state",
+    #     "27",
+    # ]
 
     # fixed_args = [
     #     "--model",

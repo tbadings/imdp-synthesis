@@ -11,8 +11,8 @@ import optax
 from tqdm import tqdm
 
 from .config import RLConfig
-from .env import JaxBenchmarkEnv, EnvState, _sample_safe_state, _env_step_jnp
-from .models import (
+from .env import BenchmarkEnv, EnvState, _sample_safe_state, _env_step_jnp
+from .policy import (
     ActorCritic,
     RunningMeanStd,
     init_running_mean_std,
@@ -47,7 +47,7 @@ class FlatTransition(NamedTuple):
 
 # PureJaxRL PPO continuous action training pipeline
 def train_ppo(
-    env: JaxBenchmarkEnv,
+    env: BenchmarkEnv,
     args,
     pi_arch: Sequence[int],
     vf_arch: Sequence[int],
@@ -98,33 +98,33 @@ def train_ppo(
         steps=jnp.zeros((n_envs,), dtype=jnp.int32),
         prev_dist=init_dists,
     )
-    obs = init_states
 
     # Step function for rollout collection across all vectorized environments
     def _step_fn(carry, _):
-        t_state, r_obs, e_states, c_obs, k = carry
+        t_state, r_obs, e_states, k = carry
         k, k_act, k_step = jax.random.split(k, 3)
 
-        n_obs = normalize_obs(r_obs, c_obs)
+        raw_obs = e_states.state
+        n_obs = normalize_obs(r_obs, raw_obs)
         actor_mean, log_std, val = t_state.apply_fn(t_state.params, n_obs)
         act = gaussian_sample(k_act, actor_mean, log_std)
         lp = gaussian_log_prob(act, actor_mean, log_std)
 
         step_keys = jax.random.split(k_step, n_envs)
-        next_obs, next_env_states, rew, done, _ = jax.vmap(
+        _, next_env_states, rew, done, _ = jax.vmap(
             lambda rk, s, a: _env_step_jnp(rk, s, a, env)
         )(step_keys, e_states, act)
 
         trans = Transition(
             obs=n_obs,
-            raw_obs=c_obs,
+            raw_obs=raw_obs,
             action=act,
             value=val,
             reward=rew,
             done=done,
             log_prob=lp,
         )
-        return (t_state, r_obs, next_env_states, next_obs, k), trans
+        return (t_state, r_obs, next_env_states, k), trans
 
     # Backward scan for Generalized Advantage Estimation (GAE)
     def _compute_gae(traj_batch, last_val):
@@ -193,12 +193,12 @@ def train_ppo(
     # Single PPO update step
     @jax.jit
     def _update_step(runner_state, _):
-        t_state, r_obs, e_states, c_obs, k = runner_state
+        t_state, r_obs, e_states, k = runner_state
 
         # 1. Rollout collection
-        (t_state, r_obs, next_e_states, next_c_obs, k), traj_batch = jax.lax.scan(
+        (t_state, r_obs, next_e_states, k), traj_batch = jax.lax.scan(
             _step_fn,
-            (t_state, r_obs, e_states, c_obs, k),
+            (t_state, r_obs, e_states, k),
             None,
             length=n_steps,
         )
@@ -206,7 +206,7 @@ def train_ppo(
         mean_reward = jnp.mean(traj_batch.reward)
 
         # 2. Compute GAE
-        norm_next_obs = normalize_obs(r_obs, next_c_obs)
+        norm_next_obs = normalize_obs(r_obs, next_e_states.state)
         _, _, last_val = t_state.apply_fn(t_state.params, norm_next_obs)
         advantages, targets = _compute_gae(traj_batch, last_val)
 
@@ -232,11 +232,11 @@ def train_ppo(
             length=update_epochs,
         )
 
-        next_runner_state = (t_state, r_obs, next_e_states, next_c_obs, k)
+        next_runner_state = (t_state, r_obs, next_e_states, k)
         return next_runner_state, mean_reward
 
     # Training loop in chunks for logging
-    runner_state = (train_state, rms_obs, env_states, obs, rng)
+    runner_state = (train_state, rms_obs, env_states, rng)
     num_updates = max(1, total_timesteps // batch_size)
     chunk_updates = max(1, min(10, max(1, num_updates // 20)))
     num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
@@ -252,11 +252,11 @@ def train_ppo(
     for _ in range(num_chunks):
         runner_state, chunk_rewards = _run_chunk(runner_state)
         mean_rew = float(np.mean(chunk_rewards))
-        pbar.set_postfix({"rew": f"{mean_rew:.2f}"})
+        pbar.set_postfix({"mean reward": f"{mean_rew:.2f}"})
         pbar.update(chunk_updates * batch_size)
 
     pbar.close()
-    train_state, rms_obs, _, _, _ = runner_state
+    train_state, rms_obs, _, _ = runner_state
     jax.block_until_ready(train_state.params)
     logger.info(f"PPO training finished in {time() - t_start:.2f}s ({total_trained_steps} timesteps).")
 

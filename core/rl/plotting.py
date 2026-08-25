@@ -20,7 +20,7 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
     regions = [
         (getattr(eval_env, "critical", None), "red", 0.25, "Critical"),
         (getattr(eval_env, "goal", None), "green", 0.25, "Goal"),
-        (getattr(getattr(eval_env, "model", None), "charging_station", None), "blue", 0.25, "Charging station"),
+        (getattr(eval_env, "charging_station", None), "blue", 0.25, "Charging station"),
     ]
     for boxes, color, alpha, label in regions:
         if boxes is not None and boxes.size > 0:
