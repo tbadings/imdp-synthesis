@@ -49,7 +49,7 @@ class Drone4D(DroneDynamics):
 
         self.critical = np.array([
             # Lower wall with right-side opening (opening from x = 8.0 to 20.0)
-            # [[-20.0, v_min, -7.0, v_min], [8.0, v_max, -5.0, v_max]],
+            [[-20.0, v_min, -7.0, v_min], [8.0, v_max, -5.0, v_max]],
             # Upper wall with left-side opening (opening from x = -20.0 to -8.0)
             [[-8.0, v_min, 5.0, v_min], [20.0, v_max, 7.0, v_max]],
             # # Lower lane obstacle (separated by 5 units from bottom and 7 units from lower wall)
