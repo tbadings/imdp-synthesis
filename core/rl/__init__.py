@@ -12,6 +12,27 @@ from .tube import _inflate_cells, _smart_inflate_cells
 
 logger = logging.getLogger(__name__)
 
+def _check_reward_balance(cfg: RLConfig, gamma: float):
+    """Warn when giving up beats surviving.
+
+    Surviving without reaching the goal costs at most
+    (|per_step_reward| + |distance_reward|) / (1 - gamma). If a terminal penalty is
+    smaller than that, the best available action from a hard region is to end the
+    episode on purpose -- fly into an obstacle or straight out of the state space --
+    and the policy converges to doing exactly that.
+    """
+    living_cost = (abs(cfg.per_step_reward) + abs(cfg.distance_reward)) / max(1.0 - gamma, 1e-9)
+    for name, penalty in (("unsafe_penalty", cfg.unsafe_penalty),
+                          ("out_of_bounds_penalty", cfg.out_of_bounds_penalty)):
+        if abs(penalty) <= living_cost:
+            logger.warning(
+                "%s=%.3g is not worse than the cost of surviving without reaching the goal "
+                "(%.3g). Terminating on purpose is then at least as good as continuing, and the "
+                "policy will learn to do so. Use a penalty of magnitude > %.3g.",
+                name, penalty, living_cost, living_cost,
+            )
+
+
 def find_active(model, args):
     cfg = RLConfig(
         max_steps=args.max_steps,
@@ -20,7 +41,11 @@ def find_active(model, args):
         out_of_bounds_penalty=args.out_of_bounds_penalty,
         distance_reward=args.distance_reward,
         per_step_reward=args.per_step_reward,
+        eval_steps=getattr(args, "eval_steps", None),
+        train_noise_factor=args.train_noise_factor,
+        critical_margin=args.critical_margin,
     )
+    _check_reward_balance(cfg, args.gamma)
     env = BenchmarkEnv(model, cfg)
 
     actor_critic, params = train_ppo(

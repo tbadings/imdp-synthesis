@@ -59,7 +59,7 @@ def evaluate_policy(
     logger.info(f"Running {episodes} evaluation rollouts in parallel (JAX)...")
     t0 = time()
 
-    evaluator = _build_batch_evaluator(actor_critic, env, cfg.max_steps)
+    evaluator = _build_batch_evaluator(actor_critic, env, cfg.rollout_steps)
     discrete_actions_jnp = jnp.asarray(discrete_actions, dtype=jnp.float32) if discrete_actions is not None else None
     rng_keys = jax.random.split(jax.random.PRNGKey(seed), episodes)
 

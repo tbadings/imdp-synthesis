@@ -28,6 +28,8 @@ class Transition(NamedTuple):
     value: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
+    terminated: jnp.ndarray
+    next_value: jnp.ndarray
     log_prob: jnp.ndarray
 
 
@@ -60,6 +62,9 @@ def train_ppo(
     num_minibatches = max(1, batch_size // rl_batch_size)
     minibatch_size = batch_size // num_minibatches
     num_updates = max(1, total_timesteps // batch_size)
+    chunk_updates = max(1, min(10, max(1, num_updates // 20)))
+    num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
+    total_updates = num_chunks * chunk_updates
     update_epochs = args.update_epochs
     clip_eps = args.clip_eps
     vf_coef = args.vf_coef
@@ -87,7 +92,7 @@ def train_ppo(
     rng, rng_envs = jax.random.split(rng)
     env_keys = jax.random.split(rng_envs, n_envs)
     init_states = jax.vmap(lambda k: _sample_safe_state(k, env))(env_keys)
-    init_dists = jax.vmap(lambda s: jnp.linalg.norm(s - env.goal_center_jnp))(init_states)
+    init_dists = jax.vmap(env.distance_to_goal)(init_states)
     env_states = EnvState(
         state=init_states,
         steps=jnp.zeros((n_envs,), dtype=jnp.int32),
@@ -105,9 +110,16 @@ def train_ppo(
         lp = gaussian_log_prob(act, actor_mean, log_std)
 
         step_keys = jax.random.split(k_step, n_envs)
-        _, next_env_states, rew, done, _ = jax.vmap(
+        _, next_env_states, rew, done, info = jax.vmap(
             lambda rk, s, a: _env_step_jnp(rk, s, a, env)
         )(step_keys, e_states, act)
+
+        # Value of the successor *before* the auto-reset, so that episodes ending on the
+        # step limit bootstrap from where they actually were instead of being treated as
+        # terminal. Without this the critic charges every timeout the full remaining
+        # step cost with no continuation value, which makes deliberately terminating
+        # (crashing / leaving the domain) look cheaper than surviving.
+        _, _, next_val = t_state.apply_fn(t_state.params, info["next_state"])
 
         trans = Transition(
             obs=obs,
@@ -115,25 +127,29 @@ def train_ppo(
             value=val,
             reward=rew,
             done=done,
+            terminated=info["terminated"],
+            next_value=next_val,
             log_prob=lp,
         )
         return (t_state, next_env_states, k), trans
 
     # Backward scan for Generalized Advantage Estimation (GAE)
     def _compute_gae(traj_batch, last_val):
-        def _gae_step(carry, transition):
-            gae, next_val = carry
-            done = transition.done
-            reward = transition.reward
-            val = transition.value
+        del last_val  # each transition carries the value of its own successor
 
-            delta = reward + gamma * next_val * (1.0 - done) - val
+        def _gae_step(gae, transition):
+            done = transition.done.astype(jnp.float32)
+
+            # Bootstrap on the true successor, zeroed only on *real* terminations.
+            # Time-limit truncations keep their continuation value.
+            next_val = jnp.where(transition.terminated, 0.0, transition.next_value)
+            delta = transition.reward + gamma * next_val - transition.value
             gae = delta + gamma * gae_lambda * (1.0 - done) * gae
-            return (gae, val), (gae, gae + val)
+            return gae, (gae, gae + transition.value)
 
         _, (advantages, targets) = jax.lax.scan(
             _gae_step,
-            (jnp.zeros_like(last_val), last_val),
+            jnp.zeros_like(traj_batch.value[0]),
             traj_batch,
             reverse=True,
         )
@@ -196,11 +212,13 @@ def train_ppo(
             length=n_steps,
         )
 
+        # Diagnostics: how many episodes ended, and how many of those reached the goal.
+        num_terminated = jnp.sum(traj_batch.terminated)
+        num_goal = jnp.sum(traj_batch.terminated & (traj_batch.reward > 0))
         mean_reward = jnp.mean(traj_batch.reward)
 
         # 2. Compute GAE
-        _, _, last_val = t_state.apply_fn(t_state.params, next_e_states.state)
-        advantages, targets = _compute_gae(traj_batch, last_val)
+        advantages, targets = _compute_gae(traj_batch, None)
 
         # 3. Flatten transitions
         traj_flat = FlatTransition(
@@ -221,14 +239,11 @@ def train_ppo(
         )
 
         next_runner_state = (t_state, next_e_states, k)
-        return next_runner_state, mean_reward
+        return next_runner_state, (mean_reward, num_goal, num_terminated)
 
     # Training loop in chunks for logging
     runner_state = (train_state, env_states, rng)
-    num_updates = max(1, total_timesteps // batch_size)
-    chunk_updates = max(1, min(10, max(1, num_updates // 20)))
-    num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
-    total_trained_steps = num_chunks * chunk_updates * batch_size
+    total_trained_steps = total_updates * batch_size
 
     @jax.jit
     def _run_chunk(state):
@@ -238,9 +253,12 @@ def train_ppo(
     pbar = tqdm(total=total_trained_steps, desc="PPO Training (PureJaxRL)", unit="step")
 
     for _ in range(num_chunks):
-        runner_state, chunk_rewards = _run_chunk(runner_state)
-        mean_rew = float(np.mean(chunk_rewards))
-        pbar.set_postfix({"mean reward": f"{mean_rew:.2f}"})
+        runner_state, (chunk_rewards, chunk_goals, chunk_terms) = _run_chunk(runner_state)
+        goals, terms = float(np.sum(chunk_goals)), float(np.sum(chunk_terms))
+        pbar.set_postfix({
+            "mean reward": f"{float(np.mean(chunk_rewards)):.2f}",
+            "goal rate": f"{goals / max(terms, 1.0):.2f}",
+        })
         pbar.update(chunk_updates * batch_size)
 
     pbar.close()
