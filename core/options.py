@@ -99,7 +99,7 @@ def parse_arguments(argv=None):
     parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
     parser.add_argument("--distance_reward", type=float, default=0.0,
                         help="Gain on the dense distance-to-goal progress shaping applied on non-terminal steps. 0 disables it.")
-    parser.add_argument("--per_step_reward", type=float, default=-0.05,
+    parser.add_argument("--per_step_reward", type=float, default=-0.1,
                         help="Value added to the reward on every non-terminal step. 0 disables it; -x imposes cost of x per step.")
 
     parser.add_argument("--ent_coef", type=float, default=0.005,

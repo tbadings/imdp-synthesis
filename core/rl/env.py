@@ -28,7 +28,10 @@ class BenchmarkEnv:
 
         # Goal & Critical sets
         self.goal = np.asarray(model.goal, dtype=np.float32)
-        self.critical = np.asarray(model.critical, dtype=np.float32)
+        critical = getattr(model, "critical", None)
+        self.critical = np.asarray(critical, dtype=np.float32) if critical is not None and len(critical) > 0 else np.empty((0, 2, self.obs_dim), dtype=np.float32)
+        charging_station = getattr(model, "charging_station", None)
+        self.charging_station = np.asarray(charging_station, dtype=np.float32) if charging_station is not None and len(charging_station) > 0 else np.empty((0, 2, self.obs_dim), dtype=np.float32)
         self._goal_center = 0.5 * (self.goal[0, 0] + self.goal[0, 1]) if len(self.goal) else np.zeros(self.obs_dim, dtype=np.float32)
         self._domain_scale = max(float(np.linalg.norm(self.obs_high - self.obs_low)), 1e-6)
 
