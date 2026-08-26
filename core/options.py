@@ -82,6 +82,8 @@ def parse_arguments(argv=None):
                         help="The number of active actions to keep per state based on the RL policy's action preferences. This is used to create a sparse abstraction focused on the most relevant actions for each state.")
     parser.add_argument('--tube_method', type=str, default="inflation", choices=["inflation", "smart"],
                         help="Method for creating the state-space tube around the policy's trajectories used for abstraction.")
+    parser.add_argument('--smart_tube_rate', type=float, default=0.5,
+                        help="Noise support rate used for reachability-guided (smart) tube expansion.")
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot unit grids in figures")
@@ -115,6 +117,21 @@ def parse_arguments(argv=None):
                         help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128. Defaults to the benchmark's built-in value.")
     parser.add_argument("--vf_arch", type=int, nargs='+', default=None,
                         help="Hidden layer sizes for the value function (critic) network, e.g. --vf_arch 256 256 256. Defaults to the benchmark's built-in value.")
+
+    parser.add_argument("--update_epochs", type=int, default=10,
+                        help="Number of PPO optimization epochs per rollout update batch.")
+    parser.add_argument("--clip_eps", type=float, default=0.2,
+                        help="PPO clipping parameter epsilon for policy and value function loss clipping.")
+    parser.add_argument("--vf_coef", type=float, default=0.5,
+                        help="Coefficient for value function loss in total PPO loss.")
+    parser.add_argument("--max_grad_norm", type=float, default=0.5,
+                        help="Maximum gradient norm for gradient clipping in PPO.")
+    parser.add_argument("--gamma", type=float, default=0.99,
+                        help="Discount factor for Generalized Advantage Estimation (GAE).")
+    parser.add_argument("--gae_lambda", type=float, default=0.95,
+                        help="Lambda parameter for Generalized Advantage Estimation (GAE).")
+    parser.add_argument("--adam_eps", type=float, default=1e-5,
+                        help="Epsilon parameter for Adam optimizer.")
 
     # Parse arguments
     args = parser.parse_args(argv)

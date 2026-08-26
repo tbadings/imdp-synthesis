@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 # Batch chunk size for forward reachable set expansions
-CHUNK_SIZE = 32768
+CHUNK_SIZE = 16384
 
 # Configuration for RL training
 @dataclass

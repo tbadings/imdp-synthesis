@@ -56,6 +56,7 @@ def find_active(model, args):
             visited=newly_visited, model=model, val_env=env,
             actor_critic=actor_critic, params=params,
             discrete_actions=discrete_actions, args=args, number_per_dim=number_per_dim,
+            noise_support_ratio=args.smart_tube_rate,
         )
     else:
         raise ValueError(f"Unknown tube_method: {args.tube_method}")

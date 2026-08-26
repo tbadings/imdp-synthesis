@@ -60,12 +60,13 @@ def train_ppo(
     num_minibatches = max(1, batch_size // rl_batch_size)
     minibatch_size = batch_size // num_minibatches
     num_updates = max(1, total_timesteps // batch_size)
-    update_epochs = 10
-    clip_eps = 0.2
-    vf_coef = 0.5
-    max_grad_norm = 0.5
-    gamma = 0.99
-    gae_lambda = 0.95
+    update_epochs = args.update_epochs
+    clip_eps = args.clip_eps
+    vf_coef = args.vf_coef
+    max_grad_norm = args.max_grad_norm
+    gamma = args.gamma
+    gae_lambda = args.gae_lambda
+    adam_eps = args.adam_eps
 
     # Initialize model network and optimizer
     action_dim = len(env.u_min)
@@ -78,7 +79,7 @@ def train_ppo(
 
     tx = optax.chain(
         optax.clip_by_global_norm(max_grad_norm),
-        optax.adam(learning_rate, eps=1e-5),
+        optax.adam(learning_rate, eps=adam_eps),
     )
     train_state = TrainState.create(apply_fn=network.apply, params=params, tx=tx)
 

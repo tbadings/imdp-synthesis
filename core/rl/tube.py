@@ -159,7 +159,7 @@ def _smart_inflate_cells(
     discrete_actions,
     args,
     number_per_dim,
-    noise_support_ratio: float = 0.0,
+    noise_support_ratio,
 ):
     """
     Reachability-guided tube expansion (smart inflate).
@@ -184,7 +184,7 @@ def _smart_inflate_cells(
     def _get_policy_actions(coords, num_actions):
         obs = np.asarray(val_env.obs_low + (coords.astype(np.float32) + 0.5) * val_env.bin_widths, dtype=np.float32)
         top_k, _ = find_policy_actions_batch(obs, actor_critic, params, discrete_actions, num=num_actions)
-        return top_k if num_actions > 1 else top_k[:, None, :]
+        return top_k
 
     # Phase 1: Expand FRS for visited states under the top RL policy action
     logger.info("Phase 1: Expanding FRS for visited states...")
