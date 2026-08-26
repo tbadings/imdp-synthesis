@@ -1,5 +1,5 @@
 from functools import partial
-from typing import NamedTuple, Sequence
+from typing import Sequence
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -38,43 +38,6 @@ class ActorCritic(nn.Module):
         return actor_mean, log_std, jnp.squeeze(critic_val, axis=-1)
 
 
-# Running mean / std statistics for observation normalization
-class RunningMeanStd(NamedTuple):
-    mean: jnp.ndarray
-    var: jnp.ndarray
-    count: jnp.ndarray
-
-
-def init_running_mean_std(shape):
-    return RunningMeanStd(
-        mean=jnp.zeros(shape, dtype=jnp.float32),
-        var=jnp.ones(shape, dtype=jnp.float32),
-        count=jnp.array(1e-4, dtype=jnp.float32),
-    )
-
-
-def update_running_mean_std(rms: RunningMeanStd, batch: jnp.ndarray):
-    batch_mean = jnp.mean(batch, axis=0)
-    batch_var = jnp.var(batch, axis=0)
-    batch_count = float(batch.shape[0])
-
-    delta = batch_mean - rms.mean
-    total_count = rms.count + batch_count
-
-    new_mean = rms.mean + delta * (batch_count / total_count)
-    m_a = rms.var * rms.count
-    m_b = batch_var * batch_count
-    m2 = m_a + m_b + jnp.square(delta) * (rms.count * batch_count / total_count)
-    new_var = m2 / total_count
-
-    return RunningMeanStd(mean=new_mean, var=new_var, count=total_count)
-
-
-def normalize_obs(rms: RunningMeanStd, obs: jnp.ndarray, clip=10.0):
-    normed = (obs - rms.mean) / jnp.sqrt(rms.var + 1e-8)
-    return jnp.clip(normed, -clip, clip)
-
-
 # Gaussian action sampling and log probability math
 def gaussian_sample(rng, mean, log_std):
     std = jnp.exp(log_std)
@@ -94,16 +57,15 @@ def gaussian_entropy(log_std):
 
 # JIT-compiled policy mean prediction helper
 @partial(jax.jit, static_argnums=(0,))
-def _predict_policy_mean(apply_fn, params, rms_obs, obs_batch):
-    norm_obs = normalize_obs(rms_obs, obs_batch)
-    actor_mean, _, _ = apply_fn(params, norm_obs)
+def _predict_policy_mean(apply_fn, params, obs_batch):
+    actor_mean, _, _ = apply_fn(params, obs_batch)
     return actor_mean
 
 
 # Query policy for continuous actions and match to top-k nearest discrete grid actions
-def find_policy_actions_batch(obs_batch, actor_critic, params, rms_obs, discrete_actions, num):
+def find_policy_actions_batch(obs_batch, actor_critic, params, discrete_actions, num):
     obs_batch_jnp = jnp.asarray(obs_batch, dtype=jnp.float32)
-    actions = np.asarray(_predict_policy_mean(actor_critic.apply, params, rms_obs, obs_batch_jnp))
+    actions = np.asarray(_predict_policy_mean(actor_critic.apply, params, obs_batch_jnp))
 
     num = min(num, discrete_actions.shape[0])
     diff = actions[:, None, :] - discrete_actions[None, :, :]

@@ -36,23 +36,29 @@ class Drone4D(DroneDynamics):
         self.uMax = [1 ,1]
         self.num_actions = [5, 5]
 
-        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 3.5
+        v_min = -2.5
+        v_max = 2.5
 
-        self.partition['boundary'] = np.array([[-7, v_min, -7, v_min], [7, v_max, 7, v_max]])
+        self.partition['boundary'] = np.array([[-20.0, v_min, -20.0, v_min], [20.0, v_max, 20.0, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([28, 14, 28, 14]) # 7 not enough
+        self.partition['number_per_dim'] = np.array([80, 10, 80, 10])
 
         self.goal = np.array([
-            [[3, v_min, 3, v_min], [7, v_max, 7, v_max]]
+            [[12.0, v_min, 12.0, v_min], [18.0, v_max, 18.0, v_max]]
         ], dtype=float)
 
         self.critical = np.array([
-            [[-7, v_min, 1, v_min], [-1, v_max, 3, v_max]],
-            [[3, v_min, -7, v_min], [7, v_max, -3, v_max]],
+            # Lower wall with right-side opening (opening from x = 8.0 to 20.0)
+            # [[-20.0, v_min, -7.0, v_min], [8.0, v_max, -5.0, v_max]],
+            # Upper wall with left-side opening (opening from x = -20.0 to -8.0)
+            [[-8.0, v_min, 5.0, v_min], [20.0, v_max, 7.0, v_max]],
+            # # Lower lane obstacle (separated by 5 units from bottom and 7 units from lower wall)
+            # [[-4.0, v_min, -15.0, v_min], [4.0, v_max, -11.0, v_max]],
+            # # Upper lane obstacle (separated by 5 units from top and 7 units from upper wall)
+            # [[-4.0, v_min, 11.0, v_min], [4.0, v_max, 15.0, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-5.5, 0.01, -5.5, 0.01])
+        self.x0 = np.array([-15.0, 0.01, -15.0, 0.01])
 
         self.pi_arch = [128, 128]
         self.vf_arch = [128, 128]

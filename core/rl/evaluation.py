@@ -8,13 +8,13 @@ import numpy as np
 
 from .config import RLConfig
 from .env import BenchmarkEnv, _sample_noise_jax, _in_boxes_jnp
-from .policy import ActorCritic, RunningMeanStd, normalize_obs
+from .policy import ActorCritic
 from .plotting import plot_rl_trajectories
 
 logger = logging.getLogger(__name__)
 
 def _build_batch_evaluator(actor_critic: ActorCritic, env: BenchmarkEnv, max_steps: int):
-    def _single_rollout(params, rms_obs, discrete_actions_jnp, rng):
+    def _single_rollout(params, discrete_actions_jnp, rng):
         rng_reset, rng_steps = jax.random.split(rng)
         init_obs = jax.random.uniform(rng_reset, shape=env.reset_low_jnp.shape, minval=env.reset_low_jnp, maxval=env.reset_high_jnp)
         def _step_body(carry, key):
@@ -24,7 +24,7 @@ def _build_batch_evaluator(actor_critic: ActorCritic, env: BenchmarkEnv, max_ste
             cell = jnp.clip((curr_obs - env.obs_low_jnp) // env.bin_widths_jnp, 0, env.number_per_dim_jnp - 1)
             obs_q = env.obs_low_jnp + (cell + 0.5) * env.bin_widths_jnp
 
-            actor_mean = actor_critic.apply(params, normalize_obs(rms_obs, obs_q))[0]
+            actor_mean = actor_critic.apply(params, obs_q)[0]
             if discrete_actions_jnp is not None:
                 action = discrete_actions_jnp[jnp.argmin(jnp.sum((actor_mean - discrete_actions_jnp) ** 2, axis=-1))]
             else:
@@ -42,12 +42,11 @@ def _build_batch_evaluator(actor_critic: ActorCritic, env: BenchmarkEnv, max_ste
         )
         return init_obs, next_obs_trace, was_done, final_goal
 
-    return jax.jit(jax.vmap(_single_rollout, in_axes=(None, None, None, 0)))
+    return jax.jit(jax.vmap(_single_rollout, in_axes=(None, None, 0)))
 
 def evaluate_policy(
     actor_critic: ActorCritic,
     params,
-    rms_obs: RunningMeanStd,
     base_model,
     env: BenchmarkEnv,
     cfg: RLConfig,
@@ -65,7 +64,7 @@ def evaluate_policy(
     rng_keys = jax.random.split(jax.random.PRNGKey(seed), episodes)
 
     init_obs_all, next_obs_all, was_done_all, final_goal_all = [
-        np.asarray(x) for x in evaluator(params, rms_obs, discrete_actions_jnp, rng_keys)
+        np.asarray(x) for x in evaluator(params, discrete_actions_jnp, rng_keys)
     ]
 
     visited_cells, trajectories = set(), []

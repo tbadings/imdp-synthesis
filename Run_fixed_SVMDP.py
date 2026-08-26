@@ -127,23 +127,20 @@ def main() -> None:
     #     "25",
     # ]
 
-    # fixed_args = [
-    #     "--model",
-    #     "Drone4D",
-    #     # "--batch_size",
-    #     # "1000",
-    #     "--solver",
-    #     "jax",
-    #     # "--eval_episodes",
-    #     # "5000",
-    #     "--total_timesteps",
-    #     "100000",
-    #     "--noise_distr",
-    #     "gaussian",
-    #     # "--no-policy_iteration",
-    #     "--RL_actions_per_state",
-    #     "9"
-    # ]
+    fixed_args = [
+        "--model",
+        "Drone4D",
+        "--solver",
+        "jax",
+        "--eval_episodes",
+        "1000",
+        "--total_timesteps",
+        "1000000",
+        "--noise_distr",
+        "gaussian",
+        "--RL_actions_per_state",
+        "9",
+    ]
 
     # fixed_args = [
     #     "--model",

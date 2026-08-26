@@ -23,7 +23,7 @@ def find_active(model, args):
     )
     env = BenchmarkEnv(model, cfg)
 
-    actor_critic, params, rms_obs = train_ppo(
+    actor_critic, params = train_ppo(
         env=env,
         args=args,
         pi_arch=tuple(args.pi_arch if args.pi_arch is not None else model.pi_arch),
@@ -40,7 +40,7 @@ def find_active(model, args):
 
     # Policy evaluation rollouts
     goal_reached, newly_visited, _ = evaluate_policy(
-        actor_critic=actor_critic, params=params, rms_obs=rms_obs,
+        actor_critic=actor_critic, params=params,
         base_model=model, env=env, cfg=cfg, episodes=args.eval_episodes,
         dims=list(model.plot_dimensions), args=args,
         discrete_actions=discrete_actions, seed=args.seed,
@@ -54,7 +54,7 @@ def find_active(model, args):
     elif args.tube_method == "smart":
         active_states = _smart_inflate_cells(
             visited=newly_visited, model=model, val_env=env,
-            actor_critic=actor_critic, params=params, rms_obs=rms_obs,
+            actor_critic=actor_critic, params=params,
             discrete_actions=discrete_actions, args=args, number_per_dim=number_per_dim,
         )
     else:
@@ -63,7 +63,7 @@ def find_active(model, args):
     # Obtain the policy (active actions)
     obs_batch = np.asarray(env.obs_low + (active_states.astype(np.float32) + 0.5) * env.bin_widths, dtype=np.float32)
     top_k, rl_policy = find_policy_actions_batch(
-        obs_batch, actor_critic, params, rms_obs, discrete_actions, num=args.RL_actions_per_state
+        obs_batch, actor_critic, params, discrete_actions, num=args.RL_actions_per_state
     )
     active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
     return active_states, active_actions, rl_policy

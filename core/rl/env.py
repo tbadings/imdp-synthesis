@@ -67,7 +67,7 @@ def _in_boxes_jnp(state: jnp.ndarray, boxes: jnp.ndarray, inflate: float = 0.0) 
 def _sample_safe_state(rng, env: BenchmarkEnv, num_candidates: int = 8) -> jnp.ndarray:
     """Sample a state in the domain outside critical and goal boxes."""
     candidates = jax.random.uniform(rng, shape=(num_candidates, env.obs_dim), minval=env.obs_low_jnp, maxval=env.obs_high_jnp)
-    is_safe = ~(_in_boxes_jnp(candidates, env.critical_jnp, 0.5) | _in_boxes_jnp(candidates, env.goal_jnp))
+    is_safe = ~(_in_boxes_jnp(candidates, env.critical_jnp) | _in_boxes_jnp(candidates, env.goal_jnp))
     return candidates[jnp.argmax(is_safe)]
 
 def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_factor: float = 2.0):
@@ -78,7 +78,7 @@ def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_fac
     steps = env_state.steps + 1
 
     in_goal = _in_boxes_jnp(next_state, env.goal_jnp)
-    in_critical = _in_boxes_jnp(next_state, env.critical_jnp, 0.5)
+    in_critical = _in_boxes_jnp(next_state, env.critical_jnp, 0.5) #temp
     out_of_bounds = jnp.any(next_state < env.obs_low_jnp) | jnp.any(next_state > env.obs_high_jnp)
 
     dist = jnp.linalg.norm((next_state - env.goal_center_jnp))

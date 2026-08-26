@@ -14,10 +14,6 @@ from .config import RLConfig
 from .env import BenchmarkEnv, EnvState, _sample_safe_state, _env_step_jnp
 from .policy import (
     ActorCritic,
-    RunningMeanStd,
-    init_running_mean_std,
-    update_running_mean_std,
-    normalize_obs,
     gaussian_sample,
     gaussian_log_prob,
     gaussian_entropy,
@@ -28,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 class Transition(NamedTuple):
     obs: jnp.ndarray
-    raw_obs: jnp.ndarray
     action: jnp.ndarray
     value: jnp.ndarray
     reward: jnp.ndarray
@@ -86,7 +81,6 @@ def train_ppo(
         optax.adam(learning_rate, eps=1e-5),
     )
     train_state = TrainState.create(apply_fn=network.apply, params=params, tx=tx)
-    rms_obs = init_running_mean_std((obs_dim,))
 
     # Initialize parallel environments
     rng, rng_envs = jax.random.split(rng)
@@ -101,12 +95,11 @@ def train_ppo(
 
     # Step function for rollout collection across all vectorized environments
     def _step_fn(carry, _):
-        t_state, r_obs, e_states, k = carry
+        t_state, e_states, k = carry
         k, k_act, k_step = jax.random.split(k, 3)
 
-        raw_obs = e_states.state
-        n_obs = normalize_obs(r_obs, raw_obs)
-        actor_mean, log_std, val = t_state.apply_fn(t_state.params, n_obs)
+        obs = e_states.state
+        actor_mean, log_std, val = t_state.apply_fn(t_state.params, obs)
         act = gaussian_sample(k_act, actor_mean, log_std)
         lp = gaussian_log_prob(act, actor_mean, log_std)
 
@@ -116,15 +109,14 @@ def train_ppo(
         )(step_keys, e_states, act)
 
         trans = Transition(
-            obs=n_obs,
-            raw_obs=raw_obs,
+            obs=obs,
             action=act,
             value=val,
             reward=rew,
             done=done,
             log_prob=lp,
         )
-        return (t_state, r_obs, next_env_states, k), trans
+        return (t_state, next_env_states, k), trans
 
     # Backward scan for Generalized Advantage Estimation (GAE)
     def _compute_gae(traj_batch, last_val):
@@ -193,12 +185,12 @@ def train_ppo(
     # Single PPO update step
     @jax.jit
     def _update_step(runner_state, _):
-        t_state, r_obs, e_states, k = runner_state
+        t_state, e_states, k = runner_state
 
         # 1. Rollout collection
-        (t_state, r_obs, next_e_states, k), traj_batch = jax.lax.scan(
+        (t_state, next_e_states, k), traj_batch = jax.lax.scan(
             _step_fn,
-            (t_state, r_obs, e_states, k),
+            (t_state, e_states, k),
             None,
             length=n_steps,
         )
@@ -206,15 +198,10 @@ def train_ppo(
         mean_reward = jnp.mean(traj_batch.reward)
 
         # 2. Compute GAE
-        norm_next_obs = normalize_obs(r_obs, next_e_states.state)
-        _, _, last_val = t_state.apply_fn(t_state.params, norm_next_obs)
+        _, _, last_val = t_state.apply_fn(t_state.params, next_e_states.state)
         advantages, targets = _compute_gae(traj_batch, last_val)
 
-        # 3. Update observation normalization statistics
-        raw_obs_all = jnp.reshape(traj_batch.raw_obs, (batch_size, -1))
-        r_obs = update_running_mean_std(r_obs, raw_obs_all)
-
-        # 4. Flatten transitions
+        # 3. Flatten transitions
         traj_flat = FlatTransition(
             obs=jnp.reshape(traj_batch.obs, (batch_size, -1)),
             action=jnp.reshape(traj_batch.action, (batch_size, -1)),
@@ -224,7 +211,7 @@ def train_ppo(
             target=jnp.reshape(targets, (batch_size,)),
         )
 
-        # 5. PPO optimization epochs
+        # 4. PPO optimization epochs
         (t_state, _, k), _ = jax.lax.scan(
             _update_epoch,
             (t_state, traj_flat, k),
@@ -232,11 +219,11 @@ def train_ppo(
             length=update_epochs,
         )
 
-        next_runner_state = (t_state, r_obs, next_e_states, k)
+        next_runner_state = (t_state, next_e_states, k)
         return next_runner_state, mean_reward
 
     # Training loop in chunks for logging
-    runner_state = (train_state, rms_obs, env_states, rng)
+    runner_state = (train_state, env_states, rng)
     num_updates = max(1, total_timesteps // batch_size)
     chunk_updates = max(1, min(10, max(1, num_updates // 20)))
     num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
@@ -256,8 +243,8 @@ def train_ppo(
         pbar.update(chunk_updates * batch_size)
 
     pbar.close()
-    train_state, rms_obs, _, _ = runner_state
+    train_state, _, _ = runner_state
     jax.block_until_ready(train_state.params)
     logger.info(f"PPO training finished in {time() - t_start:.2f}s ({total_trained_steps} timesteps).")
 
-    return network, train_state.params, rms_obs
+    return network, train_state.params

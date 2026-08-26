@@ -9,7 +9,7 @@ import numpy as np
 from core.abstraction.partition import _compute_linear_strides
 from .config import CHUNK_SIZE
 from .env import BenchmarkEnv
-from .policy import ActorCritic, RunningMeanStd, find_policy_actions_batch
+from .policy import ActorCritic, find_policy_actions_batch
 
 logger = logging.getLogger(__name__)
 
@@ -156,7 +156,6 @@ def _smart_inflate_cells(
     val_env: BenchmarkEnv,
     actor_critic: ActorCritic,
     params,
-    rms_obs: RunningMeanStd,
     discrete_actions,
     args,
     number_per_dim,
@@ -184,7 +183,7 @@ def _smart_inflate_cells(
 
     def _get_policy_actions(coords, num_actions):
         obs = np.asarray(val_env.obs_low + (coords.astype(np.float32) + 0.5) * val_env.bin_widths, dtype=np.float32)
-        top_k, _ = find_policy_actions_batch(obs, actor_critic, params, rms_obs, discrete_actions, num=num_actions)
+        top_k, _ = find_policy_actions_batch(obs, actor_critic, params, discrete_actions, num=num_actions)
         return top_k if num_actions > 1 else top_k[:, None, :]
 
     # Phase 1: Expand FRS for visited states under the top RL policy action
