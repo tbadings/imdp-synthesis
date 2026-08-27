@@ -23,14 +23,12 @@ REWARD_FIELDS = (
 
 
 def _resolve_reward(model, args):
-    """Merge the reward terms, lowest precedence first.
-
+    """Build the reward function, with lowest precedence first:
     1. the ``--*_reward`` / ``--*_penalty`` defaults from `core.options`,
     2. whatever the benchmark pins in its `rl_reward` attribute,
     3. options actually given on the command line, which always win.
-
-    A benchmark that leaves a term out simply keeps the default for it.
     """
+
     resolved = {field: getattr(args, field) for field in REWARD_FIELDS}
 
     overrides = getattr(model, "rl_reward", None) or {}

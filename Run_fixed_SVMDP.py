@@ -124,16 +124,12 @@ def config_Drone4D() -> list[str]:
         "jax",
         "--eval_episodes",
         "1000",
-        # The two lane obstacles make this map hard enough that the budget matters: at 8M the
-        # policy settles for hovering on roughly one seed in three, at 4M on every seed. None
-        # of the reward knobs fixed that -- only more training did.
+        # TODO: Long training is still needed here; can we reduce that?
         "--total_timesteps",
         "16000000",
         "--n_envs",
         "256",
-        # Short training episodes are load-bearing here: at --max_steps 64 or 128 the policy
-        # settles for hovering and never reaches the goal. --eval_steps keeps the rollouts long
-        # enough to actually get there (~60 steps from x0).
+        # We need short training rollouts but long evaluation rollouts to reach the goal.
         "--max_steps",
         "32",
         "--eval_steps",
