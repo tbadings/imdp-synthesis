@@ -57,8 +57,8 @@ class Test1D(Test1DDynamics):
             "goal_reward": 5,
             "unsafe_penalty": -5,
             "out_of_bounds_penalty": -5,
-            "per_step_reward": -0.1,
-            "distance_reward": 0.0,
+            "per_step_cost": 0.1,
+            "distance_cost": 0.0,
         }
 
         return

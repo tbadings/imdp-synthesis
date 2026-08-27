@@ -66,8 +66,8 @@ class TestRLEvaluationInitialStates(unittest.TestCase):
             goal_reward=1.0,
             unsafe_penalty=-1.0,
             out_of_bounds_penalty=-1.0,
-            distance_reward=0.0,
-            per_step_reward=0.0,
+            distance_cost=0.0,
+            per_step_cost=0.0,
         )
 
         _, visited_cells, _ = evaluate_policy(

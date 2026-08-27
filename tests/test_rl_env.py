@@ -45,8 +45,8 @@ def _config(**overrides):
         goal_reward=10.0,
         unsafe_penalty=-10.0,
         out_of_bounds_penalty=-10.0,
-        distance_reward=1.0,
-        per_step_reward=0.0,
+        distance_cost=1.0,
+        per_step_cost=0.0,
     )
     values.update(overrides)
     return RLConfig(**values)
@@ -78,7 +78,7 @@ class TestRLEnvironment(unittest.TestCase):
         self.assertLess(float(jnp.mean(near_distance)), float(jnp.mean(full_distance)))
 
     def test_curriculum_does_not_change_nonterminal_reward(self):
-        env = BenchmarkEnv(_MazeModel(), _config(use_curriculum=True, distance_reward=0.0))
+        env = BenchmarkEnv(_MazeModel(), _config(use_curriculum=True, distance_cost=0.0))
         state = jnp.array([3.0, 1.0, 2.0, -1.0])
         env_state = EnvState(state=state, steps=jnp.array(0), prev_dist=env.distance_to_goal(state))
 
@@ -92,7 +92,7 @@ class TestRLEnvironment(unittest.TestCase):
     def test_training_noise_is_not_scaled(self):
         model = _MazeModel()
         model.noise = _FixedNoise([0.25, 0.0, 0.25, 0.0])
-        env = BenchmarkEnv(model, _config(distance_reward=0.0))
+        env = BenchmarkEnv(model, _config(distance_cost=0.0))
         state = jnp.array([3.0, 0.0, 2.0, 0.0])
         env_state = EnvState(state=state, steps=jnp.array(0), prev_dist=env.distance_to_goal(state))
 

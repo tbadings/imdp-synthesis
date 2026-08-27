@@ -62,9 +62,9 @@ class MountainCar(MountainCarDynamics):
             "goal_reward": 5,
             "unsafe_penalty": -5,
             "out_of_bounds_penalty": -5,
-            "per_step_reward": -0.1,
-            # [position, velocity] -- velocity deliberately unweighted (see note above)
-            "distance_reward": jnp.array([0.05, 0.0]),
+            "per_step_cost": 0.1,
+            # [position, velocity]; velocity deliberately has weight zero
+            "distance_cost": [0.05, 0.0],
         }
 
         return

@@ -17,8 +17,8 @@ REWARD_FIELDS = (
     "goal_reward",
     "unsafe_penalty",
     "out_of_bounds_penalty",
-    "distance_reward",
-    "per_step_reward",
+    "distance_cost",
+    "per_step_cost",
 )
 
 

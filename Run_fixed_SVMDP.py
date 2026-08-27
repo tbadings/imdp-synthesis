@@ -1,10 +1,5 @@
 """
 Fixed-arguments launcher for experimentation.
-
-Reward terms are not set here: each benchmark declares its own in `self.rl_reward`
-(see benchmarks/*.py). Passing --goal_reward / --unsafe_penalty /
---out_of_bounds_penalty / --per_step_reward / --distance_reward below would
-override the benchmark's value.
 """
 
 import subprocess
@@ -122,16 +117,6 @@ def config_Dubins4D() -> list[str]:
     ]
 
 def config_Drone4D() -> list[str]:
-    # The reward lives on the benchmark itself now (Drone4D.rl_reward); passing any of
-    # --goal_reward / --unsafe_penalty / --out_of_bounds_penalty / --per_step_reward /
-    # --distance_reward here would override it.
-    #
-    # Drone4D is an S-shaped maze: from x0 the drone flies right through the gap in the lower
-    # wall, left through the gap in the upper wall, and only then right to the goal, dodging a
-    # lane obstacle in each of the outer bands. The reward balance is load-bearing: the terminal
-    # penalties must exceed the cost of surviving without reaching the goal,
-    # (|per_step_reward| + norm(distance_reward)) / (1 - gamma). Below that, flying into a wall
-    # or out of the domain is the cheapest way out of the bottom band, and PPO learns to do it.
     return [
         "--model",
         "Drone4D",
