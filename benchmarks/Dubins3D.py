@@ -60,4 +60,13 @@ class Dubins3D(DubinsDynamics3D):
         self.vf_arch = [128, 128, 128]
         self.inflation_rate = [(-3, 3), (-3, 3), (-5, 5)]
 
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_reward": -0.1,
+            "distance_reward": 0.0,
+        }
+
         return

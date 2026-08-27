@@ -12,40 +12,54 @@ from .tube import _inflate_cells, _smart_inflate_cells
 
 logger = logging.getLogger(__name__)
 
-def _check_reward_balance(cfg: RLConfig, gamma: float):
-    """Warn when giving up beats surviving.
+# Reward terms a benchmark may pin via its `rl_reward` attribute.
+REWARD_FIELDS = (
+    "goal_reward",
+    "unsafe_penalty",
+    "out_of_bounds_penalty",
+    "distance_reward",
+    "per_step_reward",
+)
 
-    Surviving without reaching the goal costs at most
-    (|per_step_reward| + |distance_reward|) / (1 - gamma). If a terminal penalty is
-    smaller than that, the best available action from a hard region is to end the
-    episode on purpose -- fly into an obstacle or straight out of the state space --
-    and the policy converges to doing exactly that.
+
+def _resolve_reward(model, args):
+    """Merge the reward terms, lowest precedence first.
+
+    1. the ``--*_reward`` / ``--*_penalty`` defaults from `core.options`,
+    2. whatever the benchmark pins in its `rl_reward` attribute,
+    3. options actually given on the command line, which always win.
+
+    A benchmark that leaves a term out simply keeps the default for it.
     """
-    living_cost = (abs(cfg.per_step_reward) + abs(cfg.distance_reward)) / max(1.0 - gamma, 1e-9)
-    for name, penalty in (("unsafe_penalty", cfg.unsafe_penalty),
-                          ("out_of_bounds_penalty", cfg.out_of_bounds_penalty)):
-        if abs(penalty) <= living_cost:
-            logger.warning(
-                "%s=%.3g is not worse than the cost of surviving without reaching the goal "
-                "(%.3g). Terminating on purpose is then at least as good as continuing, and the "
-                "policy will learn to do so. Use a penalty of magnitude > %.3g.",
-                name, penalty, living_cost, living_cost,
-            )
+    resolved = {field: getattr(args, field) for field in REWARD_FIELDS}
+
+    overrides = getattr(model, "rl_reward", None) or {}
+    unknown = set(overrides) - set(REWARD_FIELDS)
+    if unknown:
+        raise ValueError(
+            f"{type(model).__name__}.rl_reward has unknown entries {sorted(unknown)}; "
+            f"expected any of {list(REWARD_FIELDS)}"
+        )
+
+    # `cli_provided` is absent when args is built by hand rather than parsed; then nothing is
+    # treated as explicitly given and the benchmark's values apply.
+    provided = getattr(args, "cli_provided", frozenset())
+    for field, value in overrides.items():
+        if field in provided:
+            logger.info("- Reward: --%s given on the command line, overriding %s.rl_reward",
+                        field, type(model).__name__)
+            continue
+        resolved[field] = value
+
+    return resolved
 
 
 def find_active(model, args):
     cfg = RLConfig(
         max_steps=args.max_steps,
-        goal_reward=args.goal_reward,
-        unsafe_penalty=args.unsafe_penalty,
-        out_of_bounds_penalty=args.out_of_bounds_penalty,
-        distance_reward=args.distance_reward,
-        per_step_reward=args.per_step_reward,
-        eval_steps=getattr(args, "eval_steps", None),
-        train_noise_factor=args.train_noise_factor,
-        critical_margin=args.critical_margin,
+        eval_steps=args.eval_steps,
+        **_resolve_reward(model, args),
     )
-    _check_reward_balance(cfg, args.gamma)
     env = BenchmarkEnv(model, cfg)
 
     actor_critic, params = train_ppo(

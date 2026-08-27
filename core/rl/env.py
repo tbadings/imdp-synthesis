@@ -10,19 +10,6 @@ class EnvState(NamedTuple):
     steps: jnp.ndarray
     prev_dist: jnp.ndarray
 
-def _position_dims(model, obs_dim):
-    """Dimensions used for the distance-to-goal term.
-
-    Prefer an explicit ``pos_idx``, else the ``*_pos`` state variables (Drone models).
-    Models without a position/velocity split fall back to the full state.
-    """
-    pos_idx = getattr(model, "pos_idx", None)
-    if pos_idx is not None and len(pos_idx) > 0:
-        return np.asarray(pos_idx, dtype=np.int64)
-    names = getattr(model, "state_variables", None) or []
-    idx = [i for i, name in enumerate(names) if str(name).endswith("_pos")]
-    return np.asarray(idx if idx else range(obs_dim), dtype=np.int64)
-
 class BenchmarkEnv:
     def __init__(self, model, cfg: RLConfig):
         self.model = model
@@ -45,22 +32,20 @@ class BenchmarkEnv:
         self.critical = np.asarray(critical, dtype=np.float32) if critical is not None and len(critical) > 0 else np.empty((0, 2, self.obs_dim), dtype=np.float32)
         charging_station = getattr(model, "charging_station", None)
         self.charging_station = np.asarray(charging_station, dtype=np.float32) if charging_station is not None and len(charging_station) > 0 else np.empty((0, 2, self.obs_dim), dtype=np.float32)
-
-        # Distance-to-goal metric: Euclidean distance from the position coordinates to the
-        # goal *set* (zero inside it), normalised by the largest distance the domain admits.
-        # Measuring to the set rather than to its centre keeps the term flat across the goal,
-        # and dropping the velocity coordinates stops it from penalising travelling fast.
-        self.position_dims = _position_dims(model, self.obs_dim)
-        if len(self.goal):
-            self._goal_lo = self.goal[0, 0][self.position_dims]
-            self._goal_hi = self.goal[0, 1][self.position_dims]
-        else:
-            self._goal_lo = np.zeros(len(self.position_dims), dtype=np.float32)
-            self._goal_hi = np.zeros(len(self.position_dims), dtype=np.float32)
-        self._distance_scale = max(float(np.linalg.norm(np.maximum(
-            self.obs_high[self.position_dims] - self._goal_hi,
-            self._goal_lo - self.obs_low[self.position_dims],
-        ))), 1e-6)
+        # Distance to the goal *set* (zero inside it), measured per coordinate as a fraction of
+        # how far that coordinate can get from the goal, then combined with the per-coordinate
+        # weights in cfg.distance_reward. Measuring to the set rather than to its centre keeps
+        # the term flat across the goal; weighting per coordinate is what lets a benchmark
+        # count position but not velocity. The worst-case cost is norm(weights).
+        goal_lo = self.goal[0, 0] if len(self.goal) else np.zeros(self.obs_dim, dtype=np.float32)
+        goal_hi = self.goal[0, 1] if len(self.goal) else np.zeros(self.obs_dim, dtype=np.float32)
+        span = np.maximum(self.obs_high - goal_hi, goal_lo - self.obs_low)
+        # A coordinate whose goal spans the whole domain never contributes; keep it out of the
+        # division rather than dividing by zero.
+        self._distance_span = np.where(span > 0, span, 1.0).astype(np.float32)
+        self.distance_weights = np.broadcast_to(
+            np.asarray(cfg.distance_reward, dtype=np.float32), (self.obs_dim,)
+        ).copy()
 
         # initial state sampling
         x0_cell = np.floor((model.x0 - self.obs_low) / self.bin_widths)
@@ -80,14 +65,16 @@ class BenchmarkEnv:
         self.number_per_dim_jnp = jnp.asarray(self.number_per_dim, dtype=jnp.int32)
         self.reset_low_jnp = jnp.asarray(self.reset_low)
         self.reset_high_jnp = jnp.asarray(self.reset_high)
-        self.position_dims_jnp = jnp.asarray(self.position_dims, dtype=jnp.int32)
-        self.goal_lo_jnp = jnp.asarray(self._goal_lo)
-        self.goal_hi_jnp = jnp.asarray(self._goal_hi)
+        self.goal_lo_jnp = jnp.asarray(goal_lo)
+        self.goal_hi_jnp = jnp.asarray(goal_hi)
+        self.distance_span_jnp = jnp.asarray(self._distance_span)
+        self.distance_weights_jnp = jnp.asarray(self.distance_weights)
 
     def distance_to_goal(self, state: jnp.ndarray) -> jnp.ndarray:
-        """Normalised Euclidean distance from `state` to the goal set (0 inside, 1 at worst)."""
-        pos = state[..., self.position_dims_jnp]
-        return jnp.linalg.norm(pos - jnp.clip(pos, self.goal_lo_jnp, self.goal_hi_jnp), axis=-1) / self._distance_scale
+        """Weighted Euclidean distance from `state` to the goal set: 0 inside it, at most
+        norm(distance_weights) at the far corner of the domain."""
+        offset = state - jnp.clip(state, self.goal_lo_jnp, self.goal_hi_jnp)
+        return jnp.linalg.norm(self.distance_weights_jnp * offset / self.distance_span_jnp, axis=-1)
 
 def _sample_noise_jax(model, rng, shape=()):
     return model.noise.sample_jax(rng, shape=shape)
@@ -104,25 +91,24 @@ def _sample_safe_state(rng, env: BenchmarkEnv, num_candidates: int = 8) -> jnp.n
     is_safe = ~(_in_boxes_jnp(candidates, env.critical_jnp) | _in_boxes_jnp(candidates, env.goal_jnp))
     return candidates[jnp.argmax(is_safe)]
 
-def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_factor: float | None = None):
+def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_factor: float = 2.0):
     action = jnp.clip(action, env.u_min_jnp, env.u_max_jnp)
     rng_noise, rng_reset = jax.random.split(rng)
-    if noise_factor is None:
-        noise_factor = env.cfg.train_noise_factor
     noise = noise_factor * _sample_noise_jax(env.model, rng_noise)
     next_state = env.model.step(env_state.state, action, noise)
     steps = env_state.steps + 1
 
     in_goal = _in_boxes_jnp(next_state, env.goal_jnp)
-    in_critical = _in_boxes_jnp(next_state, env.critical_jnp, env.cfg.critical_margin)
+    in_critical = _in_boxes_jnp(next_state, env.critical_jnp, 0.5) #temp
     out_of_bounds = jnp.any(next_state < env.obs_low_jnp) | jnp.any(next_state > env.obs_high_jnp)
 
-    # Euclidean distance-to-goal *cost* on surviving steps, alongside the flat per-step cost.
+    # Weighted Euclidean distance-to-goal *cost* on surviving steps (the weights carry the
+    # gain), alongside the flat per-step cost.
     dist = env.distance_to_goal(next_state)
     reward = jnp.select(
         [in_goal, in_critical, out_of_bounds],
         [env.cfg.goal_reward, env.cfg.unsafe_penalty, env.cfg.out_of_bounds_penalty],
-        default=env.cfg.per_step_reward - env.cfg.distance_reward * dist,
+        default=env.cfg.per_step_reward - dist,
     )
 
     terminated = in_goal | in_critical | out_of_bounds

@@ -95,39 +95,26 @@ def parse_arguments(argv=None):
     parser.add_argument("--total_timesteps", type=int, default=200000)
     parser.add_argument("--eval_episodes", type=int, default=2500)
     parser.add_argument("--max_steps", type=int, default=128,
-                        help="Training episode truncation. Shorter episodes reset more often, which "
-                             "spreads training data over the whole state space; correct time-limit "
-                             "bootstrapping makes this safe.")
+                        help="Truncation for *training* episodes. Shorter episodes reset more often, "
+                             "which spreads the training data over the whole state space.")
     parser.add_argument("--eval_steps", type=int, default=None,
-                        help="Horizon for evaluation / tube rollouts. Defaults to --max_steps. Set this "
-                             "when --max_steps is shortened for training: the rollouts still need enough "
-                             "steps to reach the goal from x0.")
+                        help="Rollout horizon for evaluation and tube construction. Defaults to --max_steps; "
+                             "set it when --max_steps is shortened for training, so the rollouts still have "
+                             "room to reach the goal.")
 
     parser.add_argument("--goal_reward", type=float, default=5.0)
-    # Default penalties clear the balance rule below for the default per_step_reward and gamma
-    # (0.1 / 0.01 = 10). At the previous default of -5 the cheapest way out of a hard region was
-    # to end the episode on purpose, which PPO duly learned.
-    parser.add_argument("--unsafe_penalty", type=float, default=-20.0)
-    parser.add_argument("--out_of_bounds_penalty", type=float, default=-20.0)
+    parser.add_argument("--unsafe_penalty", type=float, default=-5.0)
+    parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
     parser.add_argument("--distance_reward", type=float, default=0.0,
-                        help="Gain on the Euclidean distance-to-goal cost applied on non-terminal steps: the "
-                             "reward loses distance_reward * d, where d is the normalised distance from the "
-                             "position coordinates to the goal set (0 inside it, 1 at the far corner). "
-                             "0 disables it.")
+                        help="Gain on the Euclidean distance-to-goal cost applied on non-terminal steps: the reward "
+                             "loses distance_reward * d, where d is the normalised distance from the position "
+                             "coordinates to the goal set (0 inside it, 1 at the far corner). 0 disables it. "
+                             "Note that the terminal penalties must stay larger than the cost of surviving without "
+                             "reaching the goal, (|per_step_reward| + |distance_reward|) / (1 - gamma), otherwise "
+                             "ending the episode on purpose becomes optimal.")
     parser.add_argument("--per_step_reward", type=float, default=-0.1,
-                        help="Value added to the reward on every non-terminal step. 0 disables it; -x imposes cost of x per step. "
-                             "Note the balance rule: the terminal penalties must exceed the cost of surviving forever, "
-                             "(|per_step_reward| + |distance_reward|) / (1 - gamma), or deliberately terminating becomes optimal.")
+                        help="Value added to the reward on every non-terminal step. 0 disables it; -x imposes cost of x per step.")
 
-    parser.add_argument("--train_noise_factor", type=float, default=2.0,
-                        help="Process noise is scaled by this factor during RL training only (evaluation "
-                             "and the abstraction always use the true noise). >1 trains the policy against "
-                             "a wider disturbance than it will face, so it keeps a margin. Set 1.0 to train "
-                             "on the true noise.")
-    parser.add_argument("--critical_margin", type=float, default=0.5,
-                        help="Obstacles are inflated by this much (in state units, all dimensions) during RL "
-                             "training only, so the policy learns to keep clearance. Evaluation uses the true "
-                             "obstacle set. Set 0.0 to train against the exact obstacles.")
     parser.add_argument("--ent_coef", type=float, default=0.005,
                         help="PPO entropy coefficient. Increase (e.g. 0.005) to encourage exploration.")
     parser.add_argument("--learning_rate", type=float, default=3e-4)
@@ -159,6 +146,17 @@ def parse_arguments(argv=None):
 
     # Parse arguments
     args = parser.parse_args(argv)
+
+    # Record which options were actually given on the command line, so that benchmark-supplied
+    # values (e.g. a model's `rl_reward`) can override the defaults below without overriding an
+    # explicit choice made by the caller. Re-parsing into a namespace whose attributes are all
+    # pre-set leaves the untouched ones at the sentinel: argparse only fills in a default when
+    # the attribute is missing, but always writes the ones it parses off the command line. This
+    # stays exact even when the value given happens to equal the default.
+    _unset = object()
+    probe = argparse.Namespace(**{dest: _unset for dest in vars(args)})
+    parser.parse_args(argv, probe)
+    args.cli_provided = frozenset(d for d, v in vars(probe).items() if v is not _unset)
 
     # Canonicalize alias.
     if args.noise_distr == 'normal':

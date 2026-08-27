@@ -62,9 +62,6 @@ def train_ppo(
     num_minibatches = max(1, batch_size // rl_batch_size)
     minibatch_size = batch_size // num_minibatches
     num_updates = max(1, total_timesteps // batch_size)
-    chunk_updates = max(1, min(10, max(1, num_updates // 20)))
-    num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
-    total_updates = num_chunks * chunk_updates
     update_epochs = args.update_epochs
     clip_eps = args.clip_eps
     vf_coef = args.vf_coef
@@ -114,11 +111,8 @@ def train_ppo(
             lambda rk, s, a: _env_step_jnp(rk, s, a, env)
         )(step_keys, e_states, act)
 
-        # Value of the successor *before* the auto-reset, so that episodes ending on the
-        # step limit bootstrap from where they actually were instead of being treated as
-        # terminal. Without this the critic charges every timeout the full remaining
-        # step cost with no continuation value, which makes deliberately terminating
-        # (crashing / leaving the domain) look cheaper than surviving.
+        # Value of the successor *before* the auto-reset, so that episodes ending on the step
+        # limit bootstrap from where they actually were instead of being treated as terminal.
         _, _, next_val = t_state.apply_fn(t_state.params, info["next_state"])
 
         trans = Transition(
@@ -134,14 +128,15 @@ def train_ppo(
         return (t_state, next_env_states, k), trans
 
     # Backward scan for Generalized Advantage Estimation (GAE)
-    def _compute_gae(traj_batch, last_val):
-        del last_val  # each transition carries the value of its own successor
-
+    def _compute_gae(traj_batch):
         def _gae_step(gae, transition):
             done = transition.done.astype(jnp.float32)
 
-            # Bootstrap on the true successor, zeroed only on *real* terminations.
-            # Time-limit truncations keep their continuation value.
+            # Bootstrap on the true successor, zeroed only on *real* terminations, so that a
+            # time-limit truncation keeps its continuation value. Treating truncation as
+            # terminal charges every timeout the whole remaining step cost against V=0, which
+            # makes ending the episode on purpose (crashing, or leaving the state space) look
+            # cheaper than surviving.
             next_val = jnp.where(transition.terminated, 0.0, transition.next_value)
             delta = transition.reward + gamma * next_val - transition.value
             gae = delta + gamma * gae_lambda * (1.0 - done) * gae
@@ -212,13 +207,10 @@ def train_ppo(
             length=n_steps,
         )
 
-        # Diagnostics: how many episodes ended, and how many of those reached the goal.
-        num_terminated = jnp.sum(traj_batch.terminated)
-        num_goal = jnp.sum(traj_batch.terminated & (traj_batch.reward > 0))
         mean_reward = jnp.mean(traj_batch.reward)
 
         # 2. Compute GAE
-        advantages, targets = _compute_gae(traj_batch, None)
+        advantages, targets = _compute_gae(traj_batch)
 
         # 3. Flatten transitions
         traj_flat = FlatTransition(
@@ -239,11 +231,14 @@ def train_ppo(
         )
 
         next_runner_state = (t_state, next_e_states, k)
-        return next_runner_state, (mean_reward, num_goal, num_terminated)
+        return next_runner_state, mean_reward
 
     # Training loop in chunks for logging
     runner_state = (train_state, env_states, rng)
-    total_trained_steps = total_updates * batch_size
+    num_updates = max(1, total_timesteps // batch_size)
+    chunk_updates = max(1, min(10, max(1, num_updates // 20)))
+    num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
+    total_trained_steps = num_chunks * chunk_updates * batch_size
 
     @jax.jit
     def _run_chunk(state):
@@ -253,12 +248,9 @@ def train_ppo(
     pbar = tqdm(total=total_trained_steps, desc="PPO Training (PureJaxRL)", unit="step")
 
     for _ in range(num_chunks):
-        runner_state, (chunk_rewards, chunk_goals, chunk_terms) = _run_chunk(runner_state)
-        goals, terms = float(np.sum(chunk_goals)), float(np.sum(chunk_terms))
-        pbar.set_postfix({
-            "mean reward": f"{float(np.mean(chunk_rewards)):.2f}",
-            "goal rate": f"{goals / max(terms, 1.0):.2f}",
-        })
+        runner_state, chunk_rewards = _run_chunk(runner_state)
+        mean_rew = float(np.mean(chunk_rewards))
+        pbar.set_postfix({"mean reward": f"{mean_rew:.2f}"})
         pbar.update(chunk_updates * batch_size)
 
     pbar.close()

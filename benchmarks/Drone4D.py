@@ -53,16 +53,25 @@ class Drone4D(DroneDynamics):
             # Upper wall with left-side opening (opening from x = -20.0 to -8.0)
             [[-8.0, v_min, 5.0, v_min], [20.0, v_max, 7.0, v_max]],
             # # Lower lane obstacle (separated by 5 units from bottom and 7 units from lower wall)
-            # [[-4.0, v_min, -15.0, v_min], [4.0, v_max, -11.0, v_max]],
+            [[-4.0, v_min, -15.0, v_min], [4.0, v_max, -11.0, v_max]],
             # # Upper lane obstacle (separated by 5 units from top and 7 units from upper wall)
-            # [[-4.0, v_min, 11.0, v_min], [4.0, v_max, 15.0, v_max]],
+            [[-4.0, v_min, 11.0, v_min], [4.0, v_max, 15.0, v_max]],
         ], dtype=float)
 
         self.x0 = np.array([-15.0, 0.01, -15.0, 0.01])
 
-        self.pi_arch = [128, 128]
-        self.vf_arch = [128, 128]
+        self.pi_arch = [128, 128, 128]
+        self.vf_arch = [128, 128, 128]
         self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1)]
+
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -35,
+            "out_of_bounds_penalty": -35,
+            "per_step_reward": -0.1,
+            "distance_reward": jnp.array([0.2, 0, 0.2, 0]),
+        }
 
         return
 
@@ -123,6 +132,15 @@ class Drone4D_battery(DroneDynamics_battery):
         self.pi_arch = [64, 64]
         self.vf_arch = [64, 64]
         self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)]
+
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_reward": -0.1,
+            "distance_reward": 0.0,
+        }
 
         return
 
