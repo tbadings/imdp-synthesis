@@ -50,12 +50,12 @@ def evaluate_policy(
     base_model,
     env: BenchmarkEnv,
     cfg: RLConfig,
-    episodes: int,
     dims: Sequence[int],
-    args,
+    output_dir: Path,
     discrete_actions=None,
     seed: int = 0,
 ):
+    episodes = cfg.eval_episodes
     logger.info(f"Running {episodes} evaluation rollouts in parallel (JAX)...")
     t0 = time()
 
@@ -76,7 +76,7 @@ def evaluate_policy(
 
     logger.info(f"- Evaluation rollouts completed in {time() - t0:.2f} seconds.")
     t0 = time()
-    plot_rl_trajectories(base_model, env, trajectories, dims, Path(getattr(args, "output_dir", "output")))
+    plot_rl_trajectories(base_model, env, trajectories, dims, output_dir)
     logger.info(f"- Rollouts plotted completed in {time() - t0:.2f} seconds.")
 
     return int(np.sum(final_goal_all)), visited_cells, int(np.prod(base_model.partition["number_per_dim"]))

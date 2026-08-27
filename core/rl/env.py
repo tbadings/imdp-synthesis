@@ -103,7 +103,7 @@ def _sample_safe_state(rng, env: BenchmarkEnv, num_candidates: int = 8) -> jnp.n
     is_safe = ~(_in_boxes_jnp(candidates, env.critical_jnp) | _in_boxes_jnp(candidates, env.goal_jnp))
     return candidates[jnp.argmax(is_safe)]
 
-def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_factor: float = 2.0):
+def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_factor: float = 1.0):
     action = jnp.clip(action, env.u_min_jnp, env.u_max_jnp)
     rng_noise, rng_reset = jax.random.split(rng)
     noise = noise_factor * _sample_noise_jax(env.model, rng_noise)
@@ -111,7 +111,7 @@ def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_fac
     steps = env_state.steps + 1
 
     in_goal = _in_boxes_jnp(next_state, env.goal_jnp)
-    in_critical = _in_boxes_jnp(next_state, env.critical_jnp, 0.5) #temp
+    in_critical = _in_boxes_jnp(next_state, env.critical_jnp)
     out_of_bounds = jnp.any(next_state < env.obs_low_jnp) | jnp.any(next_state > env.obs_high_jnp)
 
     # Weighted Euclidean distance-to-goal cost on surviving steps

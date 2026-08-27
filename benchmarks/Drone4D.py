@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import scipy 
 from benchmarks.dynamics import setmath
+from core.rl.config import RLConfig
 
 
 class Drone4D(DroneDynamics):
@@ -60,18 +61,26 @@ class Drone4D(DroneDynamics):
 
         self.x0 = np.array([-15.0, 0.01, -15.0, 0.01])
 
-        self.pi_arch = [128, 128]
-        self.vf_arch = [128, 128]
-        self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -35,
-            "out_of_bounds_penalty": -35,
-            "per_step_cost": 0.1,
-            "distance_cost": [0.2, 0, 0.2, 0],
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[128, 128],
+            vf_arch=[128, 128],
+            # TODO: Long training is still needed here; can we reduce that?
+            total_timesteps=16000000,
+            n_envs=256,
+            # We need short training rollouts but long evaluation rollouts to reach the goal.
+            max_steps=32,
+            eval_steps=200,
+            eval_episodes=1000,
+            goal_reward=5,
+            unsafe_penalty=-35,
+            out_of_bounds_penalty=-35,
+            per_step_cost=0.1,
+            distance_cost=[0.2, 0, 0.2, 0],
+            RL_actions_per_state=9,
+            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1)],
+        )
 
         return
 
@@ -129,18 +138,18 @@ class Drone4D_battery(DroneDynamics_battery):
 
         self.x0 = np.array([-5, 0.01, -9, 0.01, 50])
 
-        self.pi_arch = [64, 64]
-        self.vf_arch = [64, 64]
-        self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[64, 64],
+            vf_arch=[64, 64],
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)],
+        )
 
         return
 

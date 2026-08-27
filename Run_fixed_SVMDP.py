@@ -1,5 +1,10 @@
 """
 Fixed-arguments launcher for experimentation.
+
+The RL settings (PPO training, reward function, and the tube around the rollouts) live in
+each benchmark's `rl_config` in `benchmarks/`; only what is not benchmark-specific is passed
+here. Any RL option can still be overridden per run by adding e.g. "--total_timesteps",
+"1000" below, which takes precedence over the benchmark's `rl_config`.
 """
 
 import subprocess
@@ -19,25 +24,8 @@ def config_MountainCar() -> list[str]:
         "MountainCar",
         # "--batch_size",
         # "1000",
-        # "--noise_distr",
-        # "normal",
         "--solver",
         "jax",
-        "--total_timesteps",
-        "200000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "100",
-        "--max_steps",
-        "200",
-        "--eval_episodes",
-        "100",
-        "--tube_method",
-        "smart"
     ]
 
 def config_CartPole() -> list[str]:
@@ -48,26 +36,8 @@ def config_CartPole() -> list[str]:
         "0.99",
         # "--batch_size",
         # "1000",
-        # "--noise_distr",
-        # "normal",
         "--solver",
         "jax",
-        "--total_timesteps",
-        "500000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "5",
-        "--max_steps",
-        "200",
-        "--eval_episodes",
-        "10000",
-        "--save_checkpoint",
-        # "--ent_coef",
-        # "0.005",
     ]
 
 def config_Dubins3D() -> list[str]:
@@ -76,21 +46,8 @@ def config_Dubins3D() -> list[str]:
         "Dubins3D",
         # "--batch_size",
         # "1000",
-        # "--noise_distr",
-        # "normal",
         "--solver",
         "jax",
-        # "--eval_episodes",
-        # "5000",
-        "--total_timesteps",
-        "100000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "100"
     ]
 
 def config_Dubins4D() -> list[str]:
@@ -99,21 +56,8 @@ def config_Dubins4D() -> list[str]:
         "Dubins4D",
         # "--batch_size",
         # "1000",
-        # "--noise_distr",
-        # "normal",
         "--solver",
         "jax",
-        # "--eval_episodes",
-        # "5000",
-        "--total_timesteps",
-        "500000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "25",
     ]
 
 def config_Drone4D() -> list[str]:
@@ -122,72 +66,18 @@ def config_Drone4D() -> list[str]:
         "Drone4D",
         "--solver",
         "jax",
-        "--eval_episodes",
-        "1000",
-        # TODO: Long training is still needed here; can we reduce that?
-        "--total_timesteps",
-        "16000000",
-        "--n_envs",
-        "256",
-        # We need short training rollouts but long evaluation rollouts to reach the goal.
-        "--max_steps",
-        "32",
-        "--eval_steps",
-        "200",
-        "--noise_distr",
-        "gaussian",
-        "--RL_actions_per_state",
-        "9",
     ]
-
-    # fixed_args = [
-    #     "--model",
-    #     "Drone4D",
-    #     "--satprob",
-    #     "0.95",
-    #     # "--batch_size",
-    #     # "1000",
-    #     "--solver",
-    #     "jax",
-    #     "--eval_episodes",
-    #     "100",
-    #     "--total_timesteps",
-    #     "20000",
-    #     "--noise_distr",
-    #     "gaussian",
-    #     # "--no-policy_iteration",
-    #     # "--shrink_frs",
-    #     # "0",
-    #     "--RL_actions_per_state",
-    #     "9",
-    #     # "--save_checkpoint",
-    #     # "--load_checkpoint",
-    #     # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
-    #     "--tube_method",
-    #     "smart"
-    # ]
 
 def config_Drone6D_small() -> list[str]:
     return [
         "--model",
         "Drone6D_small",
+        "--satprob",
+        "0.95",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
-        "--eval_episodes",
-        "1000",
-        "--total_timesteps",
-        "100000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        "--RL_actions_per_state",
-        "27",
-        "--satprob",
-        "0.95",
-        # "--tube_method",
-        # "smart",
     ]
 
 def config_Drone6D() -> list[str]:
@@ -198,15 +88,6 @@ def config_Drone6D() -> list[str]:
         # "1000",
         "--solver",
         "jax",
-        "--eval_episodes",
-        "1000",
-        "--total_timesteps",
-        "1000000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        "--RL_actions_per_state",
-        "27",
     ]
 
 def config_Drone6D_battery() -> list[str]:
@@ -219,29 +100,15 @@ def config_Drone6D_battery() -> list[str]:
         # "1000",
         "--solver",
         "jax",
-        "--eval_episodes",
-        "1000",
-        "--total_timesteps",
-        "400000",
-        "--noise_distr",
-        "gaussian",
-        # "--no-policy_iteration",
-        # "--shrink_frs",
-        # "0",
-        "--RL_actions_per_state",
-        "27",
-        # "--save_checkpoint",
-        # "--load_checkpoint",
-        # "output/2026-06-30_22-27-54_Drone6D/checkpoint.pkl",
     ]
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-    # run_fixed_SVMDP(args = config_MountainCar())
+    run_fixed_SVMDP(args = config_MountainCar())
     # run_fixed_SVMDP(args = config_CartPole())
     # run_fixed_SVMDP(args = config_Dubins3D())
     # run_fixed_SVMDP(args = config_Dubins4D())
-    run_fixed_SVMDP(args = config_Drone4D())
+    # run_fixed_SVMDP(args = config_Drone4D())
     # run_fixed_SVMDP(args = config_Drone6D_small())
     # run_fixed_SVMDP(args = config_Drone6D())
     # run_fixed_SVMDP(args = config_Drone6D_battery())

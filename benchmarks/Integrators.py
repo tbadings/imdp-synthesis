@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from benchmarks.dynamics import setmath
+from core.rl.config import RLConfig
 
 
 class DoubleIntegrator(DoubleIntegratorDynamics):
@@ -48,17 +49,17 @@ class DoubleIntegrator(DoubleIntegratorDynamics):
 
         self.x0 = np.array([0, -8])
 
-        self.pi_arch = [64, 64]
-        self.vf_arch = [64, 64]
-        self.inflation_rate = [(-2, 2), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[64, 64],
+            vf_arch=[64, 64],
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            inflation_rate=[(-2, 2), (-1, 1)],
+        )
 
         return

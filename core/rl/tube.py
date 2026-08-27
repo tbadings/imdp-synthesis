@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from core.abstraction.partition import _compute_linear_strides
-from .config import CHUNK_SIZE
+from .config import CHUNK_SIZE, RLConfig
 from .env import BenchmarkEnv
 from .policy import ActorCritic, find_policy_actions_batch
 
@@ -157,9 +157,8 @@ def _smart_inflate_cells(
     actor_critic: ActorCritic,
     params,
     discrete_actions,
-    args,
+    cfg: RLConfig,
     number_per_dim,
-    noise_support_ratio,
 ):
     """
     Reachability-guided tube expansion (smart inflate).
@@ -179,7 +178,7 @@ def _smart_inflate_cells(
 
     visited_arr = np.asarray(list(visited), dtype=np.int64).reshape(-1, dim)
     active_mask[np.dot(visited_arr, strides)] = True
-    noise_support = model.noise["support_radius"] * noise_support_ratio
+    noise_support = model.noise["support_radius"] * cfg.smart_tube_rate
 
     def _get_policy_actions(coords, num_actions):
         obs = np.asarray(val_env.obs_low + (coords.astype(np.float32) + 0.5) * val_env.bin_widths, dtype=np.float32)
@@ -200,7 +199,7 @@ def _smart_inflate_cells(
     while len(queue_flats) > 0:
         p2_iter += 1
         queue_coords = np.stack(np.unravel_index(queue_flats, number_per_dim), axis=-1).astype(np.float32)
-        queue_actions = _get_policy_actions(queue_coords, num_actions=args.RL_actions_per_state)
+        queue_actions = _get_policy_actions(queue_coords, num_actions=cfg.RL_actions_per_state)
         prefix_data = _build_prefix_sum(active_mask, number_per_dim)
 
         new_flats = _expand_cells_batch(

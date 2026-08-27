@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from benchmarks.dynamics import setmath
+from core.rl.config import RLConfig
 
 
 def wrap_theta(theta):
@@ -56,17 +57,19 @@ class Dubins3D(DubinsDynamics3D):
 
         self.x0 = np.array([-7.5, -7.5, 0])
 
-        self.pi_arch = [128, 128, 128]
-        self.vf_arch = [128, 128, 128]
-        self.inflation_rate = [(-3, 3), (-3, 3), (-5, 5)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[128, 128, 128],
+            vf_arch=[128, 128, 128],
+            total_timesteps=100000,
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            RL_actions_per_state=100,
+            inflation_rate=[(-3, 3), (-3, 3), (-5, 5)],
+        )
 
         return

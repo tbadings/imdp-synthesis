@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 from time import time
-from typing import NamedTuple, Sequence
+from typing import NamedTuple
 
 from flax.training.train_state import TrainState
 import jax
@@ -45,30 +45,30 @@ class FlatTransition(NamedTuple):
 # PureJaxRL PPO continuous action training pipeline
 def train_ppo(
     env: BenchmarkEnv,
-    args,
-    pi_arch: Sequence[int],
-    vf_arch: Sequence[int],
+    cfg: RLConfig,
     seed: int = 0,
 ):
     rng = jax.random.PRNGKey(seed)
-    n_envs = args.n_envs
-    n_steps = args.n_steps
-    rl_batch_size = args.rl_batch_size
-    learning_rate = args.learning_rate
-    ent_coef = args.ent_coef
-    total_timesteps = args.total_timesteps
+    n_envs = cfg.n_envs
+    n_steps = cfg.n_steps
+    rl_batch_size = cfg.rl_batch_size
+    learning_rate = cfg.learning_rate
+    ent_coef = cfg.ent_coef
+    total_timesteps = cfg.total_timesteps
+    pi_arch = tuple(cfg.pi_arch)
+    vf_arch = tuple(cfg.vf_arch)
 
     batch_size = n_envs * n_steps
     num_minibatches = max(1, batch_size // rl_batch_size)
     minibatch_size = batch_size // num_minibatches
     num_updates = max(1, total_timesteps // batch_size)
-    update_epochs = args.update_epochs
-    clip_eps = args.clip_eps
-    vf_coef = args.vf_coef
-    max_grad_norm = args.max_grad_norm
-    gamma = args.gamma
-    gae_lambda = args.gae_lambda
-    adam_eps = args.adam_eps
+    update_epochs = cfg.update_epochs
+    clip_eps = cfg.clip_eps
+    vf_coef = cfg.vf_coef
+    max_grad_norm = cfg.max_grad_norm
+    gamma = cfg.gamma
+    gae_lambda = cfg.gae_lambda
+    adam_eps = cfg.adam_eps
 
     # Initialize model network and optimizer
     action_dim = len(env.u_min)

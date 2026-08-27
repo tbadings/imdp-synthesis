@@ -5,6 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import scipy 
 from benchmarks.dynamics import setmath
+from core.rl.config import RLConfig
 
 
 class Drone6D(DroneDynamics):
@@ -82,18 +83,21 @@ class Drone6D(DroneDynamics):
 
         self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01])
 
-        self.pi_arch = [64, 64]
-        self.vf_arch = [64, 64]
-        self.inflation_rate = [(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[64, 64],
+            vf_arch=[64, 64],
+            total_timesteps=1000000,
+            eval_episodes=1000,
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            RL_actions_per_state=27,
+            inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],
+        )
 
         return
 
@@ -146,18 +150,21 @@ class Drone6D_small(DroneDynamics):
 
         self.x0 = np.array([-5.5, 0.01, -5.5, 0.01, 0.01, 0.01])
 
-        self.pi_arch = [32, 32]
-        self.vf_arch = [32, 32]
-        self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[32, 32],
+            vf_arch=[32, 32],
+            total_timesteps=100000,
+            eval_episodes=1000,
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            RL_actions_per_state=27,
+            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)],
+        )
 
         return
 
@@ -216,17 +223,20 @@ class Drone6D_battery(DroneDynamics_battery):
 
         self.x0 = np.array([-5, 0.01, -5, 0.01, 0.01, 0.01, 50])
 
-        self.pi_arch = [64, 64]
-        self.vf_arch = [64, 64]
-        self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[64, 64],
+            vf_arch=[64, 64],
+            total_timesteps=400000,
+            eval_episodes=1000,
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            RL_actions_per_state=27,
+            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)],
+        )
 
         return

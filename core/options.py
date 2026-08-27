@@ -78,12 +78,6 @@ def parse_arguments(argv=None):
                              'model, partition, and IMDP are loaded from the checkpoint.')
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, save checkpoints during execution")
-    parser.add_argument('--RL_actions_per_state', type=_positive_int, default=4,
-                        help="The number of active actions to keep per state based on the RL policy's action preferences. This is used to create a sparse abstraction focused on the most relevant actions for each state.")
-    parser.add_argument('--tube_method', type=str, default="inflation", choices=["inflation", "smart"],
-                        help="Method for creating the state-space tube around the policy's trajectories used for abstraction.")
-    parser.add_argument('--smart_tube_rate', type=float, default=0.5,
-                        help="Noise support rate used for reachability-guided (smart) tube expansion.")
     # Plotting options
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot unit grids in figures")
@@ -92,73 +86,91 @@ def parse_arguments(argv=None):
     parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=True,
                         help="If True, plot ticks in figures")
 
-    parser.add_argument("--total_timesteps", type=int, default=200000)
-    parser.add_argument("--eval_episodes", type=int, default=2500)
-    parser.add_argument("--max_steps", type=int, default=128,
-                        help="Truncation for *training* episodes. Shorter episodes reset more often, "
-                             "which spreads the training data over the whole state space.")
-    parser.add_argument("--eval_steps", type=int, default=None,
-                        help="Rollout horizon for evaluation and tube construction. Defaults to --max_steps; "
-                             "set it when --max_steps is shortened for training, so the rollouts still have "
-                             "room to reach the goal.")
+    # Reinforcement learning options.
+    # Every option here defaults to None, meaning "not given". The actual defaults live in
+    # `core.rl.config.RLConfig`, each benchmark overrides the ones it cares about through its
+    # `rl_config` attribute, and anything passed here overrides both. See `resolve_rl_config`.
+    rl = parser.add_argument_group(
+        "reinforcement learning",
+        "Overrides for the benchmark's rl_config (core.rl.config.RLConfig holds the defaults).",
+    )
 
-    parser.add_argument("--goal_reward", type=float, default=5.0)
-    parser.add_argument("--unsafe_penalty", type=float, default=-5.0)
-    parser.add_argument("--out_of_bounds_penalty", type=float, default=-5.0)
-    parser.add_argument("--distance_cost", type=float, nargs='+', default=0.0,
-                        help="Gain on the Euclidean distance-to-goal cost applied on non-terminal steps: the reward "
-                             "loses distance_cost * d, where d is the normalised distance from the state to the "
-                             "goal set (0 inside it, 1 at the far corner). Either a single value, which scales "
-                             "every state dimension, or one value per state dimension, e.g. --distance_cost 0.05 0.0 "
-                             "to count position but not velocity. 0 disables it. Note that the terminal penalties "
-                             "must stay larger than the cost of surviving without reaching the goal, "
-                             "(per_step_cost + norm(distance_cost)) / (1 - gamma), otherwise ending the episode on "
-                             "purpose becomes optimal.")
-    parser.add_argument("--per_step_cost", type=float, default=0.1,
-                        help="Cost subtracted from the reward on every non-terminal step. 0 disables it; x imposes a cost of x per step.")
+    # Rollouts
+    rl.add_argument("--total_timesteps", type=_positive_int, default=None,
+                    help="Total number of environment steps to train PPO for.")
+    rl.add_argument("--eval_episodes", type=_positive_int, default=None,
+                    help="Number of evaluation rollouts used to measure the policy and seed the tube.")
+    rl.add_argument("--max_steps", type=_positive_int, default=None,
+                    help="Truncation for *training* episodes. Shorter episodes reset more often, "
+                         "which spreads the training data over the whole state space.")
+    rl.add_argument("--eval_steps", type=_positive_int, default=None,
+                    help="Rollout horizon for evaluation and tube construction. Defaults to --max_steps; "
+                         "set it when --max_steps is shortened for training, so the rollouts still have "
+                         "room to reach the goal.")
 
-    parser.add_argument("--ent_coef", type=float, default=0.005,
-                        help="PPO entropy coefficient. Increase (e.g. 0.005) to encourage exploration.")
-    parser.add_argument("--learning_rate", type=float, default=3e-4)
-    parser.add_argument("--rl_batch_size", type=int, default=1024, help="Batch size for PPO updates across minibatches")
-    parser.add_argument("--n_steps", type=int, default=128, help="Number of steps to run for each environment per update in PPO")
-    parser.add_argument("--n_envs", type=int, default=32, help="Number of parallel vectorized environments in JAX (increase to use more CPU cores)")
-    parser.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--finetune_steps", type=int, default=0,
-                        help="Number of training steps for fine-tuning the policy to stay within active states. Set to 0 to skip fine-tuning.")
-    parser.add_argument("--pi_arch", type=int, nargs='+', default=None,
-                        help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128. Defaults to the benchmark's built-in value.")
-    parser.add_argument("--vf_arch", type=int, nargs='+', default=None,
-                        help="Hidden layer sizes for the value function (critic) network, e.g. --vf_arch 256 256 256. Defaults to the benchmark's built-in value.")
+    # Reward function
+    rl.add_argument("--goal_reward", type=float, default=None,
+                    help="Reward for reaching the goal set (terminal).")
+    rl.add_argument("--unsafe_penalty", type=float, default=None,
+                    help="Reward for entering a critical region (terminal); should be negative.")
+    rl.add_argument("--out_of_bounds_penalty", type=float, default=None,
+                    help="Reward for leaving the state-space boundary (terminal); should be negative.")
+    rl.add_argument("--distance_cost", type=float, nargs='+', default=None,
+                    help="Gain on the Euclidean distance-to-goal cost applied on non-terminal steps: the reward "
+                         "loses distance_cost * d, where d is the normalised distance from the state to the "
+                         "goal set (0 inside it, 1 at the far corner). Either a single value, which scales "
+                         "every state dimension, or one value per state dimension, e.g. --distance_cost 0.05 0.0 "
+                         "to count position but not velocity. 0 disables it. Note that the terminal penalties "
+                         "must stay larger than the cost of surviving without reaching the goal, "
+                         "(per_step_cost + norm(distance_cost)) / (1 - gamma), otherwise ending the episode on "
+                         "purpose becomes optimal.")
+    rl.add_argument("--per_step_cost", type=float, default=None,
+                    help="Cost subtracted from the reward on every non-terminal step. 0 disables it; x imposes a cost of x per step.")
 
-    parser.add_argument("--update_epochs", type=int, default=10,
-                        help="Number of PPO optimization epochs per rollout update batch.")
-    parser.add_argument("--clip_eps", type=float, default=0.2,
-                        help="PPO clipping parameter epsilon for policy and value function loss clipping.")
-    parser.add_argument("--vf_coef", type=float, default=0.5,
-                        help="Coefficient for value function loss in total PPO loss.")
-    parser.add_argument("--max_grad_norm", type=float, default=0.5,
-                        help="Maximum gradient norm for gradient clipping in PPO.")
-    parser.add_argument("--gamma", type=float, default=0.99,
-                        help="Discount factor for Generalized Advantage Estimation (GAE).")
-    parser.add_argument("--gae_lambda", type=float, default=0.95,
-                        help="Lambda parameter for Generalized Advantage Estimation (GAE).")
-    parser.add_argument("--adam_eps", type=float, default=1e-5,
-                        help="Epsilon parameter for Adam optimizer.")
+    # PPO hyperparameters
+    rl.add_argument("--ent_coef", type=float, default=None,
+                    help="PPO entropy coefficient. Increase (e.g. 0.005) to encourage exploration.")
+    rl.add_argument("--learning_rate", type=float, default=None,
+                    help="Adam learning rate for PPO.")
+    rl.add_argument("--rl_batch_size", type=_positive_int, default=None,
+                    help="Batch size for PPO updates across minibatches")
+    rl.add_argument("--n_steps", type=_positive_int, default=None,
+                    help="Number of steps to run for each environment per update in PPO")
+    rl.add_argument("--n_envs", type=_positive_int, default=None,
+                    help="Number of parallel vectorized environments in JAX (increase to use more CPU cores)")
+    rl.add_argument("--subproc", action=argparse.BooleanOptionalAction, default=None)
+    rl.add_argument("--finetune_steps", type=_nonnegative_int, default=None,
+                    help="Number of training steps for fine-tuning the policy to stay within active states. Set to 0 to skip fine-tuning.")
+    rl.add_argument("--pi_arch", type=_positive_int, nargs='+', default=None,
+                    help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128.")
+    rl.add_argument("--vf_arch", type=_positive_int, nargs='+', default=None,
+                    help="Hidden layer sizes for the value function (critic) network, e.g. --vf_arch 256 256 256.")
+    rl.add_argument("--update_epochs", type=_positive_int, default=None,
+                    help="Number of PPO optimization epochs per rollout update batch.")
+    rl.add_argument("--clip_eps", type=float, default=None,
+                    help="PPO clipping parameter epsilon for policy and value function loss clipping.")
+    rl.add_argument("--vf_coef", type=float, default=None,
+                    help="Coefficient for value function loss in total PPO loss.")
+    rl.add_argument("--max_grad_norm", type=float, default=None,
+                    help="Maximum gradient norm for gradient clipping in PPO.")
+    rl.add_argument("--gamma", type=float, default=None,
+                    help="Discount factor for Generalized Advantage Estimation (GAE).")
+    rl.add_argument("--gae_lambda", type=float, default=None,
+                    help="Lambda parameter for Generalized Advantage Estimation (GAE).")
+    rl.add_argument("--adam_eps", type=float, default=None,
+                    help="Epsilon parameter for Adam optimizer.")
+
+    # Tube around the RL rollouts
+    rl.add_argument("--RL_actions_per_state", type=_positive_int, default=None,
+                    help="The number of active actions to keep per state based on the RL policy's action preferences. "
+                         "This is used to create a sparse abstraction focused on the most relevant actions for each state.")
+    rl.add_argument("--tube_method", type=str, default=None, choices=["inflation", "smart"],
+                    help="Method for creating the state-space tube around the policy's trajectories used for abstraction.")
+    rl.add_argument("--smart_tube_rate", type=float, default=None,
+                    help="Noise support rate used for reachability-guided (smart) tube expansion.")
 
     # Parse arguments
     args = parser.parse_args(argv)
-
-    # Record which options were actually given on the command line, so that benchmark-supplied
-    # values (e.g. a model's `rl_reward`) can override the defaults below without overriding an
-    # explicit choice made by the caller. Re-parsing into a namespace whose attributes are all
-    # pre-set leaves the untouched ones at the sentinel: argparse only fills in a default when
-    # the attribute is missing, but always writes the ones it parses off the command line. This
-    # stays exact even when the value given happens to equal the default.
-    _unset = object()
-    probe = argparse.Namespace(**{dest: _unset for dest in vars(args)})
-    parser.parse_args(argv, probe)
-    args.cli_provided = frozenset(d for d, v in vars(probe).items() if v is not _unset)
 
     # Canonicalize alias.
     if args.noise_distr == 'normal':

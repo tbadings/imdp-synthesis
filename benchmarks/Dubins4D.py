@@ -4,6 +4,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from benchmarks.dynamics import setmath
+from core.rl.config import RLConfig
 
 
 class Dubins4D(DubinsDynamics4D):
@@ -51,17 +52,19 @@ class Dubins4D(DubinsDynamics4D):
 
         self.x0 = np.array([-3, 2, 0, 0])
 
-        self.pi_arch = [128, 128]
-        self.vf_arch = [128, 128]
-        self.inflation_rate = [(-1, 1), (-1, 1), (-1, 1), (-1, 1)]
-
-        # RL reward function
-        self.rl_reward = {
-            "goal_reward": 5,
-            "unsafe_penalty": -5,
-            "out_of_bounds_penalty": -5,
-            "per_step_cost": 0.1,
-            "distance_cost": 0.0,
-        }
+        # RL configuration: networks, PPO training, reward function, and the tube
+        # grown around the RL rollouts to form the abstraction.
+        self.rl_config = RLConfig(
+            pi_arch=[128, 128],
+            vf_arch=[128, 128],
+            total_timesteps=500000,
+            goal_reward=5,
+            unsafe_penalty=-5,
+            out_of_bounds_penalty=-5,
+            per_step_cost=0.1,
+            distance_cost=0.0,
+            RL_actions_per_state=25,
+            inflation_rate=[(-1, 1), (-1, 1), (-1, 1), (-1, 1)],
+        )
 
         return
