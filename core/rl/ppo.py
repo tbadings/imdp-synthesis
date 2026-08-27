@@ -28,6 +28,8 @@ class Transition(NamedTuple):
     value: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
+    terminated: jnp.ndarray
+    next_value: jnp.ndarray
     log_prob: jnp.ndarray
 
 
@@ -87,7 +89,7 @@ def train_ppo(
     rng, rng_envs = jax.random.split(rng)
     env_keys = jax.random.split(rng_envs, n_envs)
     init_states = jax.vmap(lambda k: _sample_safe_state(k, env))(env_keys)
-    init_dists = jax.vmap(lambda s: jnp.linalg.norm(s - env.goal_center_jnp))(init_states)
+    init_dists = jax.vmap(env.distance_to_goal)(init_states)
     env_states = EnvState(
         state=init_states,
         steps=jnp.zeros((n_envs,), dtype=jnp.int32),
@@ -105,9 +107,13 @@ def train_ppo(
         lp = gaussian_log_prob(act, actor_mean, log_std)
 
         step_keys = jax.random.split(k_step, n_envs)
-        _, next_env_states, rew, done, _ = jax.vmap(
+        _, next_env_states, rew, done, info = jax.vmap(
             lambda rk, s, a: _env_step_jnp(rk, s, a, env)
         )(step_keys, e_states, act)
+
+        # Value of the successor *before* the auto-reset, so that episodes ending on the step
+        # limit bootstrap from where they actually were instead of being treated as terminal.
+        _, _, next_val = t_state.apply_fn(t_state.params, info["next_state"])
 
         trans = Transition(
             obs=obs,
@@ -115,25 +121,30 @@ def train_ppo(
             value=val,
             reward=rew,
             done=done,
+            terminated=info["terminated"],
+            next_value=next_val,
             log_prob=lp,
         )
         return (t_state, next_env_states, k), trans
 
     # Backward scan for Generalized Advantage Estimation (GAE)
-    def _compute_gae(traj_batch, last_val):
-        def _gae_step(carry, transition):
-            gae, next_val = carry
-            done = transition.done
-            reward = transition.reward
-            val = transition.value
+    def _compute_gae(traj_batch):
+        def _gae_step(gae, transition):
+            done = transition.done.astype(jnp.float32)
 
-            delta = reward + gamma * next_val * (1.0 - done) - val
+            # Bootstrap on the true successor, zeroed only on *real* terminations, so that a
+            # time-limit truncation keeps its continuation value. Treating truncation as
+            # terminal charges every timeout the whole remaining step cost against V=0, which
+            # makes ending the episode on purpose (crashing, or leaving the state space) look
+            # cheaper than surviving.
+            next_val = jnp.where(transition.terminated, 0.0, transition.next_value)
+            delta = transition.reward + gamma * next_val - transition.value
             gae = delta + gamma * gae_lambda * (1.0 - done) * gae
-            return (gae, val), (gae, gae + val)
+            return gae, (gae, gae + transition.value)
 
         _, (advantages, targets) = jax.lax.scan(
             _gae_step,
-            (jnp.zeros_like(last_val), last_val),
+            jnp.zeros_like(traj_batch.value[0]),
             traj_batch,
             reverse=True,
         )
@@ -199,8 +210,7 @@ def train_ppo(
         mean_reward = jnp.mean(traj_batch.reward)
 
         # 2. Compute GAE
-        _, _, last_val = t_state.apply_fn(t_state.params, next_e_states.state)
-        advantages, targets = _compute_gae(traj_batch, last_val)
+        advantages, targets = _compute_gae(traj_batch)
 
         # 3. Flatten transitions
         traj_flat = FlatTransition(

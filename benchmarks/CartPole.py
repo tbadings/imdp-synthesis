@@ -58,6 +58,16 @@ class CartPole(CartPoleDynamics):
         
         self.inflation_rate = [(-3, 3), (-3, 3), (-3, 3), (-3, 3)]
 
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_cost": 0.1,
+            # [position, velocity, angle, angular_velocity]
+            "distance_cost": [0.05, 0.0, 0.05, 0.0],
+        }
+
         return
 
     def plot_trajectory_gif(self, trajectory, filename="cartpole_trajectory.gif"):

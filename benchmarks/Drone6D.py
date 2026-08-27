@@ -86,6 +86,15 @@ class Drone6D(DroneDynamics):
         self.vf_arch = [64, 64]
         self.inflation_rate = [(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)]
 
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_cost": 0.1,
+            "distance_cost": 0.0,
+        }
+
         return
 
 
@@ -140,6 +149,15 @@ class Drone6D_small(DroneDynamics):
         self.pi_arch = [32, 32]
         self.vf_arch = [32, 32]
         self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1)]
+
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_cost": 0.1,
+            "distance_cost": 0.0,
+        }
 
         return
 
@@ -201,5 +219,14 @@ class Drone6D_battery(DroneDynamics_battery):
         self.pi_arch = [64, 64]
         self.vf_arch = [64, 64]
         self.inflation_rate = [(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)]
+
+        # RL reward function
+        self.rl_reward = {
+            "goal_reward": 5,
+            "unsafe_penalty": -5,
+            "out_of_bounds_penalty": -5,
+            "per_step_cost": 0.1,
+            "distance_cost": 0.0,
+        }
 
         return

@@ -12,14 +12,51 @@ from .tube import _inflate_cells, _smart_inflate_cells
 
 logger = logging.getLogger(__name__)
 
+# Reward terms a benchmark may pin via its `rl_reward` attribute.
+REWARD_FIELDS = (
+    "goal_reward",
+    "unsafe_penalty",
+    "out_of_bounds_penalty",
+    "distance_cost",
+    "per_step_cost",
+)
+
+
+def _resolve_reward(model, args):
+    """Build the reward function, with lowest precedence first:
+    1. the ``--*_reward`` / ``--*_penalty`` defaults from `core.options`,
+    2. whatever the benchmark pins in its `rl_reward` attribute,
+    3. options actually given on the command line, which always win.
+    """
+
+    resolved = {field: getattr(args, field) for field in REWARD_FIELDS}
+
+    overrides = getattr(model, "rl_reward", None) or {}
+    unknown = set(overrides) - set(REWARD_FIELDS)
+    if unknown:
+        raise ValueError(
+            f"{type(model).__name__}.rl_reward has unknown entries {sorted(unknown)}; "
+            f"expected any of {list(REWARD_FIELDS)}"
+        )
+
+    # `cli_provided` is absent when args is built by hand rather than parsed; then nothing is
+    # treated as explicitly given and the benchmark's values apply.
+    provided = getattr(args, "cli_provided", frozenset())
+    for field, value in overrides.items():
+        if field in provided:
+            logger.info("- Reward: --%s given on the command line, overriding %s.rl_reward",
+                        field, type(model).__name__)
+            continue
+        resolved[field] = value
+
+    return resolved
+
+
 def find_active(model, args):
     cfg = RLConfig(
         max_steps=args.max_steps,
-        goal_reward=args.goal_reward,
-        unsafe_penalty=args.unsafe_penalty,
-        out_of_bounds_penalty=args.out_of_bounds_penalty,
-        distance_reward=args.distance_reward,
-        per_step_reward=args.per_step_reward,
+        eval_steps=args.eval_steps,
+        **_resolve_reward(model, args),
     )
     env = BenchmarkEnv(model, cfg)
 
