@@ -180,12 +180,8 @@ if __name__ == '__main__':
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     heatmap(
-        args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n),
+        args, stamp, idx_show=model.plot_dimensions,
         partition=partition, results=V, filename='heatmap_satprob',
-    )
-    heatmap(
-        args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n),
-        partition=partition, results=policy_inputs[:, 0], filename='heatmap_inputs',
     )
     plot_traces(
         args, stamp, model.plot_dimensions, partition, model,

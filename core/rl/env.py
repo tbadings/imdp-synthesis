@@ -82,11 +82,24 @@ class BenchmarkEnv:
         self.distance_span_jnp = jnp.asarray(self._distance_span)
         self.distance_weights_jnp = jnp.asarray(self.distance_weights)
 
+        prox_dims = cfg.proximity_dims
+        self.prox_dims_jnp = jnp.asarray(prox_dims, dtype=jnp.int32)
+        self.obs_low_prox, self.obs_high_prox = self.obs_low_jnp[self.prox_dims_jnp], self.obs_high_jnp[self.prox_dims_jnp]
+        self.critical_lo_prox, self.critical_hi_prox = self.critical_jnp[:, 0, self.prox_dims_jnp], self.critical_jnp[:, 1, self.prox_dims_jnp]
+
     def distance_to_goal(self, state: jnp.ndarray) -> jnp.ndarray:
         """Weighted Euclidean distance from `state` to the goal set: 0 inside it, at most
         norm(distance_weights) at the far corner of the domain."""
         offset = state - jnp.clip(state, self.goal_lo_jnp, self.goal_hi_jnp)
         return jnp.linalg.norm(self.distance_weights_jnp * offset / self.distance_span_jnp, axis=-1)
+
+    def min_distance_to_boundary_or_obstacle(self, state: jnp.ndarray) -> jnp.ndarray:
+        s = state[..., self.prox_dims_jnp]
+        d_b = jnp.min(jnp.minimum(s - self.obs_low_prox, self.obs_high_prox - s), axis=-1)
+        if len(self.critical) > 0:
+            delta = jnp.maximum(0.0, jnp.maximum(self.critical_lo_prox - s[..., None, :], s[..., None, :] - self.critical_hi_prox))
+            return jnp.minimum(d_b, jnp.min(jnp.linalg.norm(delta, axis=-1), axis=-1))
+        return d_b
 
 def _sample_noise_jax(model, rng, shape=()):
     return model.noise.sample_jax(rng, shape=shape)
@@ -114,12 +127,13 @@ def _env_step_jnp(rng, env_state: EnvState, action, env: BenchmarkEnv, noise_fac
     in_critical = _in_boxes_jnp(next_state, env.critical_jnp)
     out_of_bounds = jnp.any(next_state < env.obs_low_jnp) | jnp.any(next_state > env.obs_high_jnp)
 
-    # Weighted Euclidean distance-to-goal cost on surviving steps
     dist = env.distance_to_goal(next_state)
+    min_dist = env.min_distance_to_boundary_or_obstacle(next_state)
+    proximity_penalty = env.cfg.proximity_penalty * jnp.maximum(1.0 - min_dist, 0.0)
     reward = jnp.select(
         [in_goal, in_critical, out_of_bounds],
         [env.cfg.goal_reward, env.cfg.unsafe_penalty, env.cfg.out_of_bounds_penalty],
-        default=-env.cfg.per_step_cost - dist,
+        default=-env.cfg.per_step_cost - dist - proximity_penalty,
     )
 
     terminated = in_goal | in_critical | out_of_bounds

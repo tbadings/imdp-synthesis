@@ -28,8 +28,9 @@ class RLConfig:
     out_of_bounds_penalty: float = -5.0
     # Either a single value scaling every state dimension, or one value per state dimension.
     distance_cost: float | Sequence[float] = 0.0
-    per_step_cost: float = 0.1
-
+    per_step_cost: float = 0.0
+    proximity_penalty: float = 0.0
+    proximity_dims: Sequence[int] = ()
     # --- Rollouts --------------------------------------------------------------------------
     # Truncation for *training* episodes; eval_steps defaults to it when left at None.
     max_steps: int = 128

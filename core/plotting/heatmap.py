@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 
-def heatmap(args, stamp, idx_show, slice_values, partition, results, filename="heatmap"):
+def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=None, filename="heatmap", **kwargs):
     '''
     Create heat map for the satisfaction probability from any initial state.
 
@@ -33,24 +33,28 @@ def heatmap(args, stamp, idx_show, slice_values, partition, results, filename="h
 
     i1, i2 = np.array(idx_show, dtype=int)
 
-    lb = np.array(partition.boundary_lb)
-    ub = np.array(partition.boundary_ub)
+    nx = partition.number_per_dim[i1]
+    ny = partition.number_per_dim[i2]
 
-    values = np.zeros((partition.number_per_dim[i2], partition.number_per_dim[i1]))
-    slice_idx = np.array(((slice_values - lb) / (ub - lb) * np.array(partition.number_per_dim)) // 1, dtype=int)
+    idxs = np.asarray(partition.region_idx_inv, dtype=int)
+    num_states = len(idxs)
+    res = np.asarray(results)[:num_states]
 
-    # Fill values in matrix to plot in heatmap
-    for x in range(partition.number_per_dim[i1]):
-        for y in range(partition.number_per_dim[i2]):
-            slice_at = slice_idx
-            slice_at[i1] = x
-            slice_at[i2] = y
+    sum_vals = np.zeros((ny, nx), dtype=float)
+    counts = np.zeros((ny, nx), dtype=int)
 
-            # Retrieve state ID
-            state_idx, exists = partition.grid_idx2state(slice_at)
+    # Accumulate sums and counts for states (averaging over missing dimensions)
+    valid = ~np.isnan(res)
+    x_coords = idxs[valid, i1]
+    y_coords = idxs[valid, i2]
+    valid_res = res[valid].astype(float)
 
-            # Fill heatmap value
-            values[y, x] = results[state_idx] if exists else np.nan
+    np.add.at(sum_vals, (y_coords, x_coords), valid_res)
+    np.add.at(counts, (y_coords, x_coords), 1)
+
+    values = np.full((ny, nx), fill_value=np.nan, dtype=float)
+    mask = counts > 0
+    values[mask] = sum_vals[mask] / counts[mask]
 
     X = partition.regions_per_dim['centers'][i1]
     Y = partition.regions_per_dim['centers'][i2]

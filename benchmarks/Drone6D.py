@@ -37,8 +37,8 @@ class Drone6D(DroneDynamics):
         self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
 
-        v_min = -3.5
-        v_max = 3.5
+        v_min = self.v_min
+        v_max = self.v_max
 
         self.partition['boundary'] = np.array([[-17, v_min, -9, v_min, -7, v_min], 
                                                [17, v_max, 9, v_max, 7, v_max]])
@@ -132,8 +132,8 @@ class Drone6D_small(DroneDynamics):
         self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
 
-        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 3.5
+        v_min = self.v_min
+        v_max = self.v_max
 
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
@@ -198,8 +198,8 @@ class Drone6D_battery(DroneDynamics_battery):
         self.uMax = [1, 1, 1]
         self.num_actions = [5, 5, 5]
 
-        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 3.5
+        v_min = self.v_min
+        v_max = self.v_max
 
         self.max_charge = 100
 

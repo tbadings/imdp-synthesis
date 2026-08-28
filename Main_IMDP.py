@@ -235,8 +235,7 @@ if __name__ == '__main__':
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,)
     if args.model.startswith('Drone6D'):
         plot_traces_3d(args, stamp, [0, 2, 4], partition, model, sim.results['traces'], num_traces=10, filename="traces_3d")
-    heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_values, filename="heatmap_satprob")
-    heatmap(args, stamp, idx_show=model.plot_dimensions, slice_values=np.zeros(model.n), partition=partition, results=sim_policy_inputs[:,0], filename="heatmap_inputs")
+    heatmap(args, stamp, idx_show=model.plot_dimensions, partition=partition, results=sim_values, filename="heatmap_satprob")
     
     if args.model == 'Pendulum':
         model.plot_trajectory_gif(

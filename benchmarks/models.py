@@ -198,6 +198,9 @@ class DroneDynamics:
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel']
             self.wrap = jnp.array([False, False, False, False, False, False], dtype=bool)
 
+        self.v_min = -2.5
+        self.v_max = 2.5
+
         # Discretization step size
         self.tau = 1.0
 
@@ -249,6 +252,7 @@ class DroneDynamics:
 
     def step(self, state, action, noise):
         state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
+        state_next = state_next.at[1::2].set(jnp.clip(state_next[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
 
         return state_next
 
@@ -269,6 +273,9 @@ class DroneDynamics:
         # Combine min/max to get the reachable set
         state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
         state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
+
+        state_next_min = state_next_min.at[1::2].set(jnp.clip(state_next_min[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
+        state_next_max = state_next_max.at[1::2].set(jnp.clip(state_next_max[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
 
         return state_next_min, state_next_max
 
@@ -294,6 +301,9 @@ class DroneDynamics_battery:
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel', 'battery']
             self.wrap = jnp.array([False, False, False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2, 4]
+
+        self.v_min = -2.5
+        self.v_max = 2.5
 
         # Discretization step size
         self.tau = 1.0
@@ -351,6 +361,7 @@ class DroneDynamics_battery:
 
     def step(self, state, action, noise):
         state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
+        state_next = state_next.at[1::2].set(jnp.clip(state_next[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
         battery_idx = self.n - 1
 
         in_cs = self.inbox(state, self.charging_station[0])
@@ -378,6 +389,9 @@ class DroneDynamics_battery:
         # Combine min/max to get the reachable set
         state_next_min = jnp.min(Ax, axis=0) + jnp.min(Bu, axis=0)
         state_next_max = jnp.max(Ax, axis=0) + jnp.max(Bu, axis=0)
+
+        state_next_min = state_next_min.at[1::2].set(jnp.clip(state_next_min[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
+        state_next_max = state_next_max.at[1::2].set(jnp.clip(state_next_max[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
 
         # Battery charging calculation (+10 when charging, capped at max_charge; -5 otherwise)
         cs_min = self.charging_station[0][0]

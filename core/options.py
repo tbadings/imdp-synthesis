@@ -126,6 +126,10 @@ def parse_arguments(argv=None):
                          "purpose becomes optimal.")
     rl.add_argument("--per_step_cost", type=float, default=None,
                     help="Cost subtracted from the reward on every non-terminal step. 0 disables it; x imposes a cost of x per step.")
+    rl.add_argument("--proximity_penalty", type=float, default=None,
+                    help="Penalty based on minimum distance to boundaries or obstacles over selected dimensions.")
+    rl.add_argument("--proximity_dims", type=int, nargs='+', default=None,
+                    help="Selected dimensions to compute minimum distance to boundaries or obstacles over (e.g. --proximity_dims 0 2)")
 
     # PPO hyperparameters
     rl.add_argument("--ent_coef", type=float, default=None,

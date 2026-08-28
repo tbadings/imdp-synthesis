@@ -37,8 +37,8 @@ class Drone4D(DroneDynamics):
         self.uMax = [1 ,1]
         self.num_actions = [5, 5]
 
-        v_min = -2.5
-        v_max = 2.5
+        v_min = self.v_min
+        v_max = self.v_max
 
         self.partition['boundary'] = np.array([[-20.0, v_min, -20.0, v_min], [20.0, v_max, 20.0, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
@@ -49,14 +49,14 @@ class Drone4D(DroneDynamics):
         ], dtype=float)
 
         self.critical = np.array([
-            # Lower wall with right-side opening (opening from x = 8.0 to 20.0)
-            [[-20.0, v_min, -7.0, v_min], [8.0, v_max, -5.0, v_max]],
-            # Upper wall with left-side opening (opening from x = -20.0 to -8.0)
-            [[-8.0, v_min, 5.0, v_min], [20.0, v_max, 7.0, v_max]],
-            # Lower lane obstacle (separated by 5 units from bottom and 7 units from lower wall)
-            [[-4.0, v_min, -15.0, v_min], [4.0, v_max, -11.0, v_max]],
-            # Upper lane obstacle (separated by 5 units from top and 7 units from upper wall)
-            [[-4.0, v_min, 11.0, v_min], [4.0, v_max, 15.0, v_max]],
+            # Lower wall with right-side opening
+            [[-20.0, v_min, -7.0, v_min], [8.0, v_max, -4.0, v_max]],
+            # Upper wall with left-side opening
+            [[-8.0, v_min, 4.0, v_min], [20.0, v_max, 7.0, v_max]],
+            # Lower lane obstacle
+            [[-4.0, v_min, -14.0, v_min], [4.0, v_max, -10.0, v_max]],
+            # Upper lane obstacle 
+            [[-4.0, v_min, 10.0, v_min], [4.0, v_max, 14.0, v_max]],
         ], dtype=float)
 
         self.x0 = np.array([-15.0, 0.01, -15.0, 0.01])
@@ -64,22 +64,18 @@ class Drone4D(DroneDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[128, 128],
-            vf_arch=[128, 128],
+            pi_arch=[256, 256],
+            vf_arch=[256, 256],
             # TODO: Long training is still needed here; can we reduce that?
-            total_timesteps=16000000,
-            n_envs=256,
+            total_timesteps=2000000,
             # We need short training rollouts but long evaluation rollouts to reach the goal.
             max_steps=32,
             eval_steps=200,
-            eval_episodes=1000,
-            goal_reward=5,
-            unsafe_penalty=-35,
-            out_of_bounds_penalty=-35,
-            per_step_cost=0.1,
-            distance_cost=[0.2, 0, 0.2, 0],
+            eval_episodes=5000,
             RL_actions_per_state=9,
             inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1)],
+            proximity_penalty=1.0,
+            proximity_dims = [0, 2],
         )
 
         return
@@ -113,8 +109,8 @@ class Drone4D_battery(DroneDynamics_battery):
         self.uMax = [1 ,1]
         self.num_actions = [5, 5]
 
-        v_min = -3.5 # -3.5 not enough (given 0.50 satprob)
-        v_max = 3.5
+        v_min = self.v_min
+        v_max = self.v_max
 
         self.max_charge = 100
 
