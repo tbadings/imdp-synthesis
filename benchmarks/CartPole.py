@@ -41,7 +41,7 @@ class CartPole(CartPoleDynamics):
         self.partition['boundary'] = np.array([[-2.4, -3.0, -0.25, -3.0],
                                                [2.4, 3.0, 0.25, 3.0]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = 20*np.array([12, 8, 6, 10]) + 1
+        self.partition['number_per_dim'] = np.array([200, 200, 200, 200])
 
         # Goal: balance the pole upright, close to the center of the track
         self.goal = np.array([
@@ -57,19 +57,9 @@ class CartPole(CartPoleDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[64, 64],
-            vf_arch=[64, 64],
-            total_timesteps=500000,
-            max_steps=200,
-            eval_episodes=10000,
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
-            per_step_cost=0.1,
-            # [position, velocity, angle, angular_velocity]
-            distance_cost=[0.05, 0.0, 0.05, 0.0],
+            total_timesteps= 500000,
+            inflation_rate=[(-7, 7), (-7, 7), (-7, 7), (-7, 7)],
             RL_actions_per_state=5,
-            inflation_rate=[(-3, 3), (-3, 3), (-3, 3), (-3, 3)],
         )
 
         return

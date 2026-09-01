@@ -62,7 +62,7 @@ class RLConfig:
     # Cells to grow the tube by per state dimension, as (lower, upper) offsets. Only used by
     # tube_method='inflation', which is why it has no all-benchmarks default.
     inflation_rate: Sequence[tuple[int, int]] | None = None
-    smart_tube_rate: float = 0.5
+    smart_tube_rate: float = 0.75
 
     @property
     def rollout_steps(self) -> int:

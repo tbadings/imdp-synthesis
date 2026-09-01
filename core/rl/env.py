@@ -82,7 +82,7 @@ class BenchmarkEnv:
         self.distance_span_jnp = jnp.asarray(self._distance_span)
         self.distance_weights_jnp = jnp.asarray(self.distance_weights)
 
-        prox_dims = cfg.proximity_dims
+        prox_dims = cfg.proximity_dims if len(cfg.proximity_dims) > 0 else tuple(range(self.obs_dim))
         self.prox_dims_jnp = jnp.asarray(prox_dims, dtype=jnp.int32)
         self.obs_low_prox, self.obs_high_prox = self.obs_low_jnp[self.prox_dims_jnp], self.obs_high_jnp[self.prox_dims_jnp]
         self.critical_lo_prox, self.critical_hi_prox = self.critical_jnp[:, 0, self.prox_dims_jnp], self.critical_jnp[:, 1, self.prox_dims_jnp]

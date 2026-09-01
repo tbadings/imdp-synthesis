@@ -39,7 +39,7 @@ class MountainCar(MountainCarDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-1]
         self.uMax = [1]
-        self.num_actions = [9]
+        self.num_actions = [3]
 
         self.partition['boundary'] = np.array([[-1.2, -0.07], [0.6, 0.07]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
@@ -57,20 +57,8 @@ class MountainCar(MountainCarDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[64, 64],
-            vf_arch=[64, 64],
-            total_timesteps=200000,
-            max_steps=200,
-            eval_episodes=100,
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
-            per_step_cost=0.1,
-            # [position, velocity]; velocity deliberately has weight zero
-            distance_cost=[0.05, 0.0],
-            RL_actions_per_state=100,
+            max_steps=2048,
             tube_method="smart",
-            inflation_rate=[(-20, 20), (-20, 20)],
         )
 
         return
