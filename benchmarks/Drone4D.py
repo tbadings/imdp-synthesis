@@ -67,10 +67,7 @@ class Drone4D(DroneDynamics):
             pi_arch=[256, 256],
             vf_arch=[256, 256],
             # TODO: Long training is still needed here; can we reduce that?
-            total_timesteps=2000000,
-            # We need short training rollouts but long evaluation rollouts to reach the goal.
-            max_steps=32,
-            eval_steps=200,
+            total_timesteps=500000,
             eval_episodes=5000,
             RL_actions_per_state=9,
             inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1)],

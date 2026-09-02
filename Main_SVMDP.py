@@ -145,9 +145,9 @@ if __name__ == '__main__':
             svmdp=svmdp,
             s0=partition.x2state(model.x0)[0],
             max_iterations=10000,
-            epsilon=1e-4,
+            epsilon=1e-6,
             RND_SWEEPS=True,
-            BATCH_SIZE=10000,
+            BATCH_SIZE=1000,
             policy_iteration=args.policy_iteration,
             prune_states=False
         )

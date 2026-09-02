@@ -105,10 +105,10 @@ def config_Drone6D_battery() -> list[str]:
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
     # run_fixed_SVMDP(args = config_MountainCar())
-    run_fixed_SVMDP(args = config_CartPole())
+    # run_fixed_SVMDP(args = config_CartPole())
     # run_fixed_SVMDP(args = config_Dubins3D())
     # run_fixed_SVMDP(args = config_Dubins4D())
     # run_fixed_SVMDP(args = config_Drone4D())
     # run_fixed_SVMDP(args = config_Drone6D_small())
-    # run_fixed_SVMDP(args = config_Drone6D())
+    run_fixed_SVMDP(args = config_Drone6D())
     # run_fixed_SVMDP(args = config_Drone6D_battery())

@@ -86,15 +86,7 @@ class Drone6D(DroneDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[64, 64],
-            vf_arch=[64, 64],
             total_timesteps=1000000,
-            eval_episodes=1000,
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
-            per_step_cost=0.1,
-            distance_cost=0.0,
             RL_actions_per_state=27,
             inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],
         )

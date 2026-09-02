@@ -73,8 +73,8 @@ class DubinsDynamics3D:
         y_next = jnp.array([y_min, y_max]) + self.tau * jnp.concat(setmath.mult([u2_min, u2_max], setmath.sin(theta_min, theta_max)))
         theta_next = jnp.array([theta_min, theta_max]) + self.tau * jnp.concat(setmath.mult([self.alpha_min, self.alpha_max], [u1_min, u1_max]))
 
-        state_next = jnp.vstack((x_next,  # jnp.clip(x_next, self.partition['boundary_jnp'][0][0] + 1e-3, self.partition['boundary_jnp'][1][0] - 1e-3),
-                                 y_next,  # jnp.clip(y_next, self.partition['boundary_jnp'][0][1] + 1e-3, self.partition['boundary_jnp'][1][1] - 1e-3),
+        state_next = jnp.vstack((x_next,
+                                 y_next,
                                  theta_next))
 
         state_next_min = jnp.min(state_next, axis=1)
@@ -144,11 +144,12 @@ class DubinsDynamics4D:
         y_next = y + self.tau * V * jnp.sin(theta)
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
         V_next = self.beta * V + self.tau * u2
+        V_next = jnp.clip(V_next, self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.array([x_next,
                                 y_next,
                                 theta_next,
-                                jnp.clip(V_next, self.partition['boundary_jnp'][0][3] + 1e-3, self.partition['boundary_jnp'][1][3] - 1e-3)])
+                                V_next])
         return state_next
 
     @partial(jax.jit, static_argnums=(0))
@@ -166,11 +167,12 @@ class DubinsDynamics4D:
         y_next = jnp.array([y_min, y_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.sin(theta_min, theta_max)))
         theta_next = jnp.array([theta_min, theta_max]) + self.tau * jnp.concat(setmath.mult([self.alpha_min, self.alpha_max], [u1_min, u1_max]))
         V_next = jnp.concat(setmath.mult([self.beta_min, self.beta_max], [V_min, V_max])) + self.tau * jnp.array([u2_min, u2_max])
+        V_next = jnp.clip(V_next, self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.vstack((x_next,
                                  y_next,
                                  theta_next,
-                                 jnp.clip(V_next, self.partition['boundary_jnp'][0][3] + jnp.array([1e-3, 2e-3]), self.partition['boundary_jnp'][1][3] - jnp.array([2e-3, 1e-3]))))
+                                 V_next))
 
         state_next_min = jnp.min(state_next, axis=1)
         state_next_max = jnp.max(state_next, axis=1)

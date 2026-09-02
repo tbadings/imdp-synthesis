@@ -57,12 +57,10 @@ class Dubins4D(DubinsDynamics4D):
         self.rl_config = RLConfig(
             pi_arch=[128, 128],
             vf_arch=[128, 128],
-            total_timesteps=500000,
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
+            total_timesteps=1000000,
             per_step_cost=0.1,
-            distance_cost=0.0,
+            proximity_penalty=1.0,
+            proximity_dims = [0, 1],
             RL_actions_per_state=25,
             inflation_rate=[(-1, 1), (-1, 1), (-1, 1), (-1, 1)],
         )
