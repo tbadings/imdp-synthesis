@@ -43,7 +43,7 @@ class Drone6D(DroneDynamics):
         self.partition['boundary'] = np.array([[-17, v_min, -9, v_min, -7, v_min], 
                                                [17, v_max, 9, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([68, 14, 36, 14, 28, 14])
+        self.partition['number_per_dim'] = np.array([68, 10, 36, 10, 28, 10])
 
         self.goal = np.array([
             [[11, v_min, 1, v_min, -7, v_min], [15, v_max, 5, v_max, -3, v_max]]
@@ -88,12 +88,11 @@ class Drone6D(DroneDynamics):
         self.rl_config = RLConfig(
             total_timesteps=1000000,
             RL_actions_per_state=27,
+            proximity_dims=[0, 2, 4],
+            proximity_penalty=1.0,
             inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],
         )
-
         return
-
-
 
 class Drone6D_small(DroneDynamics):
     '''
@@ -129,7 +128,7 @@ class Drone6D_small(DroneDynamics):
 
         self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([28, 14, 28, 14, 28, 14])
+        self.partition['number_per_dim'] = np.array([28, 10, 28, 10, 28, 10])
 
         self.goal = np.array([
             [[3, v_min, 3, v_min, -7, v_min], [7, v_max, 7, v_max, 7, v_max]]

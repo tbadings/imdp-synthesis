@@ -1,6 +1,6 @@
 # List of used packages
-wheel
-setuptools
+wheel==0.46.3
+setuptools==82.0.1
 sphinx==8.2.3
 sphinx-rtd-theme==3.0.2
 sphinx_mdinclude==0.6.2
