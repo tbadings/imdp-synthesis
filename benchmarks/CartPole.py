@@ -45,7 +45,7 @@ class CartPole(CartPoleDynamics):
 
         # Goal: balance the pole upright, close to the center of the track
         self.goal = np.array([
-            [[1, -3.0, -0.05, -3.0], [2.4, 3.0, 0.05, 3.0]]
+            [[1, -1.0, -0.05, -1.0], [2.4, 1.0, 0.05, 1.0]]
         ], dtype=float)
 
         self.critical = np.array([
