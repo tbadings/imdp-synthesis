@@ -96,6 +96,9 @@ class DubinsDynamics4D:
         self.state_variables = ['x', 'y', 'angle', 'velocity']
         self.wrap = jnp.array([False, False, True, False], dtype=bool)
 
+        self.v_min = 0.5
+        self.v_max = 2.5
+
         if args.model_version == 0:
             logger.info('- Load Dubins without parameter uncertainty')
             # No parameter uncertainty
@@ -103,9 +106,9 @@ class DubinsDynamics4D:
             self.alpha_max = 0.85
             self.alpha = 0.85
 
-            self.beta_min = 0.85
-            self.beta_max = 0.85
-            self.beta = 0.85
+            self.beta_min = 1.0
+            self.beta_max = 1.0
+            self.beta = 1.0
         elif args.model_version == 1:
             logger.info('- Load Dubins with uncertain parameters in the interval [0.80,0.90]')
             # High parameter uncertainty
@@ -113,9 +116,9 @@ class DubinsDynamics4D:
             self.alpha_max = 0.90
             self.alpha = 0.85
 
-            self.beta_min = 0.80
-            self.beta_max = 0.90
-            self.beta = 0.85
+            self.beta_min = 1.0
+            self.beta_max = 1.0
+            self.beta = 1.0
         else:
             logger.info('- Load Dubins with uncertain parameters in the interval [0.75,0.95]')
             # High parameter uncertainty
@@ -123,14 +126,14 @@ class DubinsDynamics4D:
             self.alpha_max = 0.95
             self.alpha = 0.85
 
-            self.beta_min = 0.75
-            self.beta_max = 0.95
-            self.beta = 0.85
+            self.beta_min = 1.0
+            self.beta_max = 1.0
+            self.beta = 1.0
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0, 0, 0.1, 0])**2) # From stdev to covariance
-            self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
+            self.noise = GaussianDistr(np.array([0.01, 0.01, 0, 0])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[5, 5, 1, 1])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0, 0, 0.1, 0])) # Halfwidth
             self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
@@ -140,15 +143,15 @@ class DubinsDynamics4D:
     def step(self, state, action, noise):
         x, y, theta, V = state[0], state[1], state[2], state[3]
         u1, u2 = action[0], action[1]
-        x_next = x + self.tau * V * jnp.cos(theta)
-        y_next = y + self.tau * V * jnp.sin(theta)
+        x_next = x + self.tau * V * jnp.cos(theta) + noise[0]
+        y_next = y + self.tau * V * jnp.sin(theta) + noise[1]
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
-        V_next = self.beta * V + self.tau * u2
+        V_next = jnp.clip(V + self.tau * u2 + noise[3], self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.array([x_next,
                                 y_next,
                                 theta_next,
-                                jnp.clip(V_next, self.partition['boundary_jnp'][0][3] + 1e-3, self.partition['boundary_jnp'][1][3] - 1e-3)])
+                                V_next])
         return state_next
 
     @partial(jax.jit, static_argnums=(0))
@@ -165,12 +168,12 @@ class DubinsDynamics4D:
         x_next = jnp.array([x_min, x_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.cos(theta_min, theta_max)))
         y_next = jnp.array([y_min, y_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.sin(theta_min, theta_max)))
         theta_next = jnp.array([theta_min, theta_max]) + self.tau * jnp.concat(setmath.mult([self.alpha_min, self.alpha_max], [u1_min, u1_max]))
-        V_next = jnp.concat(setmath.mult([self.beta_min, self.beta_max], [V_min, V_max])) + self.tau * jnp.array([u2_min, u2_max])
+        V_next = jnp.clip(jnp.array([V_min, V_max]) + self.tau * jnp.array([u2_min, u2_max]), self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.vstack((x_next,
                                  y_next,
                                  theta_next,
-                                 jnp.clip(V_next, self.partition['boundary_jnp'][0][3] + jnp.array([1e-3, 2e-3]), self.partition['boundary_jnp'][1][3] - jnp.array([2e-3, 1e-3]))))
+                                 V_next))
 
         state_next_min = jnp.min(state_next, axis=1)
         state_next_max = jnp.max(state_next, axis=1)

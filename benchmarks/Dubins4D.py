@@ -32,37 +32,39 @@ class Dubins4D(DubinsDynamics4D):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-0.5 * np.pi, -5]
-        self.uMax = [0.5 * np.pi, 5]
-        self.num_actions = [7, 7]
+        self.uMin = [-1, -1]
+        self.uMax = [1, 1]
+        self.num_actions = [5, 5]
 
-        self.partition['boundary'] = np.array([[-10, 0, -np.pi, -3], [10, 10, np.pi, 3]])
+        v_min = self.v_min
+        v_max = self.v_max
+
+        self.partition['boundary'] = np.array([[-10, 0, -np.pi-0.01, v_min], [10, 10, np.pi+0.01, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = 1.35 * np.array([40, 20, 20, 20])
+        self.partition['number_per_dim'] = np.array([200, 100, 100, 100])
 
         self.goal = np.array([
-            [[6, 6, -np.pi, -3], [9, 9, np.pi, 3]]
+            [[6, 6, -np.pi, v_min], [9, 9, np.pi, v_max]]
         ], dtype=float)
 
         self.critical = np.array([
-            [[4, 5, -2 * np.pi, -3], [5, 10, 2 * np.pi, 3]],
-            [[-1, 0, -2 * np.pi, -3], [0, 5, 2 * np.pi, 3]],
-            [[-5, 4, -2 * np.pi, -3], [-1, 5, 2 * np.pi, 3]],
+            [[4, 5, -2 * np.pi, v_min], [5, 10, 2 * np.pi, v_max]],
+            [[-1, 0, -2 * np.pi, v_min], [0, 5, 2 * np.pi, v_max]],
+            [[-5, 4, -2 * np.pi, v_min], [-1, 5, 2 * np.pi, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-3, 2, 0, 0])
+        self.x0 = np.array([-3, 2, np.pi/2, 0.5])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[128, 128],
-            vf_arch=[128, 128],
+            pi_arch=[256, 256], 
+            vf_arch=[256, 256],
             total_timesteps=1000000,
-            per_step_cost=0.1,
-            proximity_penalty=1.0,
-            proximity_dims = [0, 1],
-            RL_actions_per_state=25,
-            inflation_rate=[(-1, 1), (-1, 1), (-1, 1), (-1, 1)],
+            proximity_dims=[0, 1],
+            proximity_penalty=0.1,
+            RL_actions_per_state=9,
+            inflation_rate=[(-5, 5), (-5, 5), (-5, 5), (-5, 5)],
         )
 
         return
