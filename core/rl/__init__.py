@@ -45,7 +45,7 @@ def find_active(model, args):
                 f"tube_method='inflation' needs {type(model).__name__}.rl_config.inflation_rate "
                 f"to be set (one (lower, upper) cell offset per state dimension)."
             )
-        active_states = _inflate_cells(newly_visited, cfg.inflation_rate, number_per_dim)
+        active_states = _inflate_cells(newly_visited, cfg.inflation_rate, number_per_dim, model.wrap)
     elif cfg.tube_method == "smart":
         active_states = _smart_inflate_cells(
             visited=newly_visited, model=model, val_env=env,

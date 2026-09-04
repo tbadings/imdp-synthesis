@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Fixed-rate Inflation Method
 # =============================================================================
 
-def _inflate_cells(visited_cells, inflation_rate, number_per_dim):
+def _inflate_cells(visited_cells, inflation_rate, number_per_dim, wrap):
     """Inflate visited grid cells by a fixed ratio."""
     dim = len(number_per_dim)
     cells = np.asarray(list(visited_cells), dtype=np.int64).reshape(-1, dim)
@@ -32,8 +32,9 @@ def _inflate_cells(visited_cells, inflation_rate, number_per_dim):
 
     for i in range(0, len(cells), CHUNK_SIZE):
         chunk = (cells[i : i + CHUNK_SIZE, None, :] + offsets[None, :, :]).reshape(-1, dim)
-        valid = chunk[np.all((chunk >= 0) & (chunk < number_per_dim), axis=1)]
-        unique_ids.append(valid @ strides)
+        valid = np.all((chunk >= 0) & (chunk < number_per_dim) | wrap, axis=1)
+        valid_cells = np.where(wrap, chunk[valid] % number_per_dim, chunk[valid])
+        unique_ids.append(valid_cells @ strides)
 
     all_ids = np.unique(np.concatenate(unique_ids))
     return np.stack(np.unravel_index(all_ids, number_per_dim), axis=-1).astype(int)
