@@ -64,6 +64,8 @@ def config_Dubins4D() -> list[str]:
     return [
         "--model",
         "Dubins4D",
+        "--satprob",
+        "0.95",
         # "--batch_size",
         # "1000",
         "--solver",

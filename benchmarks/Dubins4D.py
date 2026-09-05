@@ -39,9 +39,9 @@ class Dubins4D(DubinsDynamics4D):
         v_min = self.v_min
         v_max = self.v_max
 
-        self.partition['boundary'] = np.array([[-10, 0, -np.pi-0.01, v_min], [10, 10, np.pi+0.01, v_max]])
+        self.partition['boundary'] = np.array([[-10, 0, -np.pi, v_min], [10, 10, np.pi, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([200, 100, 100, 100])
+        self.partition['number_per_dim'] = np.array([100, 100, 100, 100])
 
         self.goal = np.array([
             [[6, 6, -np.pi, v_min], [9, 9, np.pi, v_max]]
@@ -64,7 +64,8 @@ class Dubins4D(DubinsDynamics4D):
             proximity_dims=[0, 1],
             proximity_penalty=0.1,
             RL_actions_per_state=9,
-            inflation_rate=[(-5, 5), (-5, 5), (-5, 5), (-5, 5)],
+            inflation_rate=[(-10, 10), (-10, 10), (-2, 2), (-2, 2)],
+            
         )
 
         return

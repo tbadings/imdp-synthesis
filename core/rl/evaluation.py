@@ -14,6 +14,7 @@ from .plotting import plot_rl_trajectories
 logger = logging.getLogger(__name__)
 
 def _build_batch_evaluator(actor_critic: ActorCritic, env: BenchmarkEnv, max_steps: int):
+    action_range = jnp.array(env.u_max_jnp - env.u_min_jnp)
     def _single_rollout(params, discrete_actions_jnp, rng):
         rng_reset, rng_steps = jax.random.split(rng)
         init_obs = jax.random.uniform(rng_reset, shape=env.reset_low_jnp.shape, minval=env.reset_low_jnp, maxval=env.reset_high_jnp)
@@ -26,7 +27,8 @@ def _build_batch_evaluator(actor_critic: ActorCritic, env: BenchmarkEnv, max_ste
 
             actor_mean = actor_critic.apply(params, obs_q)[0]
             if discrete_actions_jnp is not None:
-                action = discrete_actions_jnp[jnp.argmin(jnp.sum((actor_mean - discrete_actions_jnp) ** 2, axis=-1))]
+                norm_diff = (actor_mean - discrete_actions_jnp) / action_range
+                action = discrete_actions_jnp[jnp.argmin(jnp.sum(norm_diff ** 2, axis=-1))]
             else:
                 action = actor_mean
 

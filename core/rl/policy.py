@@ -69,6 +69,8 @@ def find_policy_actions_batch(obs_batch, actor_critic, params, discrete_actions,
 
     num = min(num, discrete_actions.shape[0])
     diff = actions[:, None, :] - discrete_actions[None, :, :]
-    top_k_idx = np.argsort(np.sum(diff * diff, axis=2), axis=1)[:, :num]
+    action_range = np.max(discrete_actions, axis=0) - np.min(discrete_actions, axis=0)
+    norm_diff = diff / action_range
+    top_k_idx = np.argsort(np.sum(norm_diff * norm_diff, axis=2), axis=1)[:, :num]
     
     return discrete_actions[top_k_idx], discrete_actions[top_k_idx[:, 0]]

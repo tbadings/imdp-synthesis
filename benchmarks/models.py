@@ -132,8 +132,8 @@ class DubinsDynamics4D:
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0.01, 0.01, 0, 0])**2) # From stdev to covariance
-            self.noise.set_partition_probs(num_cells=[5, 5, 1, 1])
+            self.noise = GaussianDistr(np.array([0.0, 0.0, 0.1, 0.0])**2) # From stdev to covariance
+            self.noise.set_partition_probs(num_cells=[1, 1, 25, 1])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0, 0, 0.1, 0])) # Halfwidth
             self.noise.set_partition_probs(num_cells=[1, 1, 10, 1])
