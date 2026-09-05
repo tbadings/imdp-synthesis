@@ -89,15 +89,15 @@ class DubinsDynamics4D:
         self.independent_input_dims = None
 
         # Discretization step size
-        self.tau = 0.5
+        self.tau = 1
 
         self.n = 4
         self.p = 2
         self.state_variables = ['x', 'y', 'angle', 'velocity']
         self.wrap = jnp.array([False, False, True, False], dtype=bool)
 
-        self.v_min = 0.5
-        self.v_max = 2.5
+        self.v_min = -0.5
+        self.v_max = 0.5
 
         if args.model_version == 0:
             logger.info('- Load Dubins without parameter uncertainty')
@@ -106,9 +106,9 @@ class DubinsDynamics4D:
             self.alpha_max = 0.85
             self.alpha = 0.85
 
-            self.beta_min = 1.0
-            self.beta_max = 1.0
-            self.beta = 1.0
+            self.beta_min = 0.2
+            self.beta_max = 0.2
+            self.beta = 0.2
         elif args.model_version == 1:
             logger.info('- Load Dubins with uncertain parameters in the interval [0.80,0.90]')
             # High parameter uncertainty
@@ -116,9 +116,9 @@ class DubinsDynamics4D:
             self.alpha_max = 0.90
             self.alpha = 0.85
 
-            self.beta_min = 1.0
-            self.beta_max = 1.0
-            self.beta = 1.0
+            self.beta_min = 0.2
+            self.beta_max = 0.2
+            self.beta = 0.2
         else:
             logger.info('- Load Dubins with uncertain parameters in the interval [0.75,0.95]')
             # High parameter uncertainty
@@ -126,9 +126,9 @@ class DubinsDynamics4D:
             self.alpha_max = 0.95
             self.alpha = 0.85
 
-            self.beta_min = 1.0
-            self.beta_max = 1.0
-            self.beta = 1.0
+            self.beta_min = 0.2
+            self.beta_max = 0.2
+            self.beta = 0.2
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
@@ -146,7 +146,7 @@ class DubinsDynamics4D:
         x_next = x + self.tau * V * jnp.cos(theta) + noise[0]
         y_next = y + self.tau * V * jnp.sin(theta) + noise[1]
         theta_next = wrap_theta(theta + self.tau * self.alpha * u1 + noise[2])
-        V_next = jnp.clip(V + self.tau * u2 + noise[3], self.v_min + 1e-4, self.v_max - 1e-4)
+        V_next = jnp.clip(V + self.beta * self.tau * u2 + noise[3], self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.array([x_next,
                                 y_next,
@@ -168,7 +168,7 @@ class DubinsDynamics4D:
         x_next = jnp.array([x_min, x_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.cos(theta_min, theta_max)))
         y_next = jnp.array([y_min, y_max]) + self.tau * jnp.concat(setmath.mult([V_min, V_max], setmath.sin(theta_min, theta_max)))
         theta_next = jnp.array([theta_min, theta_max]) + self.tau * jnp.concat(setmath.mult([self.alpha_min, self.alpha_max], [u1_min, u1_max]))
-        V_next = jnp.clip(jnp.array([V_min, V_max]) + self.tau * jnp.array([u2_min, u2_max]), self.v_min + 1e-4, self.v_max - 1e-4)
+        V_next = jnp.clip(jnp.array([V_min, V_max]) + self.beta * self.tau * jnp.array([u2_min, u2_max]), self.v_min + 1e-4, self.v_max - 1e-4)
 
         state_next = jnp.vstack((x_next,
                                  y_next,

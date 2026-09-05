@@ -32,8 +32,8 @@ class Dubins4D(DubinsDynamics4D):
         self.targets = {}
 
         # Authority limit for the control u, both positive and negative
-        self.uMin = [-1, -1]
-        self.uMax = [1, 1]
+        self.uMin = [-0.5, -0.5]
+        self.uMax = [0.5, 0.5]
         self.num_actions = [5, 5]
 
         v_min = self.v_min
@@ -41,7 +41,7 @@ class Dubins4D(DubinsDynamics4D):
 
         self.partition['boundary'] = np.array([[-10, 0, -np.pi, v_min], [10, 10, np.pi, v_max]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([100, 100, 100, 100])
+        self.partition['number_per_dim'] = np.array([100, 50, 100, 100])
 
         self.goal = np.array([
             [[6, 6, -np.pi, v_min], [9, 9, np.pi, v_max]]
@@ -53,19 +53,18 @@ class Dubins4D(DubinsDynamics4D):
             [[-5, 4, -2 * np.pi, v_min], [-1, 5, 2 * np.pi, v_max]],
         ], dtype=float)
 
-        self.x0 = np.array([-3, 2, np.pi/2, 0.5])
+        self.x0 = np.array([-3, 2, np.pi/2, 0.0])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             pi_arch=[256, 256], 
             vf_arch=[256, 256],
-            total_timesteps=1000000,
+            total_timesteps=2000000,
             proximity_dims=[0, 1],
             proximity_penalty=0.1,
             RL_actions_per_state=9,
-            inflation_rate=[(-10, 10), (-10, 10), (-2, 2), (-2, 2)],
-            
+            inflation_rate=[(-5, 5), (-5, 5), (-5, 5), (-5, 5)],
         )
 
         return
