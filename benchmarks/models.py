@@ -216,6 +216,8 @@ class DroneDynamics:
                            [self.tau]])
         
         if dim == 2:
+            self.damping = 0.01
+
             self.A  = scipy.linalg.block_diag(Ablock, Ablock)
             self.B  = scipy.linalg.block_diag(Bblock, Bblock)
 
@@ -235,6 +237,7 @@ class DroneDynamics:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
         else:
+            self.damping = 0.0
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
             self.B  = scipy.linalg.block_diag(Bblock, Bblock, Bblock)
 
@@ -255,6 +258,7 @@ class DroneDynamics:
 
     def step(self, state, action, noise):
         state_next = jnp.dot(self.A, state) + jnp.dot(self.B, action) + noise
+        state_next = state_next.at[1::2].add(-self.damping * state[1::2] * jnp.abs(state[1::2]))
         state_next = state_next.at[1::2].set(jnp.clip(state_next[1::2], self.v_min + 1e-4, self.v_max - 1e-4))
 
         return state_next
@@ -271,6 +275,7 @@ class DroneDynamics:
         
         # Propogate dynamics for all vertices
         Ax = jnp.dot(self.A, state_vertices.T).T  # Shape (2^n, n)
+        Ax = Ax.at[:, 1::2].add(-self.damping * state_vertices[:, 1::2] * jnp.abs(state_vertices[:, 1::2]))
         Bu = jnp.dot(self.B, action_vertices.T).T  # Shape (2^p, n)
 
         # Combine min/max to get the reachable set
