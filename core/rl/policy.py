@@ -11,17 +11,38 @@ class ActorCritic(nn.Module):
     action_dim: int
     pi_arch: Sequence[int] = (128, 128)
     vf_arch: Sequence[int] = (128, 128)
+    init_method: str = "orthogonal"
 
     @nn.compact
     def __call__(self, x):
+        if self.init_method == "orthogonal":
+            hidden_init = nn.initializers.orthogonal(np.sqrt(2))
+            actor_output_init = nn.initializers.orthogonal(0.01)
+            critic_output_init = nn.initializers.orthogonal(1.0)
+        elif self.init_method == "uniform":
+            # Uniform variance scaling avoids QR factorization during initialization.
+            hidden_init = nn.initializers.variance_scaling(
+                scale=2.0, mode="fan_in", distribution="uniform"
+            )
+            actor_output_init = nn.initializers.variance_scaling(
+                scale=0.01**2, mode="fan_in", distribution="uniform"
+            )
+            critic_output_init = nn.initializers.variance_scaling(
+                scale=1.0, mode="fan_in", distribution="uniform"
+            )
+        else:
+            raise ValueError(
+                f"Unsupported init_method {self.init_method!r}; expected 'orthogonal' or 'uniform'."
+            )
+
         # Policy / Actor network
         actor_x = x
         for h in self.pi_arch:
             actor_x = nn.relu(
-                nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(actor_x)
+                nn.Dense(h, kernel_init=hidden_init, bias_init=nn.initializers.zeros)(actor_x)
             )
         actor_mean = nn.Dense(
-            self.action_dim, kernel_init=nn.initializers.orthogonal(0.01), bias_init=nn.initializers.zeros
+            self.action_dim, kernel_init=actor_output_init, bias_init=nn.initializers.zeros
         )(actor_x)
         log_std = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
 
@@ -29,10 +50,10 @@ class ActorCritic(nn.Module):
         critic_x = x
         for h in self.vf_arch:
             critic_x = nn.relu(
-                nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(critic_x)
+                nn.Dense(h, kernel_init=hidden_init, bias_init=nn.initializers.zeros)(critic_x)
             )
         critic_val = nn.Dense(
-            1, kernel_init=nn.initializers.orthogonal(1.0), bias_init=nn.initializers.zeros
+            1, kernel_init=critic_output_init, bias_init=nn.initializers.zeros
         )(critic_x)
 
         return actor_mean, log_std, jnp.squeeze(critic_val, axis=-1)

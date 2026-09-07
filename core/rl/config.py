@@ -53,6 +53,8 @@ class RLConfig:
     adam_eps: float = 1e-5
     pi_arch: Sequence[int] = (64, 64)
     vf_arch: Sequence[int] = (64, 64)
+    # Kernel initialization for both networks: "orthogonal" or uniform variance scaling.
+    init_method: str = "orthogonal"
     finetune_steps: int = 0
     subproc: bool = False
 

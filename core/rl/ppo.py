@@ -73,7 +73,9 @@ def train_ppo(
     # Initialize model network and optimizer
     action_dim = len(env.u_min)
     obs_dim = env.model.n
-    network = ActorCritic(action_dim=action_dim, pi_arch=pi_arch, vf_arch=vf_arch)
+    network = ActorCritic(
+        action_dim=action_dim, pi_arch=pi_arch, vf_arch=vf_arch, init_method=cfg.init_method
+    )
 
     rng, rng_init = jax.random.split(rng)
     init_obs = jnp.zeros((1, obs_dim), dtype=jnp.float32)

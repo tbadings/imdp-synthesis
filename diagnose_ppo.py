@@ -346,7 +346,8 @@ def record_run(options, project_argv):
     if cfg.total_timesteps % count:
         raise ValueError("Rollout size is not divisible by the production minibatch count")
     env = BenchmarkEnv(model, cfg)
-    network = ActorCritic(action_dim=len(env.u_min), pi_arch=tuple(cfg.pi_arch), vf_arch=tuple(cfg.vf_arch))
+    network = ActorCritic(action_dim=len(env.u_min), pi_arch=tuple(cfg.pi_arch),
+                          vf_arch=tuple(cfg.vf_arch), init_method=cfg.init_method)
     metadata = {"schema": SCHEMA, "mode": "run", "label": options.label,
                 "created_utc": datetime.now(timezone.utc).isoformat(),
                 "project_argv": project_argv,
@@ -399,7 +400,8 @@ def replay_run(options):
     configure(reference["project_argv"])
     experiment = reference["experiment"]
     cfg = RLConfig(**experiment["cfg"])
-    network = ActorCritic(action_dim=experiment["action_dim"], pi_arch=tuple(cfg.pi_arch), vf_arch=tuple(cfg.vf_arch))
+    network = ActorCritic(action_dim=experiment["action_dim"], pi_arch=tuple(cfg.pi_arch),
+                          vf_arch=tuple(cfg.vf_arch), init_method=cfg.init_method)
     state, _ = initialize(network, cfg, experiment["seed"], experiment["obs_dim"])
     arrays = {}
     with np.load(options.reference / "arrays.npz", allow_pickle=False) as saved:
