@@ -69,7 +69,7 @@ class Drone4D(DroneDynamics):
             # TODO: Long training is still needed here; can we reduce that?
             total_timesteps=3000000,
             RL_actions_per_state=9,
-            inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2)],
+            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2)],
             proximity_penalty=0.1,
             proximity_dims = [0, 2],
         )
