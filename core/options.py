@@ -149,8 +149,9 @@ def parse_arguments(argv=None):
                     help="Hidden layer sizes for the policy (actor) network, e.g. --pi_arch 128 128.")
     rl.add_argument("--vf_arch", type=_positive_int, nargs='+', default=None,
                     help="Hidden layer sizes for the value function (critic) network, e.g. --vf_arch 256 256 256.")
-    rl.add_argument("--init_method", choices=["orthogonal", "uniform"], default=None,
+    rl.add_argument("--init_method", choices=["orthogonal", "deterministic_orthogonal", "uniform"], default=None,
                     help="Kernel initialization for the actor and critic: orthogonal (RLConfig default) "
+                         "with native QR, deterministic_orthogonal with portable host QR, "
                          "or uniform variance scaling.")
     rl.add_argument("--update_epochs", type=_positive_int, default=None,
                     help="Number of PPO optimization epochs per rollout update batch.")

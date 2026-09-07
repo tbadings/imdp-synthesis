@@ -152,6 +152,33 @@ If you run into memory limits, reduce `--batch_size` first. On larger benchmarks
 - `--log-level {DEBUG,INFO,WARNING,ERROR}`: logging verbosity.
 - `--output_root`: root directory for timestamped run folders.
 
+For PPO, set `RLConfig(init_method="deterministic_orthogonal")` in the benchmark
+or pass `--init_method deterministic_orthogonal`. The available methods are:
+
+- `orthogonal` (the RLConfig default): native Gaussian sampling and QR.
+- `deterministic_orthogonal`: portable Gaussian sampling and fixed-order host QR,
+  retaining orthogonality and the original gains (hidden layers: sqrt(2), actor
+  output: 0.01, critic output: 1). Initialization is slower and the same seed
+  produces different weights from native orthogonal initialization.
+- `uniform`: fan-in uniform variance scaling, which also changes the weight
+  distribution and can affect learning performance.
+
+The deterministic method targets identical initial weights for the same JAX key,
+architecture, dtype and gain on IEEE-754 machines, including M3/M5. It does not
+guarantee identical training: later JAX operations can still differ across chips.
+To compare one PPO batch, run the following on each machine with the same code
+and packages (use `diag-m3` and `diag-m5` as the respective output directory):
+
+```bash
+python diagnose_ppo.py run --out output/diag-m3 --model Drone4D --seed 0 --init_method deterministic_orthogonal
+python diagnose_ppo.py compare output/diag-m3 output/diag-m5 --atol 0 --rtol 0
+```
+
+Copy both result directories to one machine before comparing. Each run directory
+must be new. Check `02_initial/params` first to distinguish initialization from
+later arithmetic differences. The explicit CLI option overrides any benchmark
+setting, including a previous `init_method="uniform"` override.
+
 ## Plotting controls
 
 - `--plot_title` or `--no-plot_title`

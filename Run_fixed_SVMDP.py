@@ -78,6 +78,8 @@ def config_Drone4D() -> list[str]:
         "Drone4D",
         "--solver",
         "jax",
+        "--seed",
+        "1"
     ]
 
 def config_Drone6D_small() -> list[str]:

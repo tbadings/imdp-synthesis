@@ -5,6 +5,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from core.rl.initializers import deterministic_orthogonal
+
 
 # Neural Network Policy & Value Function Architecture in Flax
 class ActorCritic(nn.Module):
@@ -19,6 +21,10 @@ class ActorCritic(nn.Module):
             hidden_init = nn.initializers.orthogonal(np.sqrt(2))
             actor_output_init = nn.initializers.orthogonal(0.01)
             critic_output_init = nn.initializers.orthogonal(1.0)
+        elif self.init_method == "deterministic_orthogonal":
+            hidden_init = deterministic_orthogonal(np.sqrt(2))
+            actor_output_init = deterministic_orthogonal(0.01)
+            critic_output_init = deterministic_orthogonal(1.0)
         elif self.init_method == "uniform":
             # Uniform variance scaling avoids QR factorization during initialization.
             hidden_init = nn.initializers.variance_scaling(
@@ -32,7 +38,8 @@ class ActorCritic(nn.Module):
             )
         else:
             raise ValueError(
-                f"Unsupported init_method {self.init_method!r}; expected 'orthogonal' or 'uniform'."
+                f"Unsupported init_method {self.init_method!r}; expected 'orthogonal', "
+                "'deterministic_orthogonal', or 'uniform'."
             )
 
         # Policy / Actor network

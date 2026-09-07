@@ -72,6 +72,7 @@ class Drone4D(DroneDynamics):
             inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2)],
             proximity_penalty=0.1,
             proximity_dims = [0, 2],
+            init_method = "deterministic_orthogonal", # TEMP SETTING FOR DEBUGGING
         )
 
         return
