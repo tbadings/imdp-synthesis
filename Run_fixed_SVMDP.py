@@ -7,16 +7,20 @@ here. Any RL option can still be overridden per run by adding e.g. "--total_time
 "1000" below, which takes precedence over the benchmark's `rl_config`.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+from core.deterministic import setup_determinism_env
+
 def run_fixed_SVMDP(args: list[str]) -> None:
+    setup_determinism_env()
     root = Path(__file__).resolve().parent
     runfile = root / "Main_SVMDP.py"
 
     cmd = [sys.executable, str(runfile), *args]
-    subprocess.run(cmd, check=True, cwd=root)
+    subprocess.run(cmd, check=True, cwd=root, env=os.environ)
 
 def config_MountainCar() -> list[str]:
     return [
@@ -119,9 +123,9 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = config_MountainCar())
     # run_fixed_SVMDP(args = config_Pendulum())
     # run_fixed_SVMDP(args = config_CartPole())
-    # run_fixed_SVMDP(args = config_Dubins3D())
+    run_fixed_SVMDP(args = config_Dubins3D())
     # run_fixed_SVMDP(args = config_Dubins4D())
-    run_fixed_SVMDP(args = config_Drone4D())
+    # run_fixed_SVMDP(args = config_Drone4D())
     # run_fixed_SVMDP(args = config_Drone6D_small())
     # run_fixed_SVMDP(args = config_Drone6D())
     # run_fixed_SVMDP(args = config_Drone6D_battery())

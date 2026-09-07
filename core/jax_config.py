@@ -8,7 +8,9 @@ logger = logging.getLogger(__name__)
 
 
 def configure_jax(args: argparse.Namespace) -> None:
-    jax.config.update("jax_default_matmul_precision", "high")
+    # Use 'highest' precision for float32 matmuls (disables TF32 on Ampere/Ada/Hopper GPUs)
+    # to ensure identical IEEE-754 precision on both CPU and GPU.
+    jax.config.update("jax_default_matmul_precision", "highest")
 
     # Keep explicitly requested int64 arrays at int64 (default is to warn and truncate to int32). Only
     # dtypes asked for by name are affected, so defaults stay 32-bit and floats stay float32. Partition
@@ -31,7 +33,20 @@ def configure_jax(args: argparse.Namespace) -> None:
         args.rvi_device = jax.devices('cpu')[0]
         logger.info('Requested to run RVI on CPU')
 
-    logger.info('JAX backend in use: %s', args.rvi_device.platform)
+    # RL exploration / policy training device (defaults to CPU for cross-hardware determinism)
+    rl_device_choice = getattr(args, 'rl_device', 'cpu')
+    if rl_device_choice == 'gpu' and args.gpu:
+        try:
+            args.rl_device_obj = jax.devices('gpu')[0]
+            logger.info('Requested to run RL on GPU')
+        except Exception:
+            args.rl_device_obj = jax.devices('cpu')[0]
+            logger.warning('GPU requested for RL but unavailable; falling back to CPU')
+    else:
+        args.rl_device_obj = jax.devices('cpu')[0]
+        logger.info('Requested to run RL on CPU (deterministic)')
+
+    logger.info('JAX backend in use: %s | RL device: %s', args.rvi_device.platform, args.rl_device_obj.platform)
     logger.debug('JAX devices (%s): %s', args.rvi_device.platform, jax.devices(args.rvi_device.platform))
 
     # In debug mode, configure jax to use Float64 (for more accurate computations)
@@ -42,7 +57,13 @@ def configure_jax(args: argparse.Namespace) -> None:
 
     # Report the widths in use, after the x64 switch above has settled. Integer widths chosen further
     # down (partition cell keys, FRS merge keys) log themselves where they are picked.
-    logger.info('Float precision: %s | JAX x64: %s | explicit int64 dtypes: %s',
+    x64_enabled = getattr(jax.config, 'jax_enable_x64', False)
+    matmul_prec = getattr(jax.config, 'jax_default_matmul_precision', 'highest')
+    explicit_x64 = getattr(jax.config, 'jax_explicit_x64_dtypes', None)
+    explicit_x64_str = explicit_x64.name.lower() if hasattr(explicit_x64, 'name') else str(explicit_x64).lower()
+
+    logger.info('Float precision: %s | JAX x64: %s | matmul precision: %s | explicit int64 dtypes: %s',
                 np.dtype(args.floatprecision).name,
-                'enabled' if jax.config.read('jax_enable_x64') else 'disabled',
-                jax.config.jax_explicit_x64_dtypes.name.lower())
+                'enabled' if x64_enabled else 'disabled',
+                matmul_prec,
+                explicit_x64_str)

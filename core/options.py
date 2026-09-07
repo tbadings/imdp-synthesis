@@ -34,6 +34,8 @@ def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, perform additional checks to debug python")
+    parser.add_argument('--deterministic', action=argparse.BooleanOptionalAction, default=True,
+                        help="If True, enforce deterministic execution across hardware (XLA flags, highest precision, single-thread CPU reductions)")
     parser.add_argument('--seed', type=int, default=0,
                         help="Seed for random number generators (Jax, Numpy)")
     parser.add_argument('--decimals', type=_nonnegative_int, default=4,
@@ -54,6 +56,8 @@ def parse_arguments(argv=None):
                         help="If true, run on GPU. Otherwise, run on CPU")
     parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run RVI on GPU. Otherwise, run on CPU")
+    parser.add_argument('--rl_device', type=str, default='cpu', choices=['cpu', 'gpu'],
+                        help="Device to use for RL exploration and policy training (defaults to 'cpu' for cross-hardware determinism)")
     
     parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=True,
                         help="If true, run policy iteration. Otherwise, run value iteration")

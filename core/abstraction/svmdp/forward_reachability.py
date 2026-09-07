@@ -188,7 +188,7 @@ class RectangularForward(object):
         # indices across noise cells (floor(a + noise/cw) spreads by at most noise_range/cw + 2,
         # independent of the action-dependent offset a), and check the radix product fits the int
         # dtype. Noise is local, so this holds comfortably; otherwise fall back to a lexsort.
-        x64 = jax.config.read('jax_enable_x64')
+        x64 = getattr(jax.config, 'jax_enable_x64', False)
         key_dtype = jnp.int64 if x64 else jnp.int32
         max_key = int(np.iinfo(np.int64 if x64 else np.int32).max)
         radix_product = 1.0

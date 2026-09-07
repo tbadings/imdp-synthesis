@@ -6,6 +6,10 @@ import pickle
 import random
 import time
 from pathlib import Path
+
+from core.deterministic import setup_determinism_env
+setup_determinism_env()
+
 import jax
 import numpy as np
 
@@ -173,6 +177,8 @@ if __name__ == '__main__':
             args_to_save = copy.copy(args)
             del args_to_save.rvi_device
             del args_to_save.jax_key
+            if hasattr(args_to_save, 'rl_device_obj'):
+                del args_to_save.rl_device_obj
             ckpt_path = args.output_dir / 'checkpoint.pkl'
             logger.info('Saving checkpoint to %s', ckpt_path)
             with open(ckpt_path, 'wb') as f:
