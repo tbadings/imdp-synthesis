@@ -95,6 +95,10 @@ def parse_arguments(argv=None):
         "Overrides for the benchmark's rl_config (core.rl.config.RLConfig holds the defaults).",
     )
 
+    # Policy checkpoint loading
+    rl.add_argument("--load_policy", "--load_rl_policy", type=str, default=None, dest="load_policy",
+                    help="Path to saved RL policy (.pkl) or directory to skip training and load policy.")
+
     # Rollouts
     rl.add_argument("--total_timesteps", type=_positive_int, default=None,
                     help="Total number of environment steps to train PPO for.")

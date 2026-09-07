@@ -1,13 +1,15 @@
 import itertools
 import logging
 from pathlib import Path
+import pickle
 from time import time
+import jax
 import numpy as np
 
 from .config import resolve_rl_config
 from .env import BenchmarkEnv
 from .evaluation import evaluate_policy
-from .policy import find_policy_actions_batch
+from .policy import ActorCritic, find_policy_actions_batch
 from .ppo import train_ppo
 from .tube import _inflate_cells, _smart_inflate_cells
 
@@ -18,7 +20,22 @@ def find_active(model, args):
     logger.info("Resolved RL config: %s", cfg)
     env = BenchmarkEnv(model, cfg)
 
-    actor_critic, params = train_ppo(env=env, cfg=cfg, seed=args.seed)
+    load_policy = args.load_policy
+    if load_policy:
+        p = Path(load_policy)
+        p = p / "rl_policy.pkl" if p.is_dir() else (p if p.exists() else p.with_suffix(".pkl"))
+        with open(p, "rb") as f:
+            saved = pickle.load(f)
+        params = saved["params"] if isinstance(saved, dict) and "params" in saved else saved
+        actor_critic = ActorCritic(action_dim=len(env.u_min), pi_arch=tuple(cfg.pi_arch), vf_arch=tuple(cfg.vf_arch))
+        logger.info("Loaded RL policy from %s; skipped training.", p)
+    else:
+        actor_critic, params = train_ppo(env=env, cfg=cfg, seed=args.seed)
+        out_dir = Path(getattr(args, "output_dir", "output"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        with open(out_dir / "rl_policy.pkl", "wb") as f:
+            pickle.dump({"params": jax.tree_util.tree_map(np.asarray, params)}, f)
+        logger.info("Saved RL policy to %s", out_dir / "rl_policy.pkl")
 
     # Discretize continuous control space
     discrete_actions_per_dim = [
