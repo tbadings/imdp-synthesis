@@ -8,7 +8,7 @@ import numpy as np
 
 
 # 2D plots of trajectories
-def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, max_trajectories=100):
+def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, max_trajectories=100, algo_name=None):
     if len(dims) != 2:
         raise ValueError("This runner currently supports plotting exactly 2 dimensions.")
 
@@ -58,7 +58,7 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
         ylim=(eval_env.obs_low[d1], eval_env.obs_high[d1]),
         xlabel=base_model.state_variables[d0],
         ylabel=base_model.state_variables[d1],
-        title=f"PPO trajectories ({base_model.__class__.__name__})",
+        title=f"{str(algo_name).upper()} trajectories ({base_model.__class__.__name__})",
     )
     if legend_handles:
         ax.legend(handles=legend_handles, loc="upper right")

@@ -504,6 +504,8 @@ class MountainCarDynamics:
         self.max_speed = 0.07
         self.gravity = 0.0025
         self.power = 0.0015
+        self.min_position = -1.2
+        self.max_position = 0.6
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
@@ -519,9 +521,14 @@ class MountainCarDynamics:
         position, velocity = state[0], state[1]
 
         velocity = velocity + self.tau * (action[0] * self.power - self.gravity * jnp.cos(3 * position))
-        velocity = jnp.clip(velocity, -self.max_speed+1e-4, self.max_speed-1e-4)
+        velocity = jnp.clip(velocity, -self.max_speed + 1e-4, self.max_speed - 1e-4)
         position = position + self.tau * velocity + noise[0]
         velocity = velocity + noise[1]
+
+        # Gymnasium boundary: reset negative velocity upon hitting left wall, and clip position
+        velocity = jnp.where((position <= self.min_position + 1e-4) & (velocity < 0), 0.0, velocity)
+        position = jnp.clip(position, self.min_position + 1e-4, self.max_position - 1e-4)
+        velocity = jnp.clip(velocity, -self.max_speed + 1e-4, self.max_speed - 1e-4)
 
         return jnp.array([position, velocity])
 
@@ -546,6 +553,15 @@ class MountainCarDynamics:
         velo_next = jnp.clip(velo_next, -self.max_speed + 1e-4, self.max_speed - 1e-4)
 
         pos_next = jnp.array([pos_min, pos_max]) + self.tau * velo_next
+
+        # Gymnasium boundary: reset negative velocity upon hitting left wall, and clip position
+        hit_left_any = pos_next[0] <= self.min_position + 1e-4
+        hit_left_all = pos_next[1] <= self.min_position + 1e-4
+        velo_next_max = jnp.where(hit_left_any & (velo_next[1] < 0.0), 0.0, velo_next[1])
+        velo_next_min = jnp.where(hit_left_all, jnp.maximum(velo_next[0], 0.0), velo_next[0])
+        velo_next = jnp.array([velo_next_min, velo_next_max])
+
+        pos_next = jnp.clip(pos_next, self.min_position + 1e-4, self.max_position - 1e-4)
 
         state_next = jnp.vstack((pos_next,
                                  velo_next))

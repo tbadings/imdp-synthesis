@@ -1,41 +1,37 @@
 import itertools
 import logging
 from pathlib import Path
-import pickle
-from time import time
-import jax
 import numpy as np
 
-from .config import resolve_rl_config
+from .base import BaseRL
+from .config import RLConfig, resolve_rl_config
 from .env import BenchmarkEnv
-from .evaluation import evaluate_policy
-from .policy import ActorCritic, find_policy_actions_batch
-from .ppo import train_ppo
-from .tube import _inflate_cells, _smart_inflate_cells
+from .ppo import PPO
+from .sac import SAC
+from .tube import build_tube
 
 logger = logging.getLogger(__name__)
 
-def find_active(model, args):
-    cfg = resolve_rl_config(model, args)
-    logger.info("Resolved RL config: %s", cfg)
-    env = BenchmarkEnv(model, cfg)
 
-    load_policy = args.load_policy
-    if load_policy:
-        p = Path(load_policy)
-        p = p / "rl_policy.pkl" if p.is_dir() else (p if p.exists() else p.with_suffix(".pkl"))
-        with open(p, "rb") as f:
-            saved = pickle.load(f)
-        params = saved["params"] if isinstance(saved, dict) and "params" in saved else saved
-        actor_critic = ActorCritic(action_dim=len(env.u_min), pi_arch=tuple(cfg.pi_arch), vf_arch=tuple(cfg.vf_arch))
-        logger.info("Loaded RL policy from %s; skipped training.", p)
+def get_rl_algo(algo: str, env, cfg) -> BaseRL:
+    """Factory creating an RL algorithm instance for the given environment and config."""
+    return SAC(env, cfg) if str(algo).lower().strip() == "sac" else PPO(env, cfg)
+
+
+def find_active(model, args):
+    """Find active states and discrete actions using reinforcement learning exploration."""
+    cfg = resolve_rl_config(model, args)
+    env = BenchmarkEnv(model, cfg)
+    agent = get_rl_algo(cfg.rl_algo, env, cfg)
+
+    out_dir = Path(getattr(args, "output_dir", "output"))
+
+    # Load checkpoint or train
+    if getattr(args, "load_policy", None):
+        agent.load(args.load_policy)
     else:
-        actor_critic, params = train_ppo(env=env, cfg=cfg, seed=args.seed)
-        out_dir = Path(getattr(args, "output_dir", "output"))
-        out_dir.mkdir(parents=True, exist_ok=True)
-        with open(out_dir / "rl_policy.pkl", "wb") as f:
-            pickle.dump({"params": jax.tree_util.tree_map(np.asarray, params)}, f)
-        logger.info("Saved RL policy to %s", out_dir / "rl_policy.pkl")
+        agent.train(seed=args.seed)
+        agent.save(out_dir / "rl_policy.pkl")
 
     # Discretize continuous control space
     discrete_actions_per_dim = [
@@ -44,40 +40,38 @@ def find_active(model, args):
     ]
     discrete_actions = np.array(list(itertools.product(*discrete_actions_per_dim)), dtype=np.float32)
 
-    # Policy evaluation rollouts
-    goal_reached, newly_visited, _ = evaluate_policy(
-        actor_critic=actor_critic, params=params,
-        base_model=model, env=env, cfg=cfg,
-        dims=list(model.plot_dimensions), output_dir=Path(getattr(args, "output_dir", "output")),
-        discrete_actions=discrete_actions, seed=args.seed,
-    )
-    logger.info(f"Goal reached in {goal_reached}/{cfg.eval_episodes} episodes.")
+    # Rollouts and visited cell extraction
+    goal_reached, newly_visited, _ = agent.evaluate(discrete_actions=discrete_actions, seed=args.seed, output_dir=out_dir)
+    logger.info("Goal reached in %d/%d evaluation episodes.", goal_reached, cfg.eval_episodes)
 
-    # Compute the tube (active states)
-    number_per_dim = np.asarray(model.partition["number_per_dim"], dtype=np.int64)
-    logger.info("Growing the tube around the RL rollouts (method: %s)...", cfg.tube_method)
-    if cfg.tube_method == "inflation":
-        if cfg.inflation_rate is None:
-            raise ValueError(
-                f"tube_method='inflation' needs {type(model).__name__}.rl_config.inflation_rate "
-                f"to be set (one (lower, upper) cell offset per state dimension)."
-            )
-        active_states = _inflate_cells(newly_visited, cfg.inflation_rate, number_per_dim, model.wrap)
-    elif cfg.tube_method == "smart":
-        active_states = _smart_inflate_cells(
-            visited=newly_visited, model=model, val_env=env,
-            actor_critic=actor_critic, params=params,
-            discrete_actions=discrete_actions, cfg=cfg, number_per_dim=number_per_dim,
-        )
-    else:
-        raise ValueError(f"Unknown tube_method: {cfg.tube_method}")
+    # Tube construction (active states)
+    active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)
 
-    # Obtain the policy (active actions)
-    obs_batch = np.asarray(env.obs_low + (active_states.astype(np.float32) + 0.5) * env.bin_widths, dtype=np.float32)
-    top_k, rl_policy = find_policy_actions_batch(
-        obs_batch, actor_critic, params, discrete_actions, num=cfg.RL_actions_per_state
-    )
+    # Discretized active policy actions
+    top_k, _ = agent.get_policy_actions(active_states, discrete_actions, num=cfg.RL_actions_per_state)
     active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
-    return active_states, active_actions, rl_policy
 
-__all__ = ["find_active"]
+    return active_states, active_actions, agent
+
+
+# Backward-compatibility aliases
+get_rl_wrapper = get_rl_algo
+BaseRLWrapper = BaseRL
+PPOWrapper = PPO
+SACWrapper = SAC
+
+__all__ = [
+    "find_active",
+    "BenchmarkEnv",
+    "RLConfig",
+    "resolve_rl_config",
+    "get_rl_algo",
+    "get_rl_wrapper",
+    "BaseRL",
+    "BaseRLWrapper",
+    "PPO",
+    "PPOWrapper",
+    "SAC",
+    "SACWrapper",
+    "build_tube",
+]

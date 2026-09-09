@@ -1,25 +1,44 @@
-import logging
-from pathlib import Path
-from time import time
-from typing import NamedTuple
-
+from typing import NamedTuple, Sequence
+import flax.linen as nn
 from flax.training.train_state import TrainState
 import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from tqdm import tqdm
 
-from .config import RLConfig
-from .env import BenchmarkEnv, EnvState, _sample_safe_state, _env_step_jnp
-from .policy import (
-    ActorCritic,
-    gaussian_sample,
-    gaussian_log_prob,
-    gaussian_entropy,
-)
+from .base import BaseRL
 
-logger = logging.getLogger(__name__)
+
+class ActorCritic(nn.Module):
+    action_dim: int
+    pi_arch: Sequence[int] = (64, 64)
+    vf_arch: Sequence[int] = (64, 64)
+
+    @nn.compact
+    def __call__(self, x):
+        actor_x, critic_x = x, x
+        for h in self.pi_arch:
+            actor_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(actor_x))
+        actor_mean = nn.Dense(self.action_dim, kernel_init=nn.initializers.orthogonal(0.01), bias_init=nn.initializers.zeros)(actor_x)
+        log_std = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
+
+        for h in self.vf_arch:
+            critic_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(critic_x))
+        critic_val = nn.Dense(1, kernel_init=nn.initializers.orthogonal(1.0), bias_init=nn.initializers.zeros)(critic_x)
+
+        return actor_mean, log_std, jnp.squeeze(critic_val, axis=-1)
+
+
+def gaussian_sample(rng, mean, log_std):
+    return mean + jnp.exp(log_std) * jax.random.normal(rng, shape=mean.shape)
+
+
+def gaussian_log_prob(action, mean, log_std):
+    return -0.5 * jnp.sum(jnp.square((action - mean) / jnp.exp(log_std)) + 2.0 * log_std + jnp.log(2.0 * jnp.pi), axis=-1)
+
+
+def gaussian_entropy(log_std):
+    return jnp.sum(log_std + 0.5 * (1.0 + jnp.log(2.0 * jnp.pi)), axis=-1)
 
 
 class Transition(NamedTuple):
@@ -28,234 +47,165 @@ class Transition(NamedTuple):
     value: jnp.ndarray
     reward: jnp.ndarray
     done: jnp.ndarray
-    terminated: jnp.ndarray
-    next_value: jnp.ndarray
     log_prob: jnp.ndarray
 
 
-class FlatTransition(NamedTuple):
-    obs: jnp.ndarray
-    action: jnp.ndarray
-    value: jnp.ndarray
-    log_prob: jnp.ndarray
-    advantage: jnp.ndarray
-    target: jnp.ndarray
-
-
-# PureJaxRL PPO continuous action training pipeline
-def train_ppo(
-    env: BenchmarkEnv,
-    cfg: RLConfig,
-    seed: int = 0,
-):
-    rng = jax.random.PRNGKey(seed)
+def make_train(env, cfg):
+    """Create JAX PPO training components."""
+    lr = cfg.learning_rate
     n_envs = cfg.n_envs
     n_steps = cfg.n_steps
-    rl_batch_size = cfg.rl_batch_size
-    learning_rate = cfg.learning_rate
-    ent_coef = cfg.ent_coef
-    total_timesteps = cfg.total_timesteps
-    pi_arch = tuple(cfg.pi_arch)
-    vf_arch = tuple(cfg.vf_arch)
-
-    batch_size = n_envs * n_steps
-    num_minibatches = max(1, batch_size // rl_batch_size)
-    minibatch_size = batch_size // num_minibatches
-    num_updates = max(1, total_timesteps // batch_size)
     update_epochs = cfg.update_epochs
+    rl_batch_size = cfg.rl_batch_size
+    gamma, gae_lambda = cfg.gamma, cfg.gae_lambda
     clip_eps = cfg.clip_eps
-    vf_coef = cfg.vf_coef
-    max_grad_norm = cfg.max_grad_norm
-    gamma = cfg.gamma
-    gae_lambda = cfg.gae_lambda
-    adam_eps = cfg.adam_eps
+    vf_coef, ent_coef = cfg.vf_coef, cfg.ent_coef
+    max_grad_norm, adam_eps = cfg.max_grad_norm, cfg.adam_eps
 
-    # Initialize model network and optimizer
-    action_dim = len(env.u_min)
-    obs_dim = env.model.n
-    network = ActorCritic(action_dim=action_dim, pi_arch=pi_arch, vf_arch=vf_arch)
+    total_batch = n_envs * n_steps
+    num_minibatches = total_batch // rl_batch_size
 
-    rng, rng_init = jax.random.split(rng)
-    init_obs = jnp.zeros((1, obs_dim), dtype=jnp.float32)
-    params = network.init(rng_init, init_obs)
-
-    tx = optax.chain(
-        optax.clip_by_global_norm(max_grad_norm),
-        optax.adam(learning_rate, eps=adam_eps),
-    )
-    train_state = TrainState.create(apply_fn=network.apply, params=params, tx=tx)
-
-    # Initialize parallel environments
-    rng, rng_envs = jax.random.split(rng)
-    env_keys = jax.random.split(rng_envs, n_envs)
-    init_states = jax.vmap(lambda k: _sample_safe_state(k, env))(env_keys)
-    init_dists = jax.vmap(env.distance_to_goal)(init_states)
-    env_states = EnvState(
-        state=init_states,
-        steps=jnp.zeros((n_envs,), dtype=jnp.int32),
-        prev_dist=init_dists,
+    network = ActorCritic(
+        action_dim=env.action_dim,
+        pi_arch=tuple(cfg.pi_arch),
+        vf_arch=tuple(cfg.vf_arch),
     )
 
-    # Step function for rollout collection across all vectorized environments
-    def _step_fn(carry, _):
-        t_state, e_states, k = carry
-        k, k_act, k_step = jax.random.split(k, 3)
+    def init_train_state(rng: jax.Array) -> TrainState:
+        dummy_obs = jnp.zeros((1, env.obs_dim))
+        params = network.init(rng, dummy_obs)
+        tx = optax.chain(optax.clip_by_global_norm(max_grad_norm), optax.adam(lr, eps=adam_eps))
+        return TrainState.create(apply_fn=network.apply, params=params, tx=tx)
 
-        obs = e_states.state
-        actor_mean, log_std, val = t_state.apply_fn(t_state.params, obs)
-        act = gaussian_sample(k_act, actor_mean, log_std)
-        lp = gaussian_log_prob(act, actor_mean, log_std)
+    def step_env(carry, _):
+        t_state, env_states, rng = carry
+        rng, rng_act, rng_step = jax.random.split(rng, 3)
 
-        step_keys = jax.random.split(k_step, n_envs)
-        _, next_env_states, rew, done, info = jax.vmap(
-            lambda rk, s, a: _env_step_jnp(rk, s, a, env)
-        )(step_keys, e_states, act)
+        mean, log_std, val = t_state.apply_fn(t_state.params, env_states.obs)
+        action = gaussian_sample(rng_act, mean, log_std)
+        log_prob = gaussian_log_prob(action, mean, log_std)
 
-        # Value of the successor *before* the auto-reset, so that episodes ending on the step
-        # limit bootstrap from where they actually were instead of being treated as terminal.
-        _, _, next_val = t_state.apply_fn(t_state.params, info["next_state"])
+        step_keys = jax.random.split(rng_step, n_envs)
+        next_obs, next_env_states, rew, done, _ = env.step(step_keys, env_states, action)
 
-        trans = Transition(
-            obs=obs,
-            action=act,
-            value=val,
-            reward=rew,
-            done=done,
-            terminated=info["terminated"],
-            next_value=next_val,
-            log_prob=lp,
+        transition = Transition(
+            obs=env_states.obs, action=action, value=val, reward=rew, done=done, log_prob=log_prob
         )
-        return (t_state, next_env_states, k), trans
+        return (t_state, next_env_states, rng), transition
 
-    # Backward scan for Generalized Advantage Estimation (GAE)
-    def _compute_gae(traj_batch):
-        def _gae_step(gae, transition):
-            done = transition.done.astype(jnp.float32)
+    def compute_gae(traj_batch, last_val):
+        def _gae_step(gae, transition_and_next_val):
+            trans, next_v = transition_and_next_val
+            delta = trans.reward + gamma * next_v * (1.0 - trans.done) - trans.value
+            gae = delta + gamma * gae_lambda * (1.0 - trans.done) * gae
+            return gae, (gae, gae + trans.value)
 
-            # Bootstrap on the true successor, zeroed only on *real* terminations, so that a
-            # time-limit truncation keeps its continuation value. Treating truncation as
-            # terminal charges every timeout the whole remaining step cost against V=0, which
-            # makes ending the episode on purpose (crashing, or leaving the state space) look
-            # cheaper than surviving.
-            next_val = jnp.where(transition.terminated, 0.0, transition.next_value)
-            delta = transition.reward + gamma * next_val - transition.value
-            gae = delta + gamma * gae_lambda * (1.0 - done) * gae
-            return gae, (gae, gae + transition.value)
-
+        next_values = jnp.concatenate([traj_batch.value[1:], jnp.expand_dims(last_val, axis=0)], axis=0)
         _, (advantages, targets) = jax.lax.scan(
-            _gae_step,
-            jnp.zeros_like(traj_batch.value[0]),
-            traj_batch,
-            reverse=True,
+            _gae_step, jnp.zeros_like(traj_batch.value[0]), (traj_batch, next_values), reverse=True
         )
         return advantages, targets
 
-    # PPO minibatch loss and gradient update
-    def _update_epoch(carry, _):
-        t_state, traj_flat, k = carry
-        k, k_perm = jax.random.split(k)
-        perm = jax.random.permutation(k_perm, batch_size)
-        shuffled_traj = jax.tree_util.tree_map(lambda x: x[perm], traj_flat)
+    def update_epoch(carry, _):
+        t_state, traj_flat, advs, targets, rng = carry
+        rng, rng_perm = jax.random.split(rng)
+        perm = jax.random.permutation(rng_perm, total_batch)
+
+        shuffled_trans = jax.tree_util.tree_map(lambda x: x[perm], traj_flat)
+        shuffled_advs = advs[perm]
+        shuffled_targets = targets[perm]
 
         minibatches = jax.tree_util.tree_map(
-            lambda x: jnp.reshape(x, (num_minibatches, minibatch_size) + x.shape[1:]),
-            shuffled_traj,
+            lambda x: jnp.reshape(x, (num_minibatches, rl_batch_size) + x.shape[1:]),
+            (shuffled_trans, shuffled_advs, shuffled_targets),
         )
 
-        def _update_minibatch(t_state, mb):
-            def _loss_fn(p):
-                actor_mean, log_std, val = t_state.apply_fn(p, mb.obs)
-                lp = gaussian_log_prob(mb.action, actor_mean, log_std)
+        def update_minibatch(t_state, mb_data):
+            mb_trans, mb_adv, mb_target = mb_data
+
+            def loss_fn(params):
+                mean, log_std, val = t_state.apply_fn(params, mb_trans.obs)
+                lp = gaussian_log_prob(mb_trans.action, mean, log_std)
                 entropy = gaussian_entropy(log_std)
 
-                # Actor loss
-                ratio = jnp.exp(lp - mb.log_prob)
-                norm_adv = (mb.advantage - jnp.mean(mb.advantage)) / (jnp.std(mb.advantage) + 1e-8)
-                actor_loss1 = -norm_adv * ratio
-                actor_loss2 = -norm_adv * jnp.clip(ratio, 1.0 - clip_eps, 1.0 + clip_eps)
+                log_ratio = jnp.clip(lp - mb_trans.log_prob, -20.0, 20.0)
+                ratio = jnp.exp(log_ratio)
+                actor_loss1 = -mb_adv * ratio
+                actor_loss2 = -mb_adv * jnp.clip(ratio, 1.0 - clip_eps, 1.0 + clip_eps)
                 actor_loss = jnp.mean(jnp.maximum(actor_loss1, actor_loss2))
+                critic_loss = 0.5 * jnp.mean(jnp.square(val - mb_target))
+                total_loss = actor_loss + vf_coef * critic_loss - ent_coef * jnp.mean(entropy)
+                approx_kl = jnp.mean((ratio - 1.0) - log_ratio)
+                return total_loss, (actor_loss, critic_loss, jnp.mean(entropy), approx_kl)
 
-                # Critic loss with clipping
-                v_clipped = mb.value + jnp.clip(val - mb.value, -clip_eps, clip_eps)
-                v_loss1 = jnp.square(val - mb.target)
-                v_loss2 = jnp.square(v_clipped - mb.target)
-                critic_loss = 0.5 * jnp.mean(jnp.maximum(v_loss1, v_loss2))
-
-                # Entropy
-                mean_entropy = jnp.mean(entropy)
-                ent_loss = -ent_coef * mean_entropy
-
-                return actor_loss + vf_coef * critic_loss + ent_loss
-
-            grads = jax.grad(_loss_fn)(t_state.params)
+            grads, (act_l, crit_l, ent, kl) = jax.grad(loss_fn, has_aux=True)(t_state.params)
             t_state = t_state.apply_gradients(grads=grads)
-            return t_state, None
+            return t_state, {"actor_loss": act_l, "critic_loss": crit_l, "entropy": ent, "approx_kl": kl}
 
-        t_state, _ = jax.lax.scan(_update_minibatch, t_state, minibatches)
-        return (t_state, traj_flat, k), None
+        t_state, mb_metrics = jax.lax.scan(update_minibatch, t_state, minibatches)
+        return (t_state, traj_flat, advs, targets, rng), jax.tree_util.tree_map(jnp.mean, mb_metrics)
 
-    # Single PPO update step
-    @jax.jit
-    def _update_step(runner_state, _):
-        t_state, e_states, k = runner_state
+    def update_step(runner_state, _):
+        t_state, env_states, rng = runner_state
+        (t_state, next_env_states, rng), traj_batch = jax.lax.scan(step_env, (t_state, env_states, rng), None, length=n_steps)
+        _, _, last_val = t_state.apply_fn(t_state.params, next_env_states.obs)
 
-        # 1. Rollout collection
-        (t_state, next_e_states, k), traj_batch = jax.lax.scan(
-            _step_fn,
-            (t_state, e_states, k),
-            None,
-            length=n_steps,
+        advantages, targets = compute_gae(traj_batch, last_val)
+        norm_adv = (advantages - jnp.mean(advantages)) / (jnp.std(advantages) + 1e-8)
+
+        traj_flat = jax.tree_util.tree_map(lambda x: jnp.reshape(x, (total_batch,) + x.shape[2:]), traj_batch)
+        advs_flat = jnp.reshape(norm_adv, (total_batch,))
+        targets_flat = jnp.reshape(targets, (total_batch,))
+
+        (t_state, _, _, _, rng), epoch_metrics = jax.lax.scan(
+            update_epoch, (t_state, traj_flat, advs_flat, targets_flat, rng), None, length=update_epochs
         )
 
-        mean_reward = jnp.mean(traj_batch.reward)
+        metrics = {
+            "reward": jnp.mean(traj_batch.reward),
+            "actor_loss": jnp.mean(epoch_metrics["actor_loss"]),
+            "critic_loss": jnp.mean(epoch_metrics["critic_loss"]),
+            "entropy": jnp.mean(epoch_metrics["entropy"]),
+            "approx_kl": jnp.mean(epoch_metrics["approx_kl"]),
+        }
+        return (t_state, next_env_states, rng), metrics
 
-        # 2. Compute GAE
-        advantages, targets = _compute_gae(traj_batch)
+    return network, init_train_state, update_step
 
-        # 3. Flatten transitions
-        traj_flat = FlatTransition(
-            obs=jnp.reshape(traj_batch.obs, (batch_size, -1)),
-            action=jnp.reshape(traj_batch.action, (batch_size, -1)),
-            value=jnp.reshape(traj_batch.value, (batch_size,)),
-            log_prob=jnp.reshape(traj_batch.log_prob, (batch_size,)),
-            advantage=jnp.reshape(advantages, (batch_size,)),
-            target=jnp.reshape(targets, (batch_size,)),
+
+class PPO(BaseRL):
+    """PPO reinforcement learning algorithm in JAX."""
+
+    def __init__(self, env, cfg):
+        super().__init__(env, cfg)
+        self.network, self.init_train_state, self.update_step = make_train(env, cfg)
+
+    def train(self, seed: int = 0):
+        rng = jax.random.PRNGKey(seed)
+        rng, rng_init, rng_envs = jax.random.split(rng, 3)
+
+        train_state = self.init_train_state(rng_init)
+        _, init_env_states = self.env.reset(jax.random.split(rng_envs, self.cfg.n_envs))
+        runner_state = (train_state, init_env_states, rng)
+
+        format_fn = lambda m, rew: {
+            "rew": f"{rew:.2f}",
+            "pi_loss": f"{m['actor_loss']:.3f}",
+            "v_loss": f"{m['critic_loss']:.3f}",
+            "ent": f"{m['entropy']:.2f}",
+            "kl": f"{m['approx_kl']:.4f}",
+        }
+        runner_state = self._run_training(
+            "Training PPO (JAX)",
+            runner_state,
+            self.update_step,
+            steps_per_update=self.cfg.n_envs * self.cfg.n_steps,
+            num_chunks=20,
+            format_fn=format_fn,
         )
 
-        # 4. PPO optimization epochs
-        (t_state, _, k), _ = jax.lax.scan(
-            _update_epoch,
-            (t_state, traj_flat, k),
-            None,
-            length=update_epochs,
-        )
+        self.params = runner_state[0].params
+        return self
 
-        next_runner_state = (t_state, next_e_states, k)
-        return next_runner_state, mean_reward
-
-    # Training loop in chunks for logging
-    runner_state = (train_state, env_states, rng)
-    num_updates = max(1, total_timesteps // batch_size)
-    chunk_updates = max(1, min(10, max(1, num_updates // 20)))
-    num_chunks = max(1, int(np.ceil(num_updates / chunk_updates)))
-    total_trained_steps = num_chunks * chunk_updates * batch_size
-
-    @jax.jit
-    def _run_chunk(state):
-        return jax.lax.scan(_update_step, state, None, length=chunk_updates)
-
-    t_start = time()
-    pbar = tqdm(total=total_trained_steps, desc="PPO Training (PureJaxRL)", unit="step")
-
-    for _ in range(num_chunks):
-        runner_state, chunk_rewards = _run_chunk(runner_state)
-        mean_rew = float(np.mean(chunk_rewards))
-        pbar.set_postfix({"mean reward": f"{mean_rew:.2f}"})
-        pbar.update(chunk_updates * batch_size)
-
-    pbar.close()
-    train_state, _, _ = runner_state
-    jax.block_until_ready(train_state.params)
-    logger.info(f"PPO training finished in {time() - t_start:.2f}s ({total_trained_steps} timesteps).")
-
-    return network, train_state.params
+    def get_predict_fn(self):
+        return lambda norm_obs: self.network.apply(self.params, norm_obs)[0]

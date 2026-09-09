@@ -95,6 +95,10 @@ def parse_arguments(argv=None):
         "Overrides for the benchmark's rl_config (core.rl.config.RLConfig holds the defaults).",
     )
 
+    # Algorithm selection
+    rl.add_argument("--rl_algo", "--algo", type=str, default=None, choices=["ppo", "sac"],
+                    help="Reinforcement learning algorithm to use ('ppo' or 'sac').")
+
     # Policy checkpoint loading
     rl.add_argument("--load_policy", "--load_rl_policy", type=str, default=None, dest="load_policy",
                     help="Path to saved RL policy (.pkl) or directory to skip training and load policy.")
@@ -167,6 +171,18 @@ def parse_arguments(argv=None):
                     help="Lambda parameter for Generalized Advantage Estimation (GAE).")
     rl.add_argument("--adam_eps", type=float, default=None,
                     help="Epsilon parameter for Adam optimizer.")
+
+    # SAC hyperparameters
+    rl.add_argument("--buffer_size", type=_positive_int, default=None,
+                    help="Replay buffer capacity for SAC.")
+    rl.add_argument("--sac_batch_size", type=_positive_int, default=None,
+                    help="Minibatch size sampled from replay buffer for SAC updates.")
+    rl.add_argument("--warmup_steps", type=_positive_int, default=None,
+                    help="Number of exploratory steps before beginning SAC gradient updates.")
+    rl.add_argument("--tau", type=float, default=None,
+                    help="Polyak target smoothing coefficient for SAC.")
+    rl.add_argument("--min_alpha", type=float, default=None,
+                    help="Minimum temperature / entropy coefficient for SAC.")
 
     # Tube around the RL rollouts
     rl.add_argument("--RL_actions_per_state", type=_positive_int, default=None,

@@ -1,32 +1,26 @@
 from functools import partial
 import itertools
 import logging
-
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from core.abstraction.partition import _compute_linear_strides
-from .config import CHUNK_SIZE, RLConfig
-from .env import BenchmarkEnv
-from .policy import ActorCritic, find_policy_actions_batch
+from .config import RLConfig
 
 logger = logging.getLogger(__name__)
 
-# =============================================================================
-# Fixed-rate Inflation Method
-# =============================================================================
+CHUNK_SIZE = 16384
+
 
 def _inflate_cells(visited_cells, inflation_rate, number_per_dim, wrap):
     """Inflate visited grid cells by a fixed ratio."""
     dim = len(number_per_dim)
     cells = np.asarray(list(visited_cells), dtype=np.int64).reshape(-1, dim)
 
-    # Generate all coordinate offsets inside the inflation box
     axes = [np.arange(int(lo), int(hi) + 1, dtype=np.int64) for lo, hi in inflation_rate]
     offsets = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, dim)
 
-    # Add offsets in chunks
     strides = _compute_linear_strides(number_per_dim)
     unique_ids = []
 
@@ -39,29 +33,21 @@ def _inflate_cells(visited_cells, inflation_rate, number_per_dim, wrap):
     all_ids = np.unique(np.concatenate(unique_ids))
     return np.stack(np.unravel_index(all_ids, number_per_dim), axis=-1).astype(int)
 
-# =============================================================================
-# Vectorized FRS & Prefix-Sum Utilities
-# =============================================================================
 
 @partial(jax.jit, static_argnums=(0,))
 def _compute_batch_frs_bounds(step_set_fn, s_mins, s_maxs, actions_batch):
-    """Compute (min, max) reachable set bounds for batches of states and actions."""
     def _per_state(s_min, s_max, actions):
         return jax.vmap(lambda u: step_set_fn(s_min, s_max, u, u))(actions)
     return jax.vmap(_per_state)(s_mins, s_maxs, actions_batch)
 
 
 def _extract_frs_cells(lbs, ubs, number_per_dim, strides, wrap):
-    """
-    Extract discrete grid cell indices spanned by bounding boxes [lbs, ubs] of shape (N, D).
-    Returns: flat_cells (N, M), valid_mask (N, M)
-    """
     spans = ubs - lbs + 1
     offsets = np.stack(
         [g.ravel() for g in np.meshgrid(*[np.arange(s) for s in np.max(spans, axis=0)], indexing="ij")],
         axis=-1,
     )
-    coords = lbs[:, None, :] + offsets  # shape: (N, M, D)
+    coords = lbs[:, None, :] + offsets
     valid_mask = np.all(coords <= ubs[:, None, :], axis=-1)
 
     flat_cells = np.zeros(coords.shape[:-1], dtype=np.int64)
@@ -75,16 +61,16 @@ def _extract_frs_cells(lbs, ubs, number_per_dim, strides, wrap):
 
     return flat_cells, valid_mask
 
+
 def _build_prefix_sum(active_mask, number_per_dim):
-    """Build N-D prefix sum table of active cells with 1-padding for O(2^D) box queries."""
     grid = active_mask.reshape(number_per_dim).astype(np.int32)
     for d in range(len(number_per_dim)):
         grid = np.cumsum(grid, axis=d)
     prefix_table = np.pad(grid, [(1, 0)] * len(number_per_dim), mode="constant")
     return prefix_table.ravel(), _compute_linear_strides(prefix_table.shape)
 
+
 def _box_count_prefix_sum(prefix_flat, prefix_strides, lbs, ubs, number_per_dim):
-    """Count active cells inside bounding boxes in O(2^D) lookups using prefix sums."""
     D = len(number_per_dim)
     lbs_clamped = np.clip(lbs, 0, number_per_dim)
     ubs_clamped = np.clip(ubs + 1, lbs_clamped, number_per_dim)
@@ -98,6 +84,7 @@ def _box_count_prefix_sum(prefix_flat, prefix_strides, lbs, ubs, number_per_dim)
         counts += sign * prefix_flat[np.dot(corner_coords, prefix_strides)]
     return counts
 
+
 def _expand_cells_batch(
     coords,
     actions_batch,
@@ -109,10 +96,6 @@ def _expand_cells_batch(
     prefix_data=None,
     noise_support=0.0,
 ):
-    """
-    Computes FRS for states under policy actions, picks best action via prefix-sum
-    overlap (if multiple candidate actions), and returns new active flat cell indices.
-    """
     num_states = len(coords)
     new_flats_list = []
 
@@ -147,32 +130,16 @@ def _expand_cells_batch(
     return np.unique(np.concatenate(new_flats_list)) if new_flats_list else np.empty(0, dtype=np.int64)
 
 
-# =============================================================================
-# Reachability-guided (Smart) Inflation Method
-# =============================================================================
-
 def _smart_inflate_cells(
     visited,
     model,
-    val_env: BenchmarkEnv,
-    actor_critic: ActorCritic,
-    params,
+    val_env,
+    agent,
     discrete_actions,
     cfg: RLConfig,
     number_per_dim,
 ):
-    """
-    Reachability-guided tube expansion (smart inflate).
-
-    Phase 1:
-        For every visited state, compute the forward reachable set (FRS) under the
-        policy's chosen action and activate all spanned cells.
-
-    Phase 2:
-        Iteratively satisfy reachability closure. For active states in queue, evaluate
-        candidate actions and count active overlap in O(2^D) using an N-D prefix sum table.
-        Expand cells for the maximum overlap action until all active states are closed.
-    """
+    """Reachability-guided tube expansion (smart inflate)."""
     dim = len(number_per_dim)
     strides = _compute_linear_strides(number_per_dim)
     active_mask = np.zeros(int(np.prod(number_per_dim)), dtype=bool)
@@ -182,20 +149,17 @@ def _smart_inflate_cells(
     noise_support = model.noise["support_radius"] * cfg.smart_tube_rate
 
     def _get_policy_actions(coords, num_actions):
-        obs = np.asarray(val_env.obs_low + (coords.astype(np.float32) + 0.5) * val_env.bin_widths, dtype=np.float32)
-        top_k, _ = find_policy_actions_batch(obs, actor_critic, params, discrete_actions, num=num_actions)
+        top_k, _ = agent.get_policy_actions(coords, discrete_actions, num=num_actions)
         return top_k
 
-    # Phase 1: Expand FRS for visited states under the top RL policy action
     logger.info("Phase 1: Expanding FRS for visited states...")
     init_actions = _get_policy_actions(visited_arr, num_actions=1)
     queue_flats = _expand_cells_batch(
         visited_arr.astype(np.float32), init_actions, model, val_env, number_per_dim, strides, active_mask, noise_support=noise_support
     )
     active_mask[queue_flats] = True
-    logger.info(f"- Phase 1 complete: {int(np.sum(active_mask)):,} active cells. Queue size: {len(queue_flats):,}.")
+    logger.info("- Phase 1 complete: %d active cells. Queue size: %d.", int(np.sum(active_mask)), len(queue_flats))
 
-    # Phase 2: Iteratively satisfy reachability closure
     p2_iter = 0
     while len(queue_flats) > 0:
         p2_iter += 1
@@ -209,8 +173,22 @@ def _smart_inflate_cells(
         )
         active_mask[new_flats] = True
         queue_flats = new_flats
-        logger.info(f"- Phase 2 iter {p2_iter}: added {len(queue_flats):,} cells. Total active: {int(np.sum(active_mask)):,}.")
+        logger.info("- Phase 2 iter %d: added %d cells. Total active: %d.", p2_iter, len(queue_flats), int(np.sum(active_mask)))
 
-    logger.info(f"- Phase 2 complete. Total active states: {int(np.sum(active_mask)):,}.")
+    logger.info("- Phase 2 complete. Total active states: %d.", int(np.sum(active_mask)))
     all_active_flats = np.where(active_mask)[0]
     return np.stack(np.unravel_index(all_active_flats, number_per_dim), axis=-1).astype(int)
+
+
+def build_tube(visited, cfg: RLConfig, model, env, agent=None, discrete_actions=None):
+    """Build active state space tube around RL rollouts using inflation or smart reachability."""
+    number_per_dim = np.asarray(model.partition["number_per_dim"], dtype=np.int64)
+    logger.info("Growing the tube around the RL rollouts (method: %s)...", cfg.tube_method)
+    if cfg.tube_method == "smart":
+        return _smart_inflate_cells(
+            visited=visited, model=model, val_env=env,
+            agent=agent, discrete_actions=discrete_actions,
+            cfg=cfg, number_per_dim=number_per_dim,
+        )
+    rate = cfg.inflation_rate
+    return _inflate_cells(visited, rate, number_per_dim, model.wrap)

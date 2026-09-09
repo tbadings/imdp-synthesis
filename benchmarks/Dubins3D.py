@@ -60,11 +60,9 @@ class Dubins3D(DubinsDynamics3D):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[256, 256], 
-            vf_arch=[256, 256],
-            total_timesteps=500000,
-            proximity_dims=[0, 1],
-            proximity_penalty=0.1,
+            rl_algo='sac',
+            total_timesteps=3000000,
+            per_step_cost=0.1,
             RL_actions_per_state=9,
             inflation_rate=[(-5, 5), (-5, 5), (-5, 5)],
         )
