@@ -25,7 +25,7 @@ class RLConfig:
     # Rollouts
     max_steps: int = 128
     eval_steps: int | None = None
-    eval_episodes: int = 2500
+    eval_episodes: int = 25000
 
     # Common & PPO Hyperparameters
     total_timesteps: int = 200000
