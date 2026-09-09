@@ -27,7 +27,7 @@ class BaseRL:
     def get_predict_fn(self):
         raise NotImplementedError
 
-    def predict_action(self, norm_obs: jnp.ndarray, deterministic: bool = True) -> jnp.ndarray:
+    def predict_action(self, norm_obs: jnp.ndarray) -> jnp.ndarray:
         return self.get_predict_fn()(norm_obs)
 
     def save(self, filepath):
@@ -50,7 +50,7 @@ class BaseRL:
         actions = np.asarray(self.env.scale_action(self.predict_action(self.env.normalize_obs(physical))))
         diff = (actions[:, None, :] - discrete_actions[None, :, :]) / (self.env.u_max - self.env.u_min)
         top_k = np.argsort(np.sum(diff ** 2, axis=-1), axis=1)[:, :num]
-        return discrete_actions[top_k], discrete_actions[top_k[:, 0]]
+        return discrete_actions[top_k]
 
     def evaluate(self, discrete_actions=None, seed=0, output_dir=None):
         env = self.env
@@ -73,7 +73,7 @@ class BaseRL:
                 terminal = in_goal | _in_boxes_jnp(next_state, env.critical_jnp) | jnp.any((next_state < env.obs_low_jnp) | (next_state > env.obs_high_jnp))
                 return (jnp.where(is_done, curr_state, next_state), is_done | terminal, hit_goal | (in_goal & ~is_done)), (next_state, is_done)
 
-            (final_state, _, final_goal), (trace, was_done) = jax.lax.scan(_step_body, (init_state, False, False), jax.random.split(rng_steps, self.cfg.rollout_steps))
+            (_, _, final_goal), (trace, was_done) = jax.lax.scan(_step_body, (init_state, False, False), jax.random.split(rng_steps, self.cfg.rollout_steps))
             return init_state, trace, was_done, final_goal
 
         rngs = jax.random.split(jax.random.PRNGKey(seed), self.cfg.eval_episodes)
@@ -94,7 +94,7 @@ class BaseRL:
                 algo_name=self.cfg.rl_algo,
             )
 
-        return int(np.sum(final_goals)), visited_cells, int(np.prod(env.number_per_dim))
+        return int(np.sum(final_goals)), visited_cells
 
     def _run_training(self, desc, runner_state, update_step, steps_per_update, num_chunks, format_fn):
         t_start = time()
@@ -115,7 +115,6 @@ class BaseRL:
             smooth_rew = mean_rew if smooth_rew is None else 0.95 * smooth_rew + 0.05 * mean_rew
             pbar.set_postfix(format_fn(mean_metrics, smooth_rew))
             pbar.update(chunk_updates * steps_per_update)
-            print(flush=True)
         pbar.close()
         logger.info("%s finished in %.2fs (%d timesteps).", desc, time() - t_start, total_steps)
         return runner_state

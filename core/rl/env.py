@@ -108,7 +108,7 @@ class BenchmarkEnv:
         """Vectorized reset over parallel environments."""
         def _single_reset(rng):
             rng_init, rng_safe = jax.random.split(rng)
-            state_init = jax.random.uniform(rng_init, (self.obs_dim,), minval=jnp.asarray(self.reset_low), maxval=jnp.asarray(self.reset_high))
+            state_init = jax.random.uniform(rng_init, (self.obs_dim,), minval=self.reset_low_jnp, maxval=self.reset_high_jnp)
             state = self.sample_safe_state(rng_safe)
             state = jnp.where(_in_boxes_jnp(state_init, self.critical_jnp), state, state_init)
             norm_obs = self.normalize_obs(state)
@@ -150,9 +150,7 @@ class BenchmarkEnv:
 
             next_s = EnvState(state=final_state, obs=final_obs, steps=final_steps)
             info = {
-                "in_goal": in_goal,
                 "terminated": terminated,
-                "truncated": truncated,
                 "next_obs": self.normalize_obs(next_state),
             }
             return final_obs, next_s, reward, done, info

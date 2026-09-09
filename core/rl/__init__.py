@@ -41,24 +41,18 @@ def find_active(model, args):
     discrete_actions = np.array(list(itertools.product(*discrete_actions_per_dim)), dtype=np.float32)
 
     # Rollouts and visited cell extraction
-    goal_reached, newly_visited, _ = agent.evaluate(discrete_actions=discrete_actions, seed=args.seed, output_dir=out_dir)
+    goal_reached, newly_visited = agent.evaluate(discrete_actions=discrete_actions, seed=args.seed, output_dir=out_dir)
     logger.info("Goal reached in %d/%d evaluation episodes.", goal_reached, cfg.eval_episodes)
 
     # Tube construction (active states)
     active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)
 
     # Discretized active policy actions
-    top_k, _ = agent.get_policy_actions(active_states, discrete_actions, num=cfg.RL_actions_per_state)
+    top_k = agent.get_policy_actions(active_states, discrete_actions, num=cfg.RL_actions_per_state)
     active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
 
     return active_states, active_actions, agent
 
-
-# Backward-compatibility aliases
-get_rl_wrapper = get_rl_algo
-BaseRLWrapper = BaseRL
-PPOWrapper = PPO
-SACWrapper = SAC
 
 __all__ = [
     "find_active",
@@ -66,12 +60,8 @@ __all__ = [
     "RLConfig",
     "resolve_rl_config",
     "get_rl_algo",
-    "get_rl_wrapper",
     "BaseRL",
-    "BaseRLWrapper",
     "PPO",
-    "PPOWrapper",
     "SAC",
-    "SACWrapper",
     "build_tube",
 ]

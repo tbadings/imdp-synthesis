@@ -1,3 +1,4 @@
+import math
 from typing import NamedTuple, Sequence
 import flax.linen as nn
 from flax.training.train_state import TrainState
@@ -106,14 +107,14 @@ def make_train(env, cfg):
     buffer_size = cfg.buffer_size
     warmup_steps = cfg.warmup_steps
     min_alpha = cfg.min_alpha
-    min_log_alpha = float(jnp.log(min_alpha))
+    min_log_alpha = math.log(min_alpha)
     target_entropy = -float(env.action_dim)
 
     actor_net = SACActor(action_dim=env.action_dim, hidden_dims=tuple(cfg.pi_arch))
     critic_net = SACCritic(hidden_dims=tuple(cfg.vf_arch))
 
     def init_train_state(rng: jax.Array):
-        rng_act, rng_crit, _ = jax.random.split(rng, 3)
+        rng_act, rng_crit = jax.random.split(rng)
         dummy_obs = jnp.zeros((1, env.obs_dim))
         dummy_act = jnp.zeros((1, env.action_dim))
 
@@ -127,8 +128,7 @@ def make_train(env, cfg):
         )
 
         buffer = ReplayBuffer.create(buffer_size, env.obs_dim, env.action_dim)
-        target_critic_params = critic_net.init(rng_crit, dummy_obs, dummy_act)
-        return SACTrainState(actor=actor_state, critic=critic_state, target_critic_params=target_critic_params, log_alpha=alpha_state), buffer
+        return SACTrainState(actor=actor_state, critic=critic_state, target_critic_params=critic_params, log_alpha=alpha_state), buffer
 
     def update_step(runner_state, _):
         t_state, env_states, buffer, rng = runner_state
@@ -140,7 +140,7 @@ def make_train(env, cfg):
         action = jnp.where(buffer.size < warmup_steps, random_action, policy_action)
 
         step_keys = jax.random.split(rng_step, n_envs)
-        next_obs, next_env_states, rew, done, info = env.step(step_keys, env_states, action)
+        _, next_env_states, rew, _, info = env.step(step_keys, env_states, action)
         buffer = buffer.add(env_states.obs, action, rew, info["next_obs"], info["terminated"].astype(jnp.float32))
 
         b_obs, b_act, b_rew, b_next_obs, b_done = buffer.sample(rng_sample, batch_size)

@@ -16,11 +16,10 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
     fig, ax = plt.subplots(figsize=(8, 8))
     legend_handles = []
 
-    # Plot regions (critical, goal, charging station)
+    # Plot regions (critical, goal)
     regions = [
         (getattr(eval_env, "critical", None), "red", 0.25, "Critical"),
         (getattr(eval_env, "goal", None), "green", 0.25, "Goal"),
-        (getattr(eval_env, "charging_station", None), "blue", 0.25, "Charging station"),
     ]
     for boxes, color, alpha, label in regions:
         if boxes is not None and boxes.size > 0:

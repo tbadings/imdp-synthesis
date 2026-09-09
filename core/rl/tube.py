@@ -110,8 +110,8 @@ def _expand_cells_batch(
         frs_mins, frs_maxs = _compute_batch_frs_bounds(
             model.step_set, s_mins, s_maxs, jnp.asarray(a_chunk, dtype=jnp.float32)
         )
-        lbs = np.floor((np.asarray(frs_mins, dtype=np.float32) - noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
-        ubs = np.floor((np.asarray(frs_maxs, dtype=np.float32) + noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
+        lbs = np.floor((np.asarray(frs_mins) - noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
+        ubs = np.floor((np.asarray(frs_maxs) + noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
 
         if actions_batch.shape[1] > 1 and prefix_data is not None:
             prefix_flat, prefix_strides = prefix_data
@@ -148,12 +148,8 @@ def _smart_inflate_cells(
     active_mask[np.dot(visited_arr, strides)] = True
     noise_support = model.noise["support_radius"] * cfg.smart_tube_rate
 
-    def _get_policy_actions(coords, num_actions):
-        top_k, _ = agent.get_policy_actions(coords, discrete_actions, num=num_actions)
-        return top_k
-
     logger.info("Phase 1: Expanding FRS for visited states...")
-    init_actions = _get_policy_actions(visited_arr, num_actions=1)
+    init_actions = agent.get_policy_actions(visited_arr, discrete_actions, num=1)
     queue_flats = _expand_cells_batch(
         visited_arr.astype(np.float32), init_actions, model, val_env, number_per_dim, strides, active_mask, noise_support=noise_support
     )
@@ -164,7 +160,7 @@ def _smart_inflate_cells(
     while len(queue_flats) > 0:
         p2_iter += 1
         queue_coords = np.stack(np.unravel_index(queue_flats, number_per_dim), axis=-1).astype(np.float32)
-        queue_actions = _get_policy_actions(queue_coords, num_actions=cfg.RL_actions_per_state)
+        queue_actions = agent.get_policy_actions(queue_coords, discrete_actions, num=cfg.RL_actions_per_state)
         prefix_data = _build_prefix_sum(active_mask, number_per_dim)
 
         new_flats = _expand_cells_batch(
@@ -190,5 +186,4 @@ def build_tube(visited, cfg: RLConfig, model, env, agent=None, discrete_actions=
             agent=agent, discrete_actions=discrete_actions,
             cfg=cfg, number_per_dim=number_per_dim,
         )
-    rate = cfg.inflation_rate
-    return _inflate_cells(visited, rate, number_per_dim, model.wrap)
+    return _inflate_cells(visited, cfg.inflation_rate, number_per_dim, model.wrap)

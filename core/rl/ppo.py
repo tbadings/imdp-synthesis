@@ -1,9 +1,9 @@
+import math
 from typing import NamedTuple, Sequence
 import flax.linen as nn
 from flax.training.train_state import TrainState
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 
 from .base import BaseRL
@@ -18,12 +18,12 @@ class ActorCritic(nn.Module):
     def __call__(self, x):
         actor_x, critic_x = x, x
         for h in self.pi_arch:
-            actor_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(actor_x))
+            actor_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.zeros)(actor_x))
         actor_mean = nn.Dense(self.action_dim, kernel_init=nn.initializers.orthogonal(0.01), bias_init=nn.initializers.zeros)(actor_x)
         log_std = self.param("log_std", nn.initializers.zeros, (self.action_dim,))
 
         for h in self.vf_arch:
-            critic_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(np.sqrt(2)), bias_init=nn.initializers.zeros)(critic_x))
+            critic_x = nn.relu(nn.Dense(h, kernel_init=nn.initializers.orthogonal(math.sqrt(2)), bias_init=nn.initializers.zeros)(critic_x))
         critic_val = nn.Dense(1, kernel_init=nn.initializers.orthogonal(1.0), bias_init=nn.initializers.zeros)(critic_x)
 
         return actor_mean, log_std, jnp.squeeze(critic_val, axis=-1)
@@ -86,7 +86,7 @@ def make_train(env, cfg):
         log_prob = gaussian_log_prob(action, mean, log_std)
 
         step_keys = jax.random.split(rng_step, n_envs)
-        next_obs, next_env_states, rew, done, _ = env.step(step_keys, env_states, action)
+        _, next_env_states, rew, done, _ = env.step(step_keys, env_states, action)
 
         transition = Transition(
             obs=env_states.obs, action=action, value=val, reward=rew, done=done, log_prob=log_prob

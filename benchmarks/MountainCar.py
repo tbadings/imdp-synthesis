@@ -58,9 +58,9 @@ class MountainCar(MountainCarDynamics):
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo='ppo',
-            total_timesteps=500000,
+            total_timesteps=5000000,
             per_step_cost=0.1,
-            tube_method="smart",
+            inflation_rate=[(-50, 50), (-50, 50)],
         )
 
         return
