@@ -1,4 +1,3 @@
-import math
 from typing import NamedTuple, Sequence
 import flax.linen as nn
 from flax.training.train_state import TrainState
@@ -106,8 +105,6 @@ def make_train(env, cfg):
     n_envs = cfg.n_envs
     buffer_size = cfg.buffer_size
     warmup_steps = cfg.warmup_steps
-    min_alpha = cfg.min_alpha
-    min_log_alpha = math.log(min_alpha)
     target_entropy = -float(env.action_dim)
 
     actor_net = SACActor(action_dim=env.action_dim, hidden_dims=tuple(cfg.pi_arch))
@@ -144,7 +141,7 @@ def make_train(env, cfg):
         buffer = buffer.add(env_states.obs, action, rew, info["next_obs"], info["terminated"].astype(jnp.float32))
 
         b_obs, b_act, b_rew, b_next_obs, b_done = buffer.sample(rng_sample, batch_size)
-        alpha = jnp.maximum(jnp.exp(t_state.log_alpha.params["log_alpha"]), min_alpha)
+        alpha = jnp.exp(t_state.log_alpha.params["log_alpha"])
 
         def _do_update(ts):
             next_mean, next_log_std = ts.actor.apply_fn(ts.actor.params, b_next_obs)
@@ -174,8 +171,6 @@ def make_train(env, cfg):
 
             alpha_grads = jax.grad(alpha_loss_fn)(ts.log_alpha.params)
             new_log_alpha = ts.log_alpha.apply_gradients(grads=alpha_grads)
-            clamped = jnp.maximum(new_log_alpha.params["log_alpha"], min_log_alpha)
-            new_log_alpha = new_log_alpha.replace(params={"log_alpha": clamped})
 
             new_target_params = jax.tree_util.tree_map(lambda n, o: tau * n + (1.0 - tau) * o, new_critic.params, ts.target_critic_params)
             updated_state = SACTrainState(actor=new_actor, critic=new_critic, target_critic_params=new_target_params, log_alpha=new_log_alpha)
@@ -217,7 +212,7 @@ class SAC(BaseRL):
             runner_state,
             self.update_step,
             steps_per_update=self.cfg.n_envs,
-            num_chunks=25,
+            num_chunks=50,
             format_fn=format_fn,
         )
 

@@ -57,8 +57,9 @@ class CartPole(CartPoleDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            rl_algo="ppo",
-            total_timesteps= 500000,
+            rl_algo="sac",
+            total_timesteps= 5000000,
+            per_step_cost=0.05,
             inflation_rate=[(-7, 7), (-7, 7), (-7, 7), (-7, 7)],
             RL_actions_per_state=5,
         )

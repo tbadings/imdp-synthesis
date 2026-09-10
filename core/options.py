@@ -181,8 +181,6 @@ def parse_arguments(argv=None):
                     help="Number of exploratory steps before beginning SAC gradient updates.")
     rl.add_argument("--tau", type=float, default=None,
                     help="Polyak target smoothing coefficient for SAC.")
-    rl.add_argument("--min_alpha", type=float, default=None,
-                    help="Minimum temperature / entropy coefficient for SAC.")
 
     # Tube around the RL rollouts
     rl.add_argument("--RL_actions_per_state", type=_positive_int, default=None,

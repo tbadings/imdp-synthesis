@@ -76,6 +76,14 @@ class BenchmarkEnv:
 
         prox_dims = cfg.proximity_dims or tuple(range(self.obs_dim))
         self.prox_dims_jnp = jnp.asarray(prox_dims, dtype=jnp.int32)
+        self.obs_low_prox_jnp = self.obs_low_jnp[self.prox_dims_jnp]
+        self.obs_high_prox_jnp = self.obs_high_jnp[self.prox_dims_jnp]
+        if self.critical.shape[0] > 0:
+            self.crit_low_prox_jnp = self.critical_jnp[:, 0, :][:, self.prox_dims_jnp]
+            self.crit_high_prox_jnp = self.critical_jnp[:, 1, :][:, self.prox_dims_jnp]
+        else:
+            self.crit_low_prox_jnp = jnp.zeros((0, len(prox_dims)), dtype=jnp.float32)
+            self.crit_high_prox_jnp = jnp.zeros((0, len(prox_dims)), dtype=jnp.float32)
 
     def normalize_obs(self, state: jnp.ndarray) -> jnp.ndarray:
         """Scale continuous state to [-1, 1]."""
@@ -91,11 +99,14 @@ class BenchmarkEnv:
         return jnp.linalg.norm(self.distance_weights_jnp * offset / self.distance_span_jnp, axis=-1)
 
     def min_distance_to_boundary(self, state: jnp.ndarray) -> jnp.ndarray:
+        """Compute minimum Euclidean distance to boundaries and obstacles over proximity_dims."""
         s = state[..., self.prox_dims_jnp]
-        d_b = jnp.min(jnp.minimum(s - self.obs_low_jnp[self.prox_dims_jnp], self.obs_high_jnp[self.prox_dims_jnp] - s), axis=-1)
+        d_b = jnp.min(jnp.minimum(s - self.obs_low_prox_jnp, self.obs_high_prox_jnp - s), axis=-1)
+        d_b = jnp.maximum(d_b, 0.0)
         if self.critical.shape[0] == 0:
             return d_b
-        delta = jnp.maximum(0.0, jnp.maximum(self.critical_jnp[:, 0, self.prox_dims_jnp] - s[..., None, :], s[..., None, :] - self.critical_jnp[:, 1, self.prox_dims_jnp]))
+        s_exp = jnp.expand_dims(s, axis=-2)
+        delta = jnp.maximum(0.0, jnp.maximum(self.crit_low_prox_jnp - s_exp, s_exp - self.crit_high_prox_jnp))
         crit_dist = jnp.min(jnp.linalg.norm(delta, axis=-1), axis=-1)
         return jnp.minimum(d_b, crit_dist)
 

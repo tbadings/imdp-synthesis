@@ -14,9 +14,9 @@ class RLConfig:
     rl_algo: str = "ppo"  # "ppo" or "sac"
 
     # Reward function
-    goal_reward: float = 5.0
-    unsafe_penalty: float = -5.0
-    out_of_bounds_penalty: float = -5.0
+    goal_reward: float = 10.0
+    unsafe_penalty: float = -1.0
+    out_of_bounds_penalty: float = -1.0
     distance_cost: float | Sequence[float] = 0.0
     per_step_cost: float = 0.0
     proximity_penalty: float = 0.0
@@ -45,11 +45,10 @@ class RLConfig:
     vf_arch: Sequence[int] = (64, 64)
 
     # SAC Specific Hyperparameters
-    buffer_size: int = 65536
+    buffer_size: int = 262144
     sac_batch_size: int = 128
-    warmup_steps: int = 1024
+    warmup_steps: int = 65536
     tau: float = 0.01
-    min_alpha: float = 0.05
 
     # Tube around RL rollouts
     RL_actions_per_state: int = 3
