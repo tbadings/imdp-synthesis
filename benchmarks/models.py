@@ -375,7 +375,7 @@ class DroneDynamics_battery:
         in_cs = self.inbox(state, self.charging_station[0])
         new_battery = jnp.where(
             in_cs,
-            jnp.minimum(state_next[battery_idx] + 10, self.max_charge),
+            jnp.minimum(state_next[battery_idx] + 10, self.max_charge - 1e-4),
             state_next[battery_idx] - 5
         )
         return state_next.at[battery_idx].set(new_battery)
@@ -415,8 +415,8 @@ class DroneDynamics_battery:
         delta_max = jnp.where(intersects, 10.0, -5.0)
 
         battery_idx = self.n - 1
-        new_min = jnp.minimum(state_next_min[battery_idx] + delta_min, self.max_charge)
-        new_max = jnp.minimum(state_next_max[battery_idx] + delta_max, self.max_charge)
+        new_min = jnp.minimum(state_next_min[battery_idx] + delta_min, self.max_charge - 1e-4)
+        new_max = jnp.minimum(state_next_max[battery_idx] + delta_max, self.max_charge - 1e-4)
         state_next_min = state_next_min.at[battery_idx].set(new_min)
         state_next_max = state_next_max.at[battery_idx].set(new_max)
 

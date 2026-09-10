@@ -64,14 +64,16 @@ class Drone4D(DroneDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
+            rl_algo="sac",
             pi_arch=[256, 256],
             vf_arch=[256, 256],
             # TODO: Long training is still needed here; can we reduce that?
             total_timesteps=3000000,
             RL_actions_per_state=9,
             inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2)],
-            proximity_penalty=0.1,
             proximity_dims = [0, 2],
+            proximity_penalty=0.1,
+            per_step_cost=0.05,
         )
 
         return
@@ -110,10 +112,9 @@ class Drone4D_battery(DroneDynamics_battery):
 
         self.max_charge = 100
 
-        # Expand the battery_charge boundary by 5 to ensure we do not go out of bounds in the simulation
-        self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, self.max_charge+5]])
+        self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, self.max_charge]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 14, 40, 14, 21])
+        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 20])
         
         self.goal = np.array([
             [[6, v_min, 6, v_min, 50], [10, v_max, 10, v_max, self.max_charge]]
@@ -133,14 +134,15 @@ class Drone4D_battery(DroneDynamics_battery):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[64, 64],
-            vf_arch=[64, 64],
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
-            per_step_cost=0.1,
-            distance_cost=0.0,
-            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)],
+            rl_algo="ppo",
+            total_timesteps=1000000,
+            pi_arch=[256, 256],
+            vf_arch=[256, 256],
+            proximity_dims = [0, 2],
+            proximity_penalty=0.1,
+            per_step_cost=0.05,
+            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-1, 1)],
+            RL_actions_per_state=9,
         )
 
         return

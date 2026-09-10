@@ -102,10 +102,10 @@ def config_Drone6D() -> list[str]:
         "jax",
     ]
 
-def config_Drone6D_battery() -> list[str]:
+def config_Drone4D_battery() -> list[str]:
     return [
         "--model",
-        "Drone6D_battery",
+        "Drone4D_battery",
         "--satprob",
         "0.95",
         # "--batch_size",
@@ -116,13 +116,11 @@ def config_Drone6D_battery() -> list[str]:
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-
     # run_fixed_SVMDP(args = config_MountainCar())
     # run_fixed_SVMDP(args = config_Pendulum())
     # run_fixed_SVMDP(args = config_CartPole())
     # run_fixed_SVMDP(args = config_Dubins3D())
-    run_fixed_SVMDP(args = config_Dubins4D())
+    # run_fixed_SVMDP(args = config_Dubins4D())
     # run_fixed_SVMDP(args = config_Drone4D())
-    # run_fixed_SVMDP(args = config_Drone6D_small())
     # run_fixed_SVMDP(args = config_Drone6D())
-    # run_fixed_SVMDP(args = config_Drone6D_battery())
+    run_fixed_SVMDP(args = config_Drone4D_battery())
