@@ -114,10 +114,10 @@ class Drone4D_battery(DroneDynamics_battery):
 
         self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, self.max_charge]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 20])
+        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 40])
         
         self.goal = np.array([
-            [[6, v_min, 6, v_min, 50], [10, v_max, 10, v_max, self.max_charge]]
+            [[6, v_min, 6, v_min, 20], [10, v_max, 10, v_max, self.max_charge]]
         ], dtype=float)
 
         self.critical = np.array([
@@ -141,7 +141,7 @@ class Drone4D_battery(DroneDynamics_battery):
             proximity_dims = [0, 2],
             proximity_penalty=0.1,
             per_step_cost=0.05,
-            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-1, 1)],
+            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3)],
             RL_actions_per_state=9,
         )
 
