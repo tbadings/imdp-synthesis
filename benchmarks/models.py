@@ -434,7 +434,7 @@ class PendulumDynamics:
         self.wrap = jnp.array([True, False], dtype=bool)
 
         # Discretization step size
-        self.tau = 0.05 * 2
+        self.tau = 0.05
 
         # Pendulum parameters
         self.G = 10
@@ -504,8 +504,6 @@ class MountainCarDynamics:
         self.max_speed = 0.07
         self.gravity = 0.0025
         self.power = 0.0015
-        self.min_position = -1.2
-        self.max_position = 0.6
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
@@ -521,7 +519,7 @@ class MountainCarDynamics:
         position, velocity = state[0], state[1]
 
         velocity = velocity + self.tau * (action[0] * self.power - self.gravity * jnp.cos(3 * position))
-        velocity = jnp.clip(velocity, -self.max_speed + 1e-4, self.max_speed - 1e-4)
+        velocity = jnp.clip(velocity, -self.max_speed+1e-4, self.max_speed-1e-4)
         position = position + self.tau * velocity + noise[0]
         velocity = velocity + noise[1]
 
@@ -548,8 +546,6 @@ class MountainCarDynamics:
         velo_next = jnp.clip(velo_next, -self.max_speed + 1e-4, self.max_speed - 1e-4)
 
         pos_next = jnp.array([pos_min, pos_max]) + self.tau * velo_next
-
-        pos_next = jnp.clip(pos_next, self.min_position + 1e-4, self.max_position - 1e-4)
 
         state_next = jnp.vstack((pos_next,
                                  velo_next))

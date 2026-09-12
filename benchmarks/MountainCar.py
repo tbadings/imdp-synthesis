@@ -43,7 +43,7 @@ class MountainCar(MountainCarDynamics):
 
         self.partition['boundary'] = np.array([[-1.2, -0.07], [0.6, 0.07]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([180, 280])
+        self.partition['number_per_dim'] = 4 * np.array([180, 280])
 
         self.goal = np.array([
             [[0.45, 0], [0.6, 0.07]]
@@ -60,7 +60,7 @@ class MountainCar(MountainCarDynamics):
             rl_algo='ppo',
             total_timesteps=2000000,
             per_step_cost=0.05,
-            inflation_rate=[(-50, 50), (-50, 50)],
+            inflation_rate=[(-20, 20), (-20, 20)],
         )
 
         return
