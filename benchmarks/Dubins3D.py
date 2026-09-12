@@ -63,7 +63,7 @@ class Dubins3D(DubinsDynamics3D):
             rl_algo='ppo',
             total_timesteps=5000000,
             proximity_dims=[0, 1],
-            proximity_penalty=0.1,
+            proximity_penalty=0.5,
             per_step_cost=0.05,
             RL_actions_per_state=9,
             inflation_rate=[(-5, 5), (-5, 5), (-5, 5)],

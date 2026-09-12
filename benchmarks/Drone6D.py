@@ -90,7 +90,7 @@ class Drone6D(DroneDynamics):
             total_timesteps=5000000,
             RL_actions_per_state=27,
             proximity_dims=[0, 2, 4],
-            proximity_penalty=0.1,
+            proximity_penalty=0.5,
             per_step_cost=0.05,
             inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],
         )
