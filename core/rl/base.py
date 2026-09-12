@@ -100,7 +100,8 @@ class BaseRL:
         t_start = time()
         num_updates = self.cfg.total_timesteps // steps_per_update
         chunk_updates = max(num_updates // num_chunks, 1)
-        total_steps = num_updates * steps_per_update
+        num_chunks = max(1, num_updates // chunk_updates)
+        total_steps = num_chunks * chunk_updates * steps_per_update
 
         @jax.jit
         def run_chunk(state):

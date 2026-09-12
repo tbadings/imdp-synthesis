@@ -18,17 +18,14 @@ class SACActor(nn.Module):
     def __call__(self, x):
         for h in self.hidden_dims:
             x = nn.relu(nn.Dense(h)(x))
-        mean = nn.Dense(self.action_dim)(x)
-        log_std = jnp.clip(nn.Dense(self.action_dim)(x), self.log_std_min, self.log_std_max)
-        return mean, log_std
+        return nn.Dense(self.action_dim)(x), jnp.clip(nn.Dense(self.action_dim)(x), self.log_std_min, self.log_std_max)
 
     def sample(self, mean, log_std, rng):
-        std = jnp.exp(log_std)
-        normal_sample = jax.random.normal(rng, shape=mean.shape)
-        action = jnp.tanh(mean + std * normal_sample)
-        log_prob = -0.5 * jnp.sum(jnp.square(normal_sample) + 2.0 * log_std + jnp.log(2.0 * jnp.pi), axis=-1)
-        log_prob -= jnp.sum(jnp.log(1.0 - jnp.square(action) + 1e-6), axis=-1)
-        return action, log_prob
+        eps = jax.random.normal(rng, shape=mean.shape)
+        u = mean + jnp.exp(log_std) * eps
+        lp = -0.5 * jnp.sum(eps**2 + 2.0 * log_std + jnp.log(2.0 * jnp.pi), axis=-1)
+        lp -= jnp.sum(2.0 * (jnp.log(2.0) - u - jax.nn.softplus(-2.0 * u)), axis=-1)
+        return jnp.tanh(u), lp
 
 
 class SACCritic(nn.Module):
@@ -37,16 +34,11 @@ class SACCritic(nn.Module):
     @nn.compact
     def __call__(self, obs, action):
         x = jnp.concatenate([obs, action], axis=-1)
-        q1 = x
-        for h in self.hidden_dims:
-            q1 = nn.relu(nn.Dense(h)(q1))
-        q1 = jnp.squeeze(nn.Dense(1)(q1), axis=-1)
-
-        q2 = x
-        for h in self.hidden_dims:
-            q2 = nn.relu(nn.Dense(h)(q2))
-        q2 = jnp.squeeze(nn.Dense(1)(q2), axis=-1)
-        return q1, q2
+        def q(v):
+            for h in self.hidden_dims:
+                v = nn.relu(nn.Dense(h)(v))
+            return jnp.squeeze(nn.Dense(1)(v), axis=-1)
+        return q(x), q(x)
 
 
 class ReplayBuffer(NamedTuple):
@@ -55,18 +47,19 @@ class ReplayBuffer(NamedTuple):
     reward: jnp.ndarray
     next_obs: jnp.ndarray
     done: jnp.ndarray
-    ptr: int
-    size: int
+    ptr: jnp.ndarray
+    size: jnp.ndarray
     capacity: int
 
     @classmethod
     def create(cls, capacity: int, obs_dim: int, action_dim: int):
+        z = lambda *s: jnp.zeros(s, dtype=jnp.float32)
         return cls(
-            obs=jnp.zeros((capacity, obs_dim), dtype=jnp.float32),
-            action=jnp.zeros((capacity, action_dim), dtype=jnp.float32),
-            reward=jnp.zeros((capacity,), dtype=jnp.float32),
-            next_obs=jnp.zeros((capacity, obs_dim), dtype=jnp.float32),
-            done=jnp.zeros((capacity,), dtype=jnp.float32),
+            obs=z(capacity, obs_dim),
+            action=z(capacity, action_dim),
+            reward=z(capacity),
+            next_obs=z(capacity, obs_dim),
+            done=z(capacity),
             ptr=jnp.array(0, dtype=jnp.int32),
             size=jnp.array(0, dtype=jnp.int32),
             capacity=capacity,
@@ -86,7 +79,7 @@ class ReplayBuffer(NamedTuple):
         )
 
     def sample(self, rng: jax.Array, batch_size: int):
-        idx = jax.random.randint(rng, shape=(batch_size,), minval=0, maxval=jnp.maximum(self.size, 1))
+        idx = jax.random.randint(rng, (batch_size,), 0, jnp.maximum(self.size, 1))
         return self.obs[idx], self.action[idx], self.reward[idx], self.next_obs[idx], self.done[idx]
 
 
@@ -99,33 +92,21 @@ class SACTrainState(NamedTuple):
 
 def make_train(env, cfg):
     """Create JAX SAC training components."""
-    lr = cfg.learning_rate
-    gamma, tau = cfg.gamma, cfg.tau
-    batch_size = cfg.sac_batch_size
-    n_envs = cfg.n_envs
-    buffer_size = cfg.buffer_size
-    warmup_steps = cfg.warmup_steps
-    target_entropy = -float(env.action_dim)
-
     actor_net = SACActor(action_dim=env.action_dim, hidden_dims=tuple(cfg.pi_arch))
     critic_net = SACCritic(hidden_dims=tuple(cfg.vf_arch))
+    target_entropy = -float(env.action_dim)
 
     def init_train_state(rng: jax.Array):
         rng_act, rng_crit = jax.random.split(rng)
-        dummy_obs = jnp.zeros((1, env.obs_dim))
-        dummy_act = jnp.zeros((1, env.action_dim))
-
-        actor_state = TrainState.create(apply_fn=actor_net.apply, params=actor_net.init(rng_act, dummy_obs), tx=optax.adam(lr))
-        critic_params = critic_net.init(rng_crit, dummy_obs, dummy_act)
-        critic_state = TrainState.create(apply_fn=critic_net.apply, params=critic_params, tx=optax.adam(lr))
-        alpha_state = TrainState.create(
-            apply_fn=lambda p, x: jnp.exp(p["log_alpha"]),
-            params={"log_alpha": jnp.array(0.0, dtype=jnp.float32)},
-            tx=optax.adam(lr),
-        )
-
-        buffer = ReplayBuffer.create(buffer_size, env.obs_dim, env.action_dim)
-        return SACTrainState(actor=actor_state, critic=critic_state, target_critic_params=critic_params, log_alpha=alpha_state), buffer
+        d_obs, d_act = jnp.zeros((1, env.obs_dim)), jnp.zeros((1, env.action_dim))
+        tx = optax.adam(cfg.learning_rate)
+        critic_params = critic_net.init(rng_crit, d_obs, d_act)
+        return SACTrainState(
+            actor=TrainState.create(apply_fn=actor_net.apply, params=actor_net.init(rng_act, d_obs), tx=tx),
+            critic=TrainState.create(apply_fn=critic_net.apply, params=critic_params, tx=tx),
+            target_critic_params=critic_params,
+            log_alpha=TrainState.create(apply_fn=lambda p, x: jnp.exp(p["log_alpha"]), params={"log_alpha": jnp.array(0.0)}, tx=tx),
+        ), ReplayBuffer.create(cfg.buffer_size, env.obs_dim, env.action_dim)
 
     def update_step(runner_state, _):
         t_state, env_states, buffer, rng = runner_state
@@ -133,14 +114,13 @@ def make_train(env, cfg):
 
         mean, log_std = t_state.actor.apply_fn(t_state.actor.params, env_states.obs)
         policy_action, _ = actor_net.sample(mean, log_std, rng_act)
-        random_action = jax.random.uniform(rng_rand, shape=policy_action.shape, minval=-1.0, maxval=1.0)
-        action = jnp.where(buffer.size < warmup_steps, random_action, policy_action)
+        random_action = jax.random.uniform(rng_rand, policy_action.shape, minval=-1.0, maxval=1.0)
+        action = jnp.where(buffer.size < cfg.warmup_steps, random_action, policy_action)
 
-        step_keys = jax.random.split(rng_step, n_envs)
-        _, next_env_states, rew, _, info = env.step(step_keys, env_states, action)
-        buffer = buffer.add(env_states.obs, action, rew, info["next_obs"], info["terminated"].astype(jnp.float32))
+        _, next_env_states, rew, done, info = env.step(jax.random.split(rng_step, cfg.n_envs), env_states, action)
+        buffer = buffer.add(env_states.obs, action, rew, info["next_obs"], done.astype(jnp.float32))
 
-        b_obs, b_act, b_rew, b_next_obs, b_done = buffer.sample(rng_sample, batch_size)
+        b_obs, b_act, b_rew, b_next_obs, b_done = buffer.sample(rng_sample, cfg.sac_batch_size)
         alpha = jnp.exp(t_state.log_alpha.params["log_alpha"])
 
         def _do_update(ts):
@@ -148,11 +128,11 @@ def make_train(env, cfg):
             next_act, next_lp = actor_net.sample(next_mean, next_log_std, rng_next_act)
             target_q1, target_q2 = critic_net.apply(ts.target_critic_params, b_next_obs, next_act)
             target_q = jnp.minimum(target_q1, target_q2) - alpha * next_lp
-            y = jax.lax.stop_gradient(b_rew + gamma * (1.0 - b_done) * target_q)
+            y = jax.lax.stop_gradient(b_rew + cfg.gamma * (1.0 - b_done) * target_q)
 
             def critic_loss_fn(params):
                 q1, q2 = ts.critic.apply_fn(params, b_obs, b_act)
-                return 0.5 * jnp.mean(jnp.square(q1 - y)) + 0.5 * jnp.mean(jnp.square(q2 - y)), jnp.mean(jnp.minimum(q1, q2))
+                return 0.5 * jnp.mean((q1 - y)**2 + (q2 - y)**2), jnp.mean(jnp.minimum(q1, q2))
 
             (critic_loss, q_mean), critic_grads = jax.value_and_grad(critic_loss_fn, has_aux=True)(ts.critic.params)
             new_critic = ts.critic.apply_gradients(grads=critic_grads)
@@ -166,19 +146,16 @@ def make_train(env, cfg):
             (actor_loss, b_lp), actor_grads = jax.value_and_grad(actor_loss_fn, has_aux=True)(ts.actor.params)
             new_actor = ts.actor.apply_gradients(grads=actor_grads)
 
-            def alpha_loss_fn(params):
-                return -jnp.mean(jnp.exp(params["log_alpha"]) * (b_lp + target_entropy))
-
-            alpha_grads = jax.grad(alpha_loss_fn)(ts.log_alpha.params)
+            alpha_grads = jax.grad(lambda p: -jnp.mean(p["log_alpha"] * (b_lp + target_entropy)))(ts.log_alpha.params)
             new_log_alpha = ts.log_alpha.apply_gradients(grads=alpha_grads)
 
-            new_target_params = jax.tree_util.tree_map(lambda n, o: tau * n + (1.0 - tau) * o, new_critic.params, ts.target_critic_params)
-            updated_state = SACTrainState(actor=new_actor, critic=new_critic, target_critic_params=new_target_params, log_alpha=new_log_alpha)
-            return updated_state, {"critic_loss": critic_loss, "actor_loss": actor_loss, "q": q_mean, "alpha": alpha, "entropy": -jnp.mean(b_lp)}
+            new_target = jax.tree_util.tree_map(lambda n, o: cfg.tau * n + (1.0 - cfg.tau) * o, new_critic.params, ts.target_critic_params)
+            return SACTrainState(new_actor, new_critic, new_target, new_log_alpha), {
+                "critic_loss": critic_loss, "actor_loss": actor_loss, "q": q_mean, "alpha": alpha, "entropy": -jnp.mean(b_lp)
+            }
 
-        dummy_metrics = {"critic_loss": jnp.array(0.0), "actor_loss": jnp.array(0.0), "q": jnp.array(0.0), "alpha": alpha, "entropy": jnp.array(0.0)}
-        new_t_state, step_metrics = jax.lax.cond(buffer.size >= warmup_steps, _do_update, lambda ts: (ts, dummy_metrics), t_state)
-
+        dummy = {k: jnp.zeros(()) for k in ("critic_loss", "actor_loss", "q", "entropy")} | {"alpha": alpha}
+        new_t_state, step_metrics = jax.lax.cond(buffer.size >= cfg.warmup_steps, _do_update, lambda ts: (ts, dummy), t_state)
         return (new_t_state, next_env_states, buffer, rng), {"reward": jnp.mean(rew), **step_metrics}
 
     return (actor_net, critic_net), init_train_state, update_step
@@ -221,3 +198,4 @@ class SAC(BaseRL):
 
     def get_predict_fn(self):
         return lambda norm_obs: jnp.tanh(self.actor_net.apply(self.params, norm_obs)[0])
+

@@ -110,18 +110,11 @@ class BenchmarkEnv:
         crit_dist = jnp.min(jnp.linalg.norm(delta, axis=-1), axis=-1)
         return jnp.minimum(d_b, crit_dist)
 
-    def sample_safe_state(self, rng: jax.Array, num_candidates: int = 8) -> jnp.ndarray:
-        candidates = jax.random.uniform(rng, (num_candidates, self.obs_dim), minval=self.obs_low_jnp, maxval=self.obs_high_jnp)
-        is_safe = ~(_in_boxes_jnp(candidates, self.critical_jnp) | _in_boxes_jnp(candidates, self.goal_jnp))
-        return candidates[jnp.argmax(is_safe)]
 
     def reset(self, rng_batch: jax.Array) -> tuple[jnp.ndarray, EnvState]:
         """Vectorized reset over parallel environments."""
         def _single_reset(rng):
-            rng_init, rng_safe = jax.random.split(rng)
-            state_init = jax.random.uniform(rng_init, (self.obs_dim,), minval=self.reset_low_jnp, maxval=self.reset_high_jnp)
-            state = self.sample_safe_state(rng_safe)
-            state = jnp.where(_in_boxes_jnp(state_init, self.critical_jnp), state, state_init)
+            state = jax.random.uniform(rng, (self.obs_dim,), minval=self.obs_low_jnp, maxval=self.obs_high_jnp)
             norm_obs = self.normalize_obs(state)
             return norm_obs, EnvState(state=state, obs=norm_obs, steps=jnp.array(0, dtype=jnp.int32))
 
@@ -154,7 +147,7 @@ class BenchmarkEnv:
             truncated = steps >= self.cfg.max_steps
             done = terminated | truncated
 
-            reset_state = self.sample_safe_state(rng_reset)
+            reset_state = jax.random.uniform(rng_reset, (self.obs_dim,), minval=self.obs_low_jnp, maxval=self.obs_high_jnp)
             final_state = jnp.where(done, reset_state, next_state)
             final_steps = jnp.where(done, 0, steps)
             final_obs = self.normalize_obs(final_state)
