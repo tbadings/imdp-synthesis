@@ -26,7 +26,8 @@ def SVMDP_DP(
     prune_states: bool = True,
     phase1_initial_it: int = 10,
     phase1_increment_it: int = 10,
-    phase1_max_it: int = 100,
+    phase1_max_it: int = 31,
+    max_eval_it: int = 31,
 ) -> Tuple[Float32[Array, "nr_states"], UInt8[Array, "nr_states"]]:
 
     """
@@ -43,6 +44,7 @@ def SVMDP_DP(
     :param phase1_initial_it: Base cap on inner policy-evaluation sweeps in the first outer iteration
     :param phase1_increment_it: Per-outer-iteration growth of the inner-sweep cap
     :param phase1_max_it: Hard ceiling on the inner-sweep cap (before full convergence)
+    :param max_eval_it: Maximum evaluation iteration index (keeps eval_it <= max_eval_it, strictly < 32 by default)
     :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
 
@@ -384,9 +386,13 @@ def SVMDP_DP(
                 V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
 
                 delta = np.max(np.abs(V - V_old))
-                if delta < epsilon or (
-                    not partial_convergence_reached
-                    and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                if (
+                    delta < epsilon
+                    or i >= max_eval_it
+                    or (
+                        not partial_convergence_reached
+                        and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                    )
                 ):
                     break
 

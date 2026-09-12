@@ -24,7 +24,8 @@ def RVI_JAX(
     RND_SWEEPS: bool = False, 
     BATCH_SIZE: int = 2000, 
     policy_iteration: bool = False,
-    return_Q_values: bool = False
+    return_Q_values: bool = False,
+    max_eval_it: int = 31,
 ) -> Tuple[Float32[Array, "nr_states"], UInt8[Array, "nr_states"]]:
 
     """
@@ -39,6 +40,7 @@ def RVI_JAX(
     :param BATCH_SIZE: Batch size for state updates
     :param policy_iteration: Whether to use policy iteration instead of value iteration
     :param return_Q_values: Whether to return Q-values for all state-action pairs
+    :param max_eval_it: Maximum evaluation iteration index (keeps eval_it <= max_eval_it, strictly < 32 by default)
     :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
 
@@ -46,7 +48,7 @@ def RVI_JAX(
 
     phase1_initial_it = 10
     phase1_increment_it = 10
-    phase1_max_it = 100
+    phase1_max_it = min(31, max_eval_it)
     fix_policy_above_value = 2 # >1 means this feature is disabled
 
     #####
@@ -290,9 +292,13 @@ def RVI_JAX(
                     # print(f'- Policy evaluation batch took: {time.time() - t:.6f} sec')
 
                 delta = np.max(np.abs(V - V_old))
-                if delta < epsilon or (
-                    not partial_convergence_reached
-                    and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                if (
+                    delta < epsilon
+                    or i >= max_eval_it
+                    or (
+                        not partial_convergence_reached
+                        and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                    )
                 ):
                     break
 

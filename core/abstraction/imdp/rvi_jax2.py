@@ -24,6 +24,7 @@ def RVI_JAX2(
     BATCH_SIZE: int = 2000,
     policy_iteration: bool = False,
     return_Q_values: bool = False,
+    max_eval_it: int = 31,
 ) -> Tuple[Float32[Array, "nr_states"], UInt8[Array, "nr_states"]]:
     """
     Robust value iteration for interval MDPs — optimized variant.
@@ -42,7 +43,7 @@ def RVI_JAX2(
 
     phase1_initial_it = 10
     phase1_increment_it = 10
-    phase1_max_it = 100
+    phase1_max_it = min(31, max_eval_it)
     fix_policy_above_value = 2  # >1 means this feature is disabled
 
     #####
@@ -235,9 +236,13 @@ def RVI_JAX2(
                     V = V.at[state_batch].set(V_eval)
 
                 delta = float(jnp.max(jnp.abs(V - V_old)))
-                if delta < epsilon or (
-                    not partial_convergence_reached
-                    and i > min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                if (
+                    delta < epsilon
+                    or i >= max_eval_it
+                    or (
+                        not partial_convergence_reached
+                        and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
+                    )
                 ):
                     break
 
