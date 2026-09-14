@@ -43,6 +43,8 @@ def parse_arguments(argv=None):
     parser.add_argument('--satprob', type=float, default=1,
                         help="Lower bound on the satisfaction probability to synthesize a policy for (if <1, then the policy synthesis is terminated once the bound is met).")
 
+    parser.add_argument('--dense', action=argparse.BooleanOptionalAction, default=False,
+                        help="If True, use dense partitioning without the need of RL exploration.")
     parser.add_argument('--model', type=str, default='',
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,

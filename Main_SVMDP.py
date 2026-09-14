@@ -72,22 +72,23 @@ if __name__ == '__main__':
 
         model = benchmarks.create_model(args)
 
-        active_states, active_actions, _ = find_active(model, args=args)
-        logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
+        if args.dense:
+            logger.info('Using DensePartition (RL exploration skipped).')
+            partition = DensePartition(model=model)
+        else:
+            active_states, active_actions, _ = find_active(model, args=args)
+            logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
-        logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
-        t = time.time()
+            logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
+            t = time.time()
 
-        # Create partition of the continuous state space into convex polytope
-        # partition = DensePartition(model=model)
-        # partition.rectangular = False
-        # Sparse partition can be created with, e.g.,
-        partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
+            # Create partition of the continuous state space into convex polytope
+            partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
-        # The RL exploration outputs are only needed to build the partition; free them
-        # (and let the PPO model / vec envs held internally be reclaimed) before the
-        # large forward-reachability arrays are allocated below.
-        del active_states, active_actions
+            # The RL exploration outputs are only needed to build the partition; free them
+            # (and let the PPO model / vec envs held internally be reclaimed) before the
+            # large forward-reachability arrays are allocated below.
+            del active_states, active_actions
 
         s_init, s_init_exists = partition.x2state(model.x0)
         if not s_init_exists:

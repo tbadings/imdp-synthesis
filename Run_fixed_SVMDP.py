@@ -28,6 +28,7 @@ def config_MountainCar() -> list[str]:
         "jax",
         "--satprob",
         "0.95",
+        # "--dense",
     ]
 
 def config_CartPole() -> list[str]:
