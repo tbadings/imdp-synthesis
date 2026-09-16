@@ -183,17 +183,18 @@ if __name__ == '__main__':
     heatmap(
         args, stamp, idx_show=model.plot_dimensions,
         partition=partition, results=V, filename='heatmap_satprob',
+        model=model,
     )
     plot_traces(
         args, stamp, model.plot_dimensions, partition, model,
-        sim.results['traces'], line=False, num_traces=10, add_unsafe_box=False,
+        sim.results['traces'], line=False, num_traces=100, add_unsafe_box=False,
     )
 
     if args.model.startswith('Drone6D'):
         print('Plot Drone6D traces in 3D...')
         plot_traces_3d(
             args, stamp, [0, 2, 4], partition, model,
-            sim.results['traces'], num_traces=10, filename="traces_3d",
+            sim.results['traces'], num_traces=100, filename="traces_3d",
         )
 
     if args.model == 'Pendulum':

@@ -1,71 +1,49 @@
 from pathlib import Path
-import matplotlib
-matplotlib.use("Agg")
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
-import numpy as np
+from core.plotting.utils import (
+    col, style_axes, save_fig, set_plot_ticks,
+    GOAL_COLOR, CRITICAL_COLOR, GOAL_HATCH, CRITICAL_HATCH, START_COLOR, END_COLOR
+)
+from core.plotting.traces import _format_state_label_math
 
-
-# 2D plots of trajectories
 def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, max_trajectories=100, algo_name=None):
+    # Plot 2D RL rollouts
     if len(dims) != 2:
-        raise ValueError("This runner currently supports plotting exactly 2 dimensions.")
-
+        raise ValueError("Requires 2 dimensions.")
     d0, d1 = dims
-    fig, ax = plt.subplots(figsize=(8, 8))
+    fig, ax = plt.subplots(figsize=(8, 8), dpi=300)
     legend_handles = []
 
-    # Plot regions (critical, goal)
-    regions = [
-        (getattr(eval_env, "critical", None), "red", 0.25, "Critical"),
-        (getattr(eval_env, "goal", None), "green", 0.25, "Goal"),
-    ]
-    for boxes, color, alpha, label in regions:
+    # Goal & unsafe regions
+    regions = [(getattr(eval_env, "critical", None), CRITICAL_COLOR, 'darkred', 'Critical', CRITICAL_HATCH),
+               (getattr(eval_env, "goal", None), GOAL_COLOR, 'darkgreen', 'Goal', GOAL_HATCH)]
+    for boxes, c, ec, lbl, hatch in regions:
         if boxes is not None and boxes.size > 0:
-            rects = [
-                mpatches.Rectangle(
-                    (b[0, d0], b[0, d1]),
-                    b[1, d0] - b[0, d0],
-                    b[1, d1] - b[0, d1],
-                )
-                for b in boxes
-            ]
-            ax.add_collection(PatchCollection(rects, facecolor=color, edgecolor="none", alpha=alpha, rasterized=True))
-            legend_handles.append(mpatches.Patch(color=color, alpha=alpha, label=label))
+            rects = [mpatches.Rectangle((b[0, d0], b[0, d1]), b[1, d0] - b[0, d0], b[1, d1] - b[0, d1]) for b in boxes]
+            ax.add_collection(PatchCollection(rects, facecolor=col(c), edgecolor=col(ec), lw=0, hatch=hatch, alpha=0.4, rasterized=True))
+            legend_handles.append(mpatches.Patch(facecolor=col(c), edgecolor=col(ec), lw=0, hatch=hatch, alpha=0.4, label=lbl))
 
-    # Plot trajectory traces
-    selected_traces = [t[:, dims] for t in (trajectories or [])[:max_trajectories] if len(t) > 0]
-    if selected_traces:
-        nan_sep = np.full((1, 2), np.nan, dtype=np.float32)
-        combined = np.concatenate([np.vstack([t, nan_sep]) for t in selected_traces])
-        ax.plot(
-            combined[:, 0],
-            combined[:, 1],
-            linewidth=1.0,
-            alpha=0.9,
-            color="black",
-            marker=".",
-            markersize=3.0,
-            markeredgecolor="red",
-            markerfacecolor="red",
-            rasterized=True,
-        )
+    # RL trajectories
+    for trace in (trajectories or [])[:max_trajectories]:
+        if len(trace) > 1:
+            t = trace[:, dims]
+            ax.plot(t[:, 0], t[:, 1], '-o', color=col('black'), lw=1, markersize=1.5, alpha=0.4, markeredgewidth=0, rasterized=True)
+            ax.plot(t[0, 0], t[0, 1], 's', color=col(START_COLOR), markersize=2, markeredgewidth=0, zorder=7)
+            ax.plot(t[-1, 0], t[-1, 1], 'o', color=col(END_COLOR), markersize=2, alpha=1, markeredgewidth=0, zorder=6)
 
-    ax.set(
-        xlim=(eval_env.obs_low[d0], eval_env.obs_high[d0]),
-        ylim=(eval_env.obs_low[d1], eval_env.obs_high[d1]),
-        xlabel=base_model.state_variables[d0],
-        ylabel=base_model.state_variables[d1],
-        title=f"{str(algo_name).upper()} trajectories ({base_model.__class__.__name__})",
-    )
+    # Style axes
+    style_axes(ax)
+    set_plot_ticks(ax)
+    ax.set_xlim(eval_env.obs_low[d0], eval_env.obs_high[d0])
+    ax.set_ylim(eval_env.obs_low[d1], eval_env.obs_high[d1])
+    ax.set_xlabel(_format_state_label_math(base_model.state_variables[d0]), fontsize=18, labelpad=10)
+    ax.set_ylabel(_format_state_label_math(base_model.state_variables[d1]), fontsize=18, labelpad=10)
+    ax.set_title(f"{str(algo_name or 'RL').upper()} Trajectories ({base_model.__class__.__name__})", fontsize=18, pad=12)
+
+    # Legend & layout
     if legend_handles:
-        ax.legend(handles=legend_handles, loc="upper right")
+        ax.legend(handles=legend_handles, loc="upper right", frameon=True, facecolor='white', framealpha=1, edgecolor=col('lightgray'), fontsize=18)
     fig.tight_layout()
-
-    # Save plots
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for ext in ("pdf", "png"):
-        fig.savefig(output_dir / f"rl_trajectories.{ext}", format=ext, bbox_inches="tight", dpi=200)
-    plt.close(fig)
+    save_fig(fig, Path(output_dir) / 'rl_trajectories')
