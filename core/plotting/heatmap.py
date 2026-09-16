@@ -30,6 +30,11 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
                      cbar_kws={'label': 'Satisfaction Probability', 'shrink': 0.8, 'aspect': 25, 'pad': 0.03}, ax=ax)
     ax.set_box_aspect(1)
 
+    # Frame styling
+    for s in ('top', 'bottom', 'left', 'right'):
+        ax.spines[s].set_visible(False)
+        ax.spines[s].set_color(col('gray'))
+
     # Colorbar styling
     cbar = ax.collections[0].colorbar
     cbar.ax.tick_params(labelsize=18, length=5, width=1)

@@ -60,10 +60,9 @@ def set_plot_lims(ax, state_min, state_max):
     ax.set_ylim(state_min[1], state_max[1])
 
 def style_axes(ax):
-    # Despine and subtle grid
-    for s in ('top', 'right'):
-        ax.spines[s].set_visible(False)
-    for s in ('left', 'bottom'):
+    # Frame and subtle grid
+    for s in ('top', 'bottom', 'left', 'right'):
+        ax.spines[s].set_visible(True)
         ax.spines[s].set_color(col('gray'))
     ax.grid(True, ls=':', color=col('lightgray'), lw=0.5, alpha=0.8)
 
