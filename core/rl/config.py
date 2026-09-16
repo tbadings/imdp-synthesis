@@ -30,7 +30,7 @@ class RLConfig:
     # Common & PPO Hyperparameters
     total_timesteps: int = 200000
     learning_rate: float = 3e-4
-    ent_coef: float = 0.005
+    ent_coef: float = 0.02
     rl_batch_size: int = 128
     n_steps: int = 128
     n_envs: int = 32
@@ -46,7 +46,7 @@ class RLConfig:
 
     # SAC Specific Hyperparameters
     buffer_size: int = 262144
-    sac_batch_size: int = 128
+    sac_batch_size: int = 512
     warmup_steps: int = 65536
     tau: float = 0.01
 

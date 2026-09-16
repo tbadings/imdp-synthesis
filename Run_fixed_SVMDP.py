@@ -26,21 +26,26 @@ def config_MountainCar() -> list[str]:
         # "1000",
         "--solver",
         "jax",
-        "--satprob",
-        "0.95",
         # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_CartPole() -> list[str]:
     return [
         "--model",
         "CartPole",
-        "--satprob",
-        "0.99",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Pendulum() -> list[str]:
@@ -51,6 +56,11 @@ def config_Pendulum() -> list[str]:
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Dubins3D() -> list[str]:
@@ -61,40 +71,56 @@ def config_Dubins3D() -> list[str]:
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Dubins4D() -> list[str]:
     return [
         "--model",
         "Dubins4D",
-        "--satprob",
-        "0.95",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Drone4D() -> list[str]:
     return [
         "--model",
         "Drone4D",
+        # "--batch_size",
+        # "1000",
         "--solver",
         "jax",
+        # "--dense",
         "--satprob",
-        "0.95",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Drone6D_small() -> list[str]:
     return [
         "--model",
         "Drone6D_small",
-        "--satprob",
-        "0.95",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Drone6D() -> list[str]:
@@ -105,29 +131,35 @@ def config_Drone6D() -> list[str]:
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
         "--satprob",
-        "0.95",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 def config_Drone4D_battery() -> list[str]:
     return [
         "--model",
         "Drone4D_battery",
-        "--satprob",
-        "0.95",
         # "--batch_size",
         # "1000",
         "--solver",
         "jax",
+        # "--dense",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
     ]
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-    run_fixed_SVMDP(args = config_MountainCar())
+    # run_fixed_SVMDP(args = config_MountainCar())
     # run_fixed_SVMDP(args = config_Pendulum())
     # run_fixed_SVMDP(args = config_CartPole())
     # run_fixed_SVMDP(args = config_Dubins3D())
     # run_fixed_SVMDP(args = config_Dubins4D())
-    # run_fixed_SVMDP(args = config_Drone4D())
+    run_fixed_SVMDP(args = config_Drone4D())
     # run_fixed_SVMDP(args = config_Drone6D())
     # run_fixed_SVMDP(args = config_Drone4D_battery())

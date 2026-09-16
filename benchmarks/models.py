@@ -39,7 +39,7 @@ class DubinsDynamics3D:
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
-            self.noise = GaussianDistr(np.array([0, 0, 0.1])**2) # From stdev to covariance
+            self.noise = GaussianDistr(np.array([0, 0, 0.25])**2) # From stdev to covariance
             self.noise.set_partition_probs(num_cells=[1, 1, 10])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0, 0, 0.2])) # Halfwidth
@@ -201,8 +201,8 @@ class DroneDynamics:
             self.state_variables = ['x_pos', 'x_vel', 'y_pos', 'y_vel', 'z_pos', 'z_vel']
             self.wrap = jnp.array([False, False, False, False, False, False], dtype=bool)
 
-        self.v_min = -2.5
-        self.v_max = 2.5
+        self.v_min = -2.0
+        self.v_max = 2.0
 
         # Discretization step size
         self.tau = 1.0

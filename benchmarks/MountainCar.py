@@ -57,8 +57,8 @@ class MountainCar(MountainCarDynamics):
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            rl_algo='ppo',
-            total_timesteps=2000000,
+            rl_algo='sac',
+            total_timesteps=1000000,
             per_step_cost=0.05,
             eval_episodes=100,
             inflation_rate=[(-50, 50), (-50, 50)],
