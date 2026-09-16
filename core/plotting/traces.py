@@ -42,7 +42,7 @@ def _plot_cuboid(ax, low, high, facecolor, alpha=0.4):
 
 def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=100, filename="traces_3d", show_ticks=None, camera_angles=None):
     # 3D state trajectories
-    fig = plt.figure(figsize=(8, 8), dpi=300)
+    fig = plt.figure(figsize=(10, 10), dpi=300)
     ax = fig.add_subplot(111, projection='3d')
     i1, i2, i3 = np.array(idx_show, dtype=int)
     state_lb = np.array(partition.boundary_lb)[[i1, i2, i3]]
@@ -68,7 +68,7 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
     ax.set_ylim(state_lb[1], state_ub[1])
     ax.set_zlim(state_lb[2], state_ub[2])
     try:
-        ax.set_box_aspect((state_ub - state_lb).tolist())
+        ax.set_box_aspect([1, 1, 1])
     except Exception:
         pass
 
@@ -95,7 +95,7 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
 
 def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_traces=100, add_unsafe_box=True, filename="traces", show_ticks=None):
     # 2D state trajectories
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=300)
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
     i1, i2 = np.array(idx_show, dtype=int)
     ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=18, labelpad=10)
     ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=18, labelpad=10)
@@ -110,7 +110,7 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         ax.set_yticks([])
 
     set_plot_lims(ax, np.array(partition.boundary_lb)[[i1, i2]] - expand, np.array(partition.boundary_ub)[[i1, i2]] + expand)
-    ax.set_aspect('equal', adjustable='box')
+    ax.set_box_aspect(1)
 
     if args.plot_grid:
         plot_grid(ax, np.array(partition.boundary_lb)[[i1, i2]], np.array(partition.boundary_ub)[[i1, i2]])

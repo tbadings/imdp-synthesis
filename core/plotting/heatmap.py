@@ -25,9 +25,10 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
 
     # Plot heatmap grid
     DF = pd.DataFrame(values[::-1, :], index=partition.regions_per_dim['centers'][i2][::-1], columns=partition.regions_per_dim['centers'][i1])
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=300)
-    ax = sns.heatmap(DF, cmap='rocket', vmin=0, vmax=1, xticklabels=False, yticklabels=False, square=True,
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
+    ax = sns.heatmap(DF, cmap='rocket', vmin=0, vmax=1, xticklabels=False, yticklabels=False, square=False,
                      cbar_kws={'label': 'Satisfaction Probability', 'shrink': 0.8, 'aspect': 25, 'pad': 0.03}, ax=ax)
+    ax.set_box_aspect(1)
 
     # Colorbar styling
     cbar = ax.collections[0].colorbar

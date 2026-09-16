@@ -13,7 +13,7 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
     if len(dims) != 2:
         raise ValueError("Requires 2 dimensions.")
     d0, d1 = dims
-    fig, ax = plt.subplots(figsize=(8, 8), dpi=300)
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
     legend_handles = []
 
     # Goal & unsafe regions
@@ -38,6 +38,7 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
     set_plot_ticks(ax)
     ax.set_xlim(eval_env.obs_low[d0], eval_env.obs_high[d0])
     ax.set_ylim(eval_env.obs_low[d1], eval_env.obs_high[d1])
+    ax.set_box_aspect(1)
     ax.set_xlabel(_format_state_label_math(base_model.state_variables[d0]), fontsize=18, labelpad=10)
     ax.set_ylabel(_format_state_label_math(base_model.state_variables[d1]), fontsize=18, labelpad=10)
     ax.set_title(f"{str(algo_name or 'RL').upper()} Trajectories ({base_model.__class__.__name__})", fontsize=18, pad=12)
