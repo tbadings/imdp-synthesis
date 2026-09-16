@@ -160,6 +160,15 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = config_CartPole())
     # run_fixed_SVMDP(args = config_Dubins3D())
     # run_fixed_SVMDP(args = config_Dubins4D())
-    run_fixed_SVMDP(args = config_Drone4D())
+    # run_fixed_SVMDP(args = config_Drone4D())
     # run_fixed_SVMDP(args = config_Drone6D())
     # run_fixed_SVMDP(args = config_Drone4D_battery())
+
+
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--dense"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
+    run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])

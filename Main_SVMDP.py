@@ -177,7 +177,7 @@ if __name__ == '__main__':
     from core.plotting.heatmap import heatmap
     from core.plotting.traces import plot_traces_3d
 
-    sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=100)
+    sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=1000)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     heatmap(
