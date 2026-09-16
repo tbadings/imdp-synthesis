@@ -286,6 +286,7 @@ def SVMDP_DP(
     logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
     start_time = time.time()
     
+    satprob = args.satprob
     pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
     if not policy_iteration:
         # Value iteration
@@ -305,6 +306,10 @@ def SVMDP_DP(
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
+
+            if float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
 
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
@@ -332,14 +337,8 @@ def SVMDP_DP(
             # The policy is fixed throughout policy evaluation, so slice the policy-selected action out
             # of the precomputed imp_batches once here, rather than re-slicing on every inner sweep.
             # Combined fancy-indexing ([rows, sel]) selects one action per state directly, avoiding the
-            # [B, A, nc, D] intermediate copy that plain [rows][..., sel] would materialise.
-            #
-            # Incremental refresh (Opt 1): the policy stabilises within a few outer iterations, so instead
-            # of rebuilding all eval inputs every iteration (~70s host gather for Drone6D) we only re-gather
-            # the rows whose action changed since eval_batches was last built. The first iteration is a full
-            # build; later ones touch only a handful of rows. Result is identical to a full rebuild.
-            for bi, (lb_a, ub_a, p_a) in enumerate(imp_batches):
-                sb = state_batches[bi]
+            # earlier double-indexing intermediate array.
+            for bi, (sb, (lb_a, ub_a, p_a)) in enumerate(zip(state_batches, imp_batches)):
                 sel = policy[sb]
                 if eval_batches[bi] is None:
                     rows = np.arange(len(sel))
@@ -369,8 +368,8 @@ def SVMDP_DP(
                     postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
-                    if V[s0] >= args.satprob:
-                        logger.info(f'Policy is above the satisfaction threshold {args.satprob:.2f} after {iteration + 1} iterations')
+                    if float(V[s0]) >= satprob:
+                        logger.info(f'Policy is above the satisfaction threshold {satprob:.2f} after {iteration + 1} iterations')
                         # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
                         sat_policy = True
                     else:
@@ -389,6 +388,7 @@ def SVMDP_DP(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
+                    or (float(V[s0]) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -414,6 +414,10 @@ def SVMDP_DP(
                 V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
                 for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
+
+            if float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
 
             # Check convergence: improvement step is monotone, so max gain suffices
             # TODO: Better validate the convergence criterion based on max gain (rather than checking if the policy is unchanged; which is less stable in case of multiple optimal policies)

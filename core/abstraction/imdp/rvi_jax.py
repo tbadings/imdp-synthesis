@@ -49,7 +49,7 @@ def RVI_JAX(
     phase1_initial_it = 10
     phase1_increment_it = 10
     phase1_max_it = min(31, max_eval_it)
-    fix_policy_above_value = 2 # >1 means this feature is disabled
+    satprob = args.satprob
 
     #####
 
@@ -234,6 +234,10 @@ def RVI_JAX(
                 V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
+
+            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
             
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
@@ -262,8 +266,7 @@ def RVI_JAX(
                     postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
-                    if V[s0] > fix_policy_above_value:
-                        # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
+                    if float(V[s0]) >= satprob:
                         sat_policy = True
                     else:
                         sat_policy = False
@@ -295,6 +298,7 @@ def RVI_JAX(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
+                    or (float(V[s0]) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -323,6 +327,10 @@ def RVI_JAX(
                     V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
                     # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
+
+            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
 
             # Check convergence: improvement step is monotone, so max gain suffices
             # TODO: Better validate the convergence criterion based on max gain (rather than checking if the policy is unchanged; which is less stable in case of multiple optimal policies)

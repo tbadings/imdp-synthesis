@@ -44,7 +44,7 @@ def RVI_JAX2(
     phase1_initial_it = 10
     phase1_increment_it = 10
     phase1_max_it = min(31, max_eval_it)
-    fix_policy_above_value = 2  # >1 means this feature is disabled
+    satprob = args.satprob
 
     #####
 
@@ -193,6 +193,10 @@ def RVI_JAX2(
                 V = V.at[state_batch].set(V_batch)
                 policy[state_batch] = np.asarray(jax.device_get(policy_batch), dtype=np.int32)
 
+            if float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
+
             # Convergence check: one cheap scalar device_get per iteration
             if float(jnp.max(jnp.abs(V - V_old))) < epsilon:
                 pbar.write(f'Converged after {iteration + 1} iterations')
@@ -217,7 +221,7 @@ def RVI_JAX2(
                     postfix_dict[f'v_avg'] = f'{float(jnp.mean(V[states_to_update])):.6f}'
                     postfix_dict['max(v-v_old)'] = f'{delta:.6f}'
 
-                    if float(V[s0]) > fix_policy_above_value:
+                    if float(V[s0]) >= satprob:
                         sat_policy = True
                     else:
                         sat_policy = False
@@ -239,6 +243,7 @@ def RVI_JAX2(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
+                    or (float(V[s0]) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -261,6 +266,10 @@ def RVI_JAX2(
                     )
                     V = V.at[state_batch].set(V_batch)
                     policy[state_batch] = np.asarray(jax.device_get(policy_batch), dtype=np.int32)
+
+            if float(V[s0]) >= satprob:
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                break
 
             if float(jnp.max(V - V_before_improvement)) < epsilon:
                 if partial_convergence_reached:

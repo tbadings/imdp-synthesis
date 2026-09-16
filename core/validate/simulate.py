@@ -10,7 +10,7 @@ class MonteCarloSim():
     Class to run Monte Carlo simulations on the discrete-time stochastic system closed under a fixed Markov policy.
     '''
 
-    def __init__(self, model, partition, policy, policy_inputs, x0, iterations=100, sim_horizon=1000, random_initial_state=False, verbose=True, **kwargs):
+    def __init__(self, model, partition, policy, policy_inputs, x0, iterations=1000, sim_horizon=1000, random_initial_state=False, verbose=True, **kwargs):
 
         logger.info('=== Start Monte Carlo simulations ===')
 
