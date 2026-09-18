@@ -39,7 +39,7 @@ class Pendulum(PendulumDynamics):
 
         self.partition['boundary'] = np.array([[-np.pi, -8], [np.pi, 8]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([200, 200])
+        self.partition['number_per_dim'] = np.array([300, 300])
 
         self.goal = np.array([
             [[-0.1*np.pi, -1], [0.1*np.pi, 1]]
@@ -56,7 +56,7 @@ class Pendulum(PendulumDynamics):
             rl_algo='ppo',
             total_timesteps=1000000,
             per_step_cost=0.05,
-            inflation_rate=[(-2, 2), (-2, 2)],
+            inflation_rate=[(-5, 5), (-5, 5)],
             RL_actions_per_state=5,
         )
 

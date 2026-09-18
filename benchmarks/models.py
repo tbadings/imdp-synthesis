@@ -216,7 +216,7 @@ class DroneDynamics:
                            [self.tau]])
         
         if dim == 2:
-            self.damping = 0.01
+            self.damping = args.damping
 
             self.A  = scipy.linalg.block_diag(Ablock, Ablock)
             self.B  = scipy.linalg.block_diag(Bblock, Bblock)
@@ -310,8 +310,8 @@ class DroneDynamics_battery:
             self.wrap = jnp.array([False, False, False, False, False, False, False], dtype=bool)
             self.pos_idx = [0, 2, 4]
 
-        self.v_min = -2.5
-        self.v_max = 2.5
+        self.v_min = -2.0
+        self.v_max = 2.0
 
         # Discretization step size
         self.tau = 1.0
@@ -445,7 +445,7 @@ class PendulumDynamics:
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':
             self.noise = GaussianDistr(np.array([0.03, 0.1])**2) # From stdev to covariance
-            self.noise.set_partition_probs(num_cells=[10, 10])
+            self.noise.set_partition_probs(num_cells=[25, 25])
         elif args.noise_distr == 'triangular':
             self.noise = TriangularDistr(np.array([0.03, 0.1])) # Halfwidth
             self.noise.set_partition_probs(num_cells=[10, 10])

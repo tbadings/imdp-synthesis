@@ -59,7 +59,7 @@ class Dubins4D(DubinsDynamics4D):
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo='ppo',
-            total_timesteps=10000000,
+            total_timesteps=20000000,
             proximity_dims=[0, 1],
             proximity_penalty=0.5,
             per_step_cost=0.05,

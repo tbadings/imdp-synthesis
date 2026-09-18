@@ -49,6 +49,8 @@ def parse_arguments(argv=None):
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,
                         help="Version of the model to use (optinal; 0 by default)")
+    parser.add_argument('--damping', type=float, default=0.0,
+                        help="Damping factor for models with velocity damping")
     parser.add_argument('--noise_distr', type=str, default='gaussian', choices=['gaussian', 'normal', 'triangular'], # 'normal' is alias for 'gaussian'
                         help="Noise distribution type to use ('normal' is treated as 'gaussian')")
     
