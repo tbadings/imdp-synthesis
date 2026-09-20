@@ -112,35 +112,34 @@ class Drone4D_battery(DroneDynamics_battery):
 
         self.partition['boundary'] = np.array([[-10, v_min, -10, v_min, 0], [10, v_max, 10, v_max, self.max_charge]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 40])
+        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 20])
         
         self.goal = np.array([
-            [[6, v_min, 6, v_min, 20], [10, v_max, 10, v_max, self.max_charge]]
+            [[6, v_min, 6, v_min, 50], [10, v_max, 10, v_max, self.max_charge]]
         ], dtype=float)
 
         self.critical = np.array([
-            # [[-7, v_min, 1, v_min, 0], [-1, v_max, 3, v_max, self.max_charge]],
-            # [[3, v_min, -7, v_min, 0], [7, v_max, -3, v_max, self.max_charge]],
+            # Obstacle in the center
+            [[-5, v_min, -1, v_min, 0], [5, v_max, 1, v_max, self.max_charge]],
+            [[-1, v_min, -5, v_min, 0], [1, v_max, 5, v_max, self.max_charge]],
         ], dtype=float)
 
         self.charging_station = np.array([
-            [[-9, v_min, -2, v_min, 0], [-5, v_max, 2, v_max, self.max_charge]]
+            [[-9, v_min, -5, v_min, 0], [-6, v_max, 5, v_max, self.max_charge]]
         ], dtype=float)
 
-        self.x0 = np.array([-5, 0.01, -9, 0.01, 50])
+        self.x0 = np.array([0.01, 0.01, -9, 0.01, 50])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo="ppo",
             total_timesteps=1000000,
-            pi_arch=[256, 256],
-            vf_arch=[256, 256],
             proximity_dims = [0, 2],
             proximity_penalty=0.5,
             per_step_cost=0.05,
-            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3)],
-            RL_actions_per_state=9,
+            inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4)],
+            RL_actions_per_state=25,
         )
 
         return

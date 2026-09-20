@@ -38,6 +38,9 @@ def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, siz
             ax.add_patch(Rectangle(s[0][d], w, h, facecolor=col(fc), alpha=0.4, edgecolor=col(ec), lw=0, hatch=hatch))
             if labels:
                 ax.annotate(lbl, (s[0] + s[1])[d] / 2, color=col(ec), fontsize=size + 2, ha='center', va='center')
+    for s in getattr(model, 'charging_station', []):
+        ax.add_patch(Rectangle(s[0][d], *(s[1] - s[0])[d], facecolor=col('limegreen'), alpha=0.4, lw=1))
+        ax.text(*(s[0] + s[1])[d] / 2, '⚡', fontsize=40 , ha='center', va='center', color=col('darkgreen'))
 
 def plot_grid(ax, state_min, state_max, size=[1, 1]):
     # Background grid lines

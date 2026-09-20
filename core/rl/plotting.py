@@ -24,6 +24,10 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
             rects = [mpatches.Rectangle((b[0, d0], b[0, d1]), b[1, d0] - b[0, d0], b[1, d1] - b[0, d1]) for b in boxes]
             ax.add_collection(PatchCollection(rects, facecolor=col(c), edgecolor=col(ec), lw=0, hatch=hatch, alpha=0.4, rasterized=True))
             legend_handles.append(mpatches.Patch(facecolor=col(c), edgecolor=col(ec), lw=0, hatch=hatch, alpha=0.4, label=lbl))
+    for s in getattr(base_model, 'charging_station', []):
+        ax.add_patch(mpatches.Rectangle(s[0][[d0, d1]], *(s[1] - s[0])[[d0, d1]], facecolor=col('limegreen'), alpha=0.4, lw=1))
+        ax.text(*(s[0] + s[1])[[d0, d1]] / 2, '⚡', fontsize=40, ha='center', va='center', color=col('darkgreen'))
+        legend_handles.append(mpatches.Patch(facecolor=col('limegreen'), alpha=0.4, label='Charging'))
 
     # RL trajectories
     for trace in (trajectories or [])[:max_trajectories]:

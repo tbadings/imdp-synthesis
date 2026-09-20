@@ -334,7 +334,7 @@ class DroneDynamics_battery:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
+                cov = np.array([0.15, 0, 0.15, 0, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
                 self.noise.set_partition_probs(num_cells=[10, 1, 10, 1, 1])
             elif args.noise_distr == 'triangular':
