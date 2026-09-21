@@ -85,13 +85,14 @@ if __name__ == '__main__':
             partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
             del active_states, active_actions
 
-        s_init_debug, s_init_exists = partition.x2state(model.x0)
+        x0_center = np.mean(model.x0[0], axis=0)
+        s_init_debug, s_init_exists = partition.x2state(x0_center)
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
         
         if not s_init_exists:
-            raise ValueError(f"Initial state x0={model.x0} is not an active cell in the partition.")
+            raise ValueError(f"Initial state x0={x0_center} is not an active cell in the partition.")
         
         # print(f"\n=== Forward reachable sets for initial state s0={s_init_debug} (x0={model.x0}) ===")
         # for a_idx in range(len(actions.id_to_input)):
@@ -161,7 +162,7 @@ if __name__ == '__main__':
 
         imdp = IMDP(partition=partition,
                     states=np.array(partition.regions['idxs']),
-                    x0=model.x0,
+                    x0=x0_center,
                     goal_regions=np.array(partition.goal['bools']),
                     critical_regions=np.array(partition.critical['bools']),
                     P_full=P_full,
@@ -191,7 +192,7 @@ if __name__ == '__main__':
             V, policy = RVI_JAX(
                 args=args,
                 imdp=imdp,
-                s0=partition.x2state(model.x0)[0],
+                s0=partition.x2state(x0_center)[0],
                 max_iterations=10000,
                 epsilon=1e-6,
                 RND_SWEEPS=True,
@@ -218,7 +219,7 @@ if __name__ == '__main__':
     mask = policy[:-1] >= 0
     policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
 
-    s0 = partition.x2state(model.x0)[0]
+    s0 = partition.x2state(x0_center)[0]
     logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    
 
     # %% Simulations and plot
@@ -232,7 +233,7 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces_3d
     from core.plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
+    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, x0_center, verbose=False, iterations=1000)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=100, add_unsafe_box=False,)

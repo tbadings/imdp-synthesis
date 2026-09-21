@@ -8,6 +8,12 @@ from .MountainCar import MountainCar
 from .CartPole import CartPole
 from .Integrators import DoubleIntegrator
 from .Test1D import Test1D
+from .logRASM import (
+	CollisionAvoidance,
+	TripleIntegrator,
+	PlanarRobot,
+	Drone4D as Drone4D_logRASM,
+)
 
 
 def create_model(args):
@@ -26,6 +32,11 @@ def create_model(args):
 		'CartPole': CartPole,
 		'DoubleIntegrator': DoubleIntegrator,
 		'Test1D': Test1D,
+		# logRASM benchmarks and aliases
+		'CollisionAvoidance': CollisionAvoidance,
+		'TripleIntegrator': TripleIntegrator,
+		'PlanarRobot': PlanarRobot,
+		'Drone4D_logRASM': Drone4D_logRASM,
 	}
 
 	model_cls = model_map.get(args.model)

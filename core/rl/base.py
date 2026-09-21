@@ -60,7 +60,9 @@ class BaseRL:
 
         def _single_rollout(rng):
             rng_init, rng_steps = jax.random.split(rng)
-            init_state = jax.random.uniform(rng_init, (env.obs_dim,), minval=env.reset_low_jnp, maxval=env.reset_high_jnp)
+            rng_box, rng_pt = jax.random.split(rng_init)
+            box_idx = jax.random.choice(rng_box, len(env.x0_jnp))
+            init_state = jax.random.uniform(rng_pt, (env.obs_dim,), minval=env.x0_jnp[box_idx, 0], maxval=env.x0_jnp[box_idx, 1])
 
             def _step_body(carry, key):
                 curr_state, is_done, hit_goal = carry

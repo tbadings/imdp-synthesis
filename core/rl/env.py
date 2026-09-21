@@ -42,6 +42,7 @@ class BenchmarkEnv:
         # Specifications
         self.goal = np.asarray(getattr(model, "goal", []), dtype=np.float32).reshape(-1, 2, self.obs_dim)
         self.critical = np.asarray(getattr(model, "critical", []), dtype=np.float32).reshape(-1, 2, self.obs_dim)
+        self.x0 = np.asarray(getattr(model, "x0", []), dtype=np.float32).reshape(-1, 2, self.obs_dim)
 
         # Distance normalization span
         goal_lo = self.goal[0, 0] if len(self.goal) else np.zeros(self.obs_dim, dtype=np.float32)
@@ -50,13 +51,6 @@ class BenchmarkEnv:
         self.distance_span = np.where(span > 0, span, 1.0).astype(np.float32)
         self.distance_weights = np.broadcast_to(np.asarray(cfg.distance_cost, dtype=np.float32), (self.obs_dim,))
 
-        # Reset region around initial state x0
-        x0_cell = np.floor((model.x0 - self.obs_low) / self.bin_widths)
-        cell_lb = self.obs_low + x0_cell * self.bin_widths
-        eps = 0.1 * self.bin_widths
-        self.reset_low = np.clip(cell_lb - eps, self.obs_low, self.obs_high)
-        self.reset_high = np.clip(cell_lb + self.bin_widths + eps, self.obs_low, self.obs_high)
-
         # JAX arrays for JIT execution
         self.obs_low_jnp = jnp.asarray(self.obs_low)
         self.obs_high_jnp = jnp.asarray(self.obs_high)
@@ -64,15 +58,13 @@ class BenchmarkEnv:
         self.u_max_jnp = jnp.asarray(self.u_max)
         self.goal_jnp = jnp.asarray(self.goal)
         self.critical_jnp = jnp.asarray(self.critical)
+        self.x0_jnp = jnp.asarray(self.x0)
         self.bin_widths_jnp = jnp.asarray(self.bin_widths)
         self.number_per_dim_jnp = jnp.asarray(self.number_per_dim, dtype=jnp.int32)
         self.goal_lo_jnp = jnp.asarray(goal_lo)
         self.goal_hi_jnp = jnp.asarray(goal_hi)
         self.distance_span_jnp = jnp.asarray(self.distance_span)
         self.distance_weights_jnp = jnp.asarray(self.distance_weights)
-
-        self.reset_low_jnp = jnp.asarray(self.reset_low)
-        self.reset_high_jnp = jnp.asarray(self.reset_high)
 
         prox_dims = cfg.proximity_dims or tuple(range(self.obs_dim))
         self.prox_dims_jnp = jnp.asarray(prox_dims, dtype=jnp.int32)

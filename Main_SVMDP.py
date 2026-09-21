@@ -90,9 +90,10 @@ if __name__ == '__main__':
             # large forward-reachability arrays are allocated below.
             del active_states, active_actions
 
-        s_init, s_init_exists = partition.x2state(model.x0)
+        x0_center = np.mean(model.x0[0], axis=0)
+        s_init, s_init_exists = partition.x2state(x0_center)
         if not s_init_exists:
-            raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
+            raise ValueError(f"Initial state x0={x0_center} is not in the partition.")
 
         # Compute forward reachable sets and noise-shifted successor cell IDs.
         actions = RectangularForward(args=args, partition=partition, model=model)
@@ -109,7 +110,7 @@ if __name__ == '__main__':
         svmdp = SVMDP(
             partition=partition,
             states=states,
-            x0=model.x0,
+            x0=x0_center,
             goal_regions=np.array(partition.goal['bools']),
             critical_regions=np.array(partition.critical['bools']),
             P_full=actions.frs_noise_probs,
@@ -122,7 +123,7 @@ if __name__ == '__main__':
 
         del actions
 
-        logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
+        logger.info('Initial state x0=%s → state index %d\n', x0_center, s_init)
         logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', time.time() - t)
 
         if args.save_checkpoint:
@@ -144,7 +145,7 @@ if __name__ == '__main__':
         V, policy = SVMDP_DP(
             args=args,
             svmdp=svmdp,
-            s0=partition.x2state(model.x0)[0],
+            s0=partition.x2state(x0_center)[0],
             max_iterations=10000,
             epsilon=1e-6,
             RND_SWEEPS=True,
@@ -154,7 +155,7 @@ if __name__ == '__main__':
         )
     logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', time.time() - t)
 
-    s0 = partition.x2state(model.x0)[0]
+    s0 = partition.x2state(x0_center)[0]
     logger.info('Value in initial state s0=%d: %.6f\n', s0, V[s0])
 
     # %% Extract policy inputs
@@ -177,7 +178,7 @@ if __name__ == '__main__':
     from core.plotting.heatmap import heatmap
     from core.plotting.traces import plot_traces_3d
 
-    sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=1000)
+    sim = MonteCarloSim(model, partition, policy, policy_inputs, x0_center, verbose=False, iterations=1000)
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
 
     heatmap(

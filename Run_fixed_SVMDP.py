@@ -153,6 +153,54 @@ def config_Drone4D_battery() -> list[str]:
         "0",
     ]
 
+def config_CollisionAvoidance() -> list[str]:
+    return [
+        "--model",
+        "CollisionAvoidance",
+        "--solver",
+        "jax",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
+    ]
+
+def config_TripleIntegrator() -> list[str]:
+    return [
+        "--model",
+        "TripleIntegrator",
+        "--solver",
+        "jax",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
+    ]
+
+def config_PlanarRobot() -> list[str]:
+    return [
+        "--model",
+        "PlanarRobot",
+        "--solver",
+        "jax",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
+    ]
+
+def config_Drone4D_logRASM() -> list[str]:
+    return [
+        "--model",
+        "Drone4D_logRASM",
+        "--solver",
+        "jax",
+        "--satprob",
+        "0.99",
+        "--seed",
+        "0",
+    ]
+
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
     # MountainCar
@@ -260,13 +308,26 @@ if __name__ == "__main__":
 
     # Drone4D_battery
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--dense"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","sac"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","sac"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","ppo"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","ppo"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","ppo"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","ppo"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","sac"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","sac"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
+
+    # logRASM Benchmarks (seed 0 of PPO)
+    # CollisionAvoidance
+    # run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+
+    # TripleIntegrator
+    run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+
+    # # PlanarRobot
+    run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+
+    # # Drone4D (logRASM)
+    run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
