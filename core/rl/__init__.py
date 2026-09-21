@@ -53,7 +53,7 @@ def find_active(model, args):
     # Tube construction (active states)
     active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)
 
-    if args.plot_tube:
+    if args.plot_SA_tube:
         plot_dims = getattr(model, "plot_dimensions", None)
         if plot_dims is not None and len(plot_dims) == 2:
             plot_rl_trajectories_with_active_states(
