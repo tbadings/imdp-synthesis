@@ -83,6 +83,8 @@ def parse_arguments(argv=None):
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, save checkpoints during execution")
     # Plotting options
+    parser.add_argument('--plot_SA_tube', action=argparse.BooleanOptionalAction, default=False,
+                            help="If True, create plot for the state-action tube around the RL rollouts")
     parser.add_argument('--plot_grid', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, plot unit grids in figures")
     parser.add_argument('--plot_title', action=argparse.BooleanOptionalAction, default=False,

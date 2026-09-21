@@ -52,7 +52,7 @@ class BaseRL:
         top_k = np.argsort(np.sum(diff ** 2, axis=-1), axis=1)[:, :num]
         return discrete_actions[top_k]
 
-    def evaluate(self, discrete_actions=None, seed=0, output_dir=None):
+    def evaluate(self, discrete_actions=None, seed=0, output_dir=None, return_trajectories=False):
         env = self.env
         predict_fn = self.get_predict_fn()
         action_span = env.u_max_jnp - env.u_min_jnp
@@ -84,7 +84,8 @@ class BaseRL:
             full_tr = np.vstack([init_s[None, :], tr[:int(np.sum(~done_m))]])
             cells = np.clip((full_tr - env.obs_low) // env.bin_widths, 0, env.number_per_dim - 1).astype(int)
             visited_cells.update(map(tuple, cells))
-            trajectories.append(full_tr)
+            if len(trajectories) < 100:
+                trajectories.append(full_tr)
 
         plot_dims = getattr(env.model, "plot_dimensions", None)
         if plot_dims is not None and len(plot_dims) == 2:
@@ -94,7 +95,8 @@ class BaseRL:
                 algo_name=self.cfg.rl_algo,
             )
 
-        return int(np.sum(final_goals)), visited_cells
+        result = (int(np.sum(final_goals)), visited_cells)
+        return (*result, trajectories) if return_trajectories else result
 
     def _run_training(self, desc, runner_state, update_step, steps_per_update, num_chunks, format_fn):
         t_start = time()

@@ -9,6 +9,7 @@ from .env import BenchmarkEnv
 from .ppo import PPO
 from .sac import SAC
 from .tube import build_tube
+from .plotting import plot_rl_trajectories_with_active_states
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +42,29 @@ def find_active(model, args):
     discrete_actions = np.array(list(itertools.product(*discrete_actions_per_dim)), dtype=np.float32)
 
     # Rollouts and visited cell extraction
-    goal_reached, newly_visited = agent.evaluate(discrete_actions=discrete_actions, seed=args.seed, output_dir=out_dir)
+    goal_reached, newly_visited, trajectories = agent.evaluate(
+        discrete_actions=discrete_actions,
+        seed=args.seed,
+        output_dir=out_dir,
+        return_trajectories=True,
+    )
     logger.info("Goal reached in %d/%d evaluation episodes.", goal_reached, cfg.eval_episodes)
 
     # Tube construction (active states)
     active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)
+
+    if args.plot_tube:
+        plot_dims = getattr(model, "plot_dimensions", None)
+        if plot_dims is not None and len(plot_dims) == 2:
+            plot_rl_trajectories_with_active_states(
+                model,
+                env,
+                trajectories,
+                active_states,
+                list(plot_dims),
+                out_dir,
+                algo_name=cfg.rl_algo,
+            )
 
     # Discretized active policy actions
     top_k = agent.get_policy_actions(active_states, discrete_actions, num=cfg.RL_actions_per_state)
