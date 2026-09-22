@@ -170,13 +170,13 @@ def plot_rl_trajectories_with_active_states(
             dims,
             facecolor=col(ACTIVE_COLOR),
             edgecolor="none",
-            alpha=0.16,
+            alpha=0.23,
             rasterized=True,
             zorder=1,
         )
     )
     legend_handles.append(
-        mpatches.Patch(facecolor=col(ACTIVE_COLOR), edgecolor="none", alpha=0.16, label="Active cells")
+        mpatches.Patch(facecolor=col(ACTIVE_COLOR), edgecolor="none", alpha=0.23, label="Active states")
     )
 
     # Derive this layer from the same trajectory subset drawn below. The tube is
@@ -189,7 +189,7 @@ def plot_rl_trajectories_with_active_states(
             dims,
             facecolor=col(VISITED_COLOR),
             edgecolor="none",
-            alpha=0.38,
+            alpha=0.48,
             rasterized=True,
             zorder=1.5,
         )
@@ -198,8 +198,8 @@ def plot_rl_trajectories_with_active_states(
         mpatches.Patch(
             facecolor=col(VISITED_COLOR),
             edgecolor="none",
-            alpha=0.38,
-            label="Visited cells",
+            alpha=0.48,
+            label="Visited states",
         )
     )
 
@@ -281,7 +281,7 @@ def plot_rl_trajectories_with_active_states(
             [np.vstack((trace, separator)) for trace in projected_trajectories]
         )
         ax.plot(
-            combined[:, 0], combined[:, 1], "-o", color=col("black"), lw=1,
+            combined[:, 0], combined[:, 1], "-o", color=col("black"), lw=0.45,
             markersize=1.5, alpha=0.3, markeredgewidth=0, rasterized=True, zorder=5,
         )
         starts = np.asarray([trace[0] for trace in projected_trajectories])
@@ -297,10 +297,12 @@ def plot_rl_trajectories_with_active_states(
 
     style_axes(ax)
     set_plot_ticks(ax)
-    ax.tick_params(labelsize=22)
+    ax.tick_params(labelsize=14)
     ax.set_xlim(eval_env.obs_low[d0], eval_env.obs_high[d0])
     ax.set_ylim(eval_env.obs_low[d1], eval_env.obs_high[d1])
     ax.set_box_aspect(1)
+    ax.set_xlabel(_format_state_label_math(base_model.state_variables[d0]), fontsize=16, labelpad=7)
+    ax.set_ylabel(_format_state_label_math(base_model.state_variables[d1]), fontsize=16, labelpad=7)
     legend = ax.legend(
         handles=legend_handles[:2],
         loc="upper left",
@@ -308,7 +310,7 @@ def plot_rl_trajectories_with_active_states(
         facecolor="white",
         framealpha=1,
         edgecolor=col("lightgray"),
-        fontsize=20,
+        fontsize=13,
         ncol=1,
         borderpad=0.3,
         labelspacing=0.3,
