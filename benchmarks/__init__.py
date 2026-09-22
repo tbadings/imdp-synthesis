@@ -1,5 +1,5 @@
 # Load the benchmarks from the subfiles
-from math import floor, prod
+from math import ceil, prod
 
 import numpy as np
 
@@ -15,35 +15,21 @@ from .Test1D import Test1D
 
 
 def _fit_grid_budget(default_counts, budget):
-	"""Scale a Cartesian grid to fit a budget while retaining its default proportions."""
+	'''
+	Scale each grid dimension proportionally and round up to the budget.
+	'''
+	
 	if budget <= 0:
-		raise ValueError("Partition budgets must be positive integers.")
+		raise ValueError("Partition budgets must be positive.")
 
-	defaults = [int(count) for count in default_counts]
+	defaults = np.array(default_counts, dtype=int)
 	if any(count <= 0 for count in defaults):
 		raise ValueError("Partition and action grid sizes must be positive.")
-	if budget == prod(defaults):
-		return defaults
+	if budget < 1:
+		return [1] * len(defaults)
 
 	scale = (budget / prod(defaults)) ** (1 / len(defaults))
-	counts = [max(1, floor(count * scale)) for count in defaults]
-	current = prod(counts)
-	# Clamping small dimensions to one can make the initial grid exceed the budget.
-	while current > budget:
-		i = max((i for i, count in enumerate(counts) if count > 1),
-		        key=lambda i: counts[i] / defaults[i])
-		current = current // counts[i] * (counts[i] - 1)
-		counts[i] -= 1
-
-	# Spend any remaining budget on the most undersampled dimension.
-	while True:
-		feasible = [i for i, count in enumerate(counts)
-		            if current // count * (count + 1) <= budget]
-		if not feasible:
-			break
-		i = min(feasible, key=lambda i: (counts[i] / defaults[i], i))
-		current = current // counts[i] * (counts[i] + 1)
-		counts[i] += 1
+	counts = [max(1, ceil(round(count * scale, 12))) for count in defaults]
 
 	return counts
 
@@ -72,18 +58,25 @@ def create_model(args):
 
 	base_model = model_cls(args)
 	state_counts = base_model.partition['number_per_dim']
-	choice_budget = getattr(args, 'partition_choices', None)
-	state_budget = getattr(args, 'partition_states', None)
 
-	if choice_budget is not None:
-		# A choice is a state-action pair. Scale both grids using one budget.
-		num_state_dims = len(state_counts)
-		counts = _fit_grid_budget([*state_counts, *base_model.num_actions], choice_budget)
-		base_model.partition['number_per_dim'] = np.array(counts[:num_state_dims], dtype=int)
-		base_model.num_actions = counts[num_state_dims:]
-	elif state_budget is not None:
+	states_budget = getattr(args, 'fix_num_states', None)
+	actions_budget = getattr(args, 'fix_num_actions', None)
+	choices_budget = getattr(args, 'fix_num_choices', None)
+
+	if actions_budget is not None:
+		base_model.num_actions = np.array(
+			_fit_grid_budget(base_model.num_actions, actions_budget), dtype=int
+		)
+
+	if choices_budget is not None:
+		num_actions = np.prod(base_model.num_actions)
 		base_model.partition['number_per_dim'] = np.array(
-			_fit_grid_budget(state_counts, state_budget), dtype=int
+			_fit_grid_budget(state_counts, choices_budget / num_actions), dtype=int
+		)
+
+	elif states_budget is not None:
+		base_model.partition['number_per_dim'] = np.array(
+			_fit_grid_budget(state_counts, states_budget), dtype=int
 		)
 
 	if base_model.linear:
