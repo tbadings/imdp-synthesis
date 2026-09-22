@@ -39,7 +39,7 @@ class MountainCar(MountainCarDynamics):
         # Authority limit for the control u, both positive and negative
         self.uMin = [-1]
         self.uMax = [1]
-        self.num_actions = [3]
+        self.num_actions = [3] 
 
         self.partition['boundary'] = np.array([[-1.2, -0.07], [0.6, 0.07]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
@@ -62,6 +62,7 @@ class MountainCar(MountainCarDynamics):
             per_step_cost=0.05,
             eval_episodes=100,
             inflation_rate=[(-50, 50), (-50, 50)],
+            RL_actions_per_state=3,
         )
 
         return

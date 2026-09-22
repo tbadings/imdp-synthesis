@@ -53,7 +53,12 @@ def parse_arguments(argv=None):
                         help="Damping factor for models with velocity damping")
     parser.add_argument('--noise_distr', type=str, default='gaussian', choices=['gaussian', 'normal', 'triangular'], # 'normal' is alias for 'gaussian'
                         help="Noise distribution type to use ('normal' is treated as 'gaussian')")
-    
+
+    parser.add_argument('--partition_states', type=int, default=None,
+                            help="Budget for total number of abstract states (optional; if not given, the partitioning is determined by the benchmark's default).")
+    parser.add_argument('--partition_choices', type=int, default=None,
+                                help="Budget for total number of abstract states (optional; if not given, the partitioning is determined by the benchmark's default).")
+
     parser.add_argument('--gpu', action=argparse.BooleanOptionalAction, default=False,
                         help="If true, run on GPU. Otherwise, run on CPU")
     parser.add_argument('--gpu_rvi', action=argparse.BooleanOptionalAction, default=False,
@@ -210,5 +215,9 @@ def parse_arguments(argv=None):
             UserWarning,
             stacklevel=2,
         )
+
+    if args.partition_states != None or args.partition_choices != None:
+        if not args.dense:
+            raise ValueError("Partitioning budgets (--partition_states or --partition_choices) can only be used with --dense mode.")
 
     return args
