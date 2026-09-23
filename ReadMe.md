@@ -105,13 +105,13 @@ This will:
 
 ## Reusing a checkpoint
 
-To skip abstraction generation and rerun the solver and plotting pipeline from a saved checkpoint:
+With `--save_checkpoint`, a checkpoint is saved after policy synthesis and Monte Carlo validation, before plotting. To regenerate plots without rerunning abstraction generation, synthesis, or simulations:
 
 ```bash
 python Main_IMDP.py --model MountainCar --load_checkpoint output/<timestamp>_MountainCar/checkpoint.pkl
 ```
 
-When `--load_checkpoint` is provided, the saved model, partition, and IMDP are loaded directly from the specified pickle file.
+Use `Main_SVMDP.py` for SVMDP checkpoints. The checkpoint includes the model, partition, abstraction, synthesized values and policy, and simulation traces. Current plotting options (such as `--plot_title`) apply to the regenerated figures, which are written to a new output directory. Checkpoints must contain completed synthesis and simulation results; abstraction-only checkpoints are not supported.
 
 # Solver backends
 
@@ -168,7 +168,7 @@ output/2026-06-02_10-49-08_MountainCar/
 
 Depending on the benchmark and selected options, that directory may contain:
 
-- `checkpoint.pkl`: serialized model, partition, IMDP, and selected arguments.
+- `checkpoint.pkl`: serialized model, partition, abstraction, arguments, synthesized values and policy, and simulation results (when `--save_checkpoint` is enabled).
 - `run_<timestamp>.log`: full log output.
 - heatmaps of values and selected inputs.
 - trajectory plots.

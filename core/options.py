@@ -85,10 +85,10 @@ def parse_arguments(argv=None):
                         help='Base directory where per-run output folders are created')
     parser.add_argument('--load_checkpoint', type=str, default=None, metavar='PATH',
                         help='Path to a checkpoint.pkl file saved by a previous run. '
-                             'When set, the IMDP abstraction generation is skipped and '
-                             'model, partition, and IMDP are loaded from the checkpoint.')
+                             'Requires completed synthesis and simulation results; '
+                             'regenerates plots without rerunning either.')
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
-                        help="If True, save checkpoints during execution")
+                        help="Save a checkpoint after policy synthesis and simulation, before plotting")
     # Plotting options
     parser.add_argument('--plot_SA_tube', action=argparse.BooleanOptionalAction, default=False,
                             help="If True, create plot for the state-action tube around the RL rollouts")

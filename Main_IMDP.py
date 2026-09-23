@@ -38,6 +38,7 @@ if __name__ == '__main__':
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+    ckpt = {}
     if args.load_checkpoint:
         # --- Load IMDP from checkpoint ---
         ckpt_path = Path(args.load_checkpoint)
@@ -58,6 +59,7 @@ if __name__ == '__main__':
 
         logger.info('\n=== IMDP loaded from checkpoint: %s ===', ckpt_path)
     else:
+        t = time.time()
         # --- Build IMDP from scratch ---
         run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
         run_output_dir.mkdir(parents=True, exist_ok=True)
@@ -171,93 +173,107 @@ if __name__ == '__main__':
 
         logger.info('<<< Generating abstraction took %.3f sec. >>>', (time.time() - t))
 
-        if args.save_checkpoint:
-            # Save checkpoint (strip JAX runtime objects that can't be pickled)
-            args_to_save = copy.copy(args)
-            del args_to_save.rvi_device
-            del args_to_save.jax_key
-            ckpt_path = args.output_dir / 'checkpoint.pkl'
-            logger.info('Saving checkpoint to %s', ckpt_path)
-            with open(ckpt_path, 'wb') as f:
-                pickle.dump({'model': model, 'partition': partition, 'imdp': imdp, 'args': args_to_save}, f)
-            logger.info('Checkpoint saved.')
-
     # %% Run dynamic programming to compute optimal policy
 
-    logger.info('\n=== IMDP policy synthesis (solver=%s) ===', args.solver)
-    if args.solver == 'jax':
-        t = time.time()
-        with jax.default_device(args.rvi_device):
-            V, policy = RVI_JAX(
+    if args.load_checkpoint:
+        V = ckpt['V']
+        policy = ckpt['policy']
+        logger.info('Loaded synthesized values and policy; skipping policy synthesis.')
+    else:
+        logger.info('\n=== IMDP policy synthesis (solver=%s) ===', args.solver)
+        if args.solver == 'jax':
+            t = time.time()
+            with jax.default_device(args.rvi_device):
+                V, policy = RVI_JAX(
+                    args=args,
+                    imdp=imdp,
+                    s0=partition.x2state(model.x0)[0],
+                    max_iterations=10000,
+                    epsilon=1e-6,
+                    RND_SWEEPS=True,
+                    BATCH_SIZE=10000,
+                    policy_iteration=args.policy_iteration,
+                )
+            logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
+        else:
+            t = time.time()
+            V, policy = RVI_STORM(
                 args=args,
                 imdp=imdp,
-                s0=partition.x2state(model.x0)[0],
-                max_iterations=10000,
-                epsilon=1e-6,
-                RND_SWEEPS=True,
-                BATCH_SIZE=10000,
-                policy_iteration=args.policy_iteration,
             )
-        logger.info('RVI with JAX (random-batched asynchronous) took %.3f sec.', (time.time() - t))
-    else:
-        t = time.time()
-        V, policy = RVI_STORM(
-            args=args,
-            imdp=imdp,
-        )
-        logger.info('RVI with Storm took %.3f sec.', (time.time() - t))
+            logger.info('RVI with Storm took %.3f sec.', (time.time() - t))
 
     # Extract policy
-    float_dtype = getattr(args, "floatprecision", np.float32)
-    # Define concrete policy (but exclude final IMDP state, which is absorbing and has no actions)
-    actions_np = np.array(partition.regions['actions'])
-    # DensePartition stores (1, num_actions, action_dim); SparsePartition stores (num_states, ...).
-    if actions_np.shape[0] == 1:
-        actions_np = np.broadcast_to(actions_np, (imdp.nr_states - 1, *actions_np.shape[1:]))
-    policy_inputs = np.full((imdp.nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype)
-    mask = policy[:-1] >= 0
-    policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
+    if not args.load_checkpoint:
+        float_dtype = getattr(args, "floatprecision", np.float32)
+        # Define concrete policy (but exclude final IMDP state, which is absorbing and has no actions)
+        actions_np = np.array(partition.regions['actions'])
+        # DensePartition stores (1, num_actions, action_dim); SparsePartition stores (num_states, ...).
+        if actions_np.shape[0] == 1:
+            actions_np = np.broadcast_to(actions_np, (imdp.nr_states - 1, *actions_np.shape[1:]))
+        policy_inputs = np.full((imdp.nr_states - 1, actions_np.shape[2]), fill_value=float('nan'), dtype=float_dtype)
+        mask = policy[:-1] >= 0
+        policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
 
     s0 = partition.x2state(model.x0)[0]
     logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    
 
     # %% Simulations and plot
 
-    sim_policy = policy
-    sim_policy_inputs = policy_inputs
-    sim_values = V
-
     from core.validate.simulate import MonteCarloSim
     from core.plotting.traces import plot_traces
     from core.plotting.traces import plot_traces_3d
     from core.plotting.heatmap import heatmap
 
-    sim = MonteCarloSim(model, partition, sim_policy, sim_policy_inputs, model.x0, verbose=False, iterations=1000)
-    logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
+    if args.load_checkpoint:
+        sim_results = ckpt['sim_results']
+        logger.info('Loaded simulation traces; skipping Monte Carlo simulations.')
+    else:
+        sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=1000)
+        sim_results = sim.results
+        del sim
 
-    plot_traces(args, stamp, model.plot_dimensions, partition, model, sim.results['traces'], line=False, num_traces=100, add_unsafe_box=False,)
+    logger.info('Empirical satisfaction probability: %s', sim_results['satprob'])
+
+    # Save completed synthesis and validation before plotting, so plots can be regenerated
+    # directly (and a plotting failure does not lose the expensive computation).
+    if args.save_checkpoint:
+        args_to_save = copy.copy(args)
+        del args_to_save.rvi_device
+        del args_to_save.jax_key
+        ckpt_path = args.output_dir / 'checkpoint.pkl'
+        logger.info('Saving completed checkpoint to %s', ckpt_path)
+        with open(ckpt_path, 'wb') as f:
+            pickle.dump({
+                'model': model, 'partition': partition, 'imdp': imdp,
+                'args': args_to_save, 'V': np.asarray(V), 'policy': np.asarray(policy),
+                'sim_results': sim_results,
+            }, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logger.info('Checkpoint saved.\n')
+
+    plot_traces(args, stamp, model.plot_dimensions, partition, model, sim_results['traces'], line=False, num_traces=100, add_unsafe_box=False,)
     if args.model.startswith('Drone6D'):
         print('Plot Drone6D traces in 3D...')
-        plot_traces_3d(args, stamp, [0, 2, 4], partition, model, sim.results['traces'], num_traces=100, filename="traces_3d")
+        plot_traces_3d(args, stamp, [0, 2, 4], partition, model, sim_results['traces'], num_traces=100, filename="traces_3d")
         from core.plotting.drone3d import plot_drone_3d_backends
         plot_drone_3d_backends(args, stamp, [0, 2, 4], partition, model,
-                               sim.results['traces'], num_traces=100)
-    heatmap(args, stamp, idx_show=model.plot_dimensions, partition=partition, results=sim_values, filename="heatmap_satprob", model=model)
+                               sim_results['traces'], num_traces=100)
+    heatmap(args, stamp, idx_show=model.plot_dimensions, partition=partition, results=V, filename="heatmap_satprob", model=model)
     
     if args.model == 'Pendulum':
         model.plot_trajectory_gif(
-            np.array(sim.results['traces'][0]['x'])[:, 0],
+            np.array(sim_results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'pendulum_{stamp}.gif'),
         )
 
     if args.model == 'MountainCar':
         model.plot_trajectory_gif(
-            np.array(sim.results['traces'][0]['x'])[:, 0],
+            np.array(sim_results['traces'][0]['x'])[:, 0],
             filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
         )
 
     if args.model == 'CartPole':
         model.plot_trajectory_gif(
-            np.array(sim.results['traces'][0]['x'])[:, [0, 2]],
+            np.array(sim_results['traces'][0]['x'])[:, [0, 2]],
             filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
         )
