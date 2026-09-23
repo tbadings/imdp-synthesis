@@ -294,7 +294,6 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
 
     # # Drone6D
-    # ### run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
@@ -319,15 +318,31 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
 
-    # logRASM Benchmarks (seed 0 of PPO)
+    # =========================================================================
+    # logRASM Benchmarks
+    # =========================================================================
+    
     # CollisionAvoidance
-    # run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-
+    run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","CollisionAvoidance", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
     # TripleIntegrator
     run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-
-    # # PlanarRobot
+    run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","TripleIntegrator", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
+    # PlanarRobot
     run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-
-    # # Drone4D (logRASM)
+    run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","PlanarRobot", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
+    # Drone4D (logRASM)
     run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
+    run_fixed_SVMDP(args = ["--model","Drone4D_logRASM", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
