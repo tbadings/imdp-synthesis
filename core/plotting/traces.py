@@ -23,6 +23,27 @@ def _format_state_label_math(var_name):
         return f'{h.capitalize()} ({t})' if len(h) > 1 else f'${h}_{{{t}}}$'
     return f'${var_name}$' if len(var_name) <= 2 else var_name.capitalize()
 
+
+def _smooth_trace_2d(points, samples_per_segment=8):
+    """Sample a natural cubic spline while retaining every input point."""
+    points = np.asarray(points, dtype=float)
+    if len(points) < 2:
+        return points
+
+    keep = np.r_[True, np.any(np.diff(points, axis=0) != 0, axis=1)]
+    unique_points = points[keep]
+    if len(unique_points) < 3:
+        return unique_points
+
+    distance = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(unique_points, axis=0), axis=1))]
+    samples = np.concatenate([
+        np.linspace(distance[i], distance[i + 1], samples_per_segment, endpoint=False)
+        for i in range(len(unique_points) - 1)
+    ] + [distance[-1:]])
+    smooth = CubicSpline(distance, unique_points, bc_type='natural', axis=0)(samples)
+    smooth[::samples_per_segment] = unique_points
+    return smooth
+
 def _cuboid_faces(low, high):
     # Vertices of 6 cuboid faces
     x0, y0, z0 = low
@@ -100,13 +121,15 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     # 2D state trajectories
     fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
     i1, i2 = np.array(idx_show, dtype=int)
-    ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=18, labelpad=10)
-    ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=18, labelpad=10)
+
+    if not args.paper_figures:
+        ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=18, labelpad=10)
+        ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=18, labelpad=10)
 
     # Ticks & limits
     expand = 1 if add_unsafe_box else 0
     _show_ticks = args.plot_ticks if show_ticks is None else show_ticks
-    if _show_ticks:
+    if _show_ticks and not args.paper_figures:
         set_plot_ticks(ax)
     else:
         ax.set_xticks([])
@@ -144,6 +167,17 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     # Style axes
     style_axes(ax)
 
+    if args.paper_figures:
+        num_traces = 1
+        line = True
+        lw = 6
+        ms = 8
+        alpha = 0.4
+    else:
+        lw = 1
+        ms = 2
+        alpha = 0.4
+
     # Trajectories
     for i, trace in enumerate(traces.values()):
         if i >= num_traces:
@@ -152,17 +186,16 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         if len(t) < 2:
             continue
         if line:
-            dist = np.insert(np.cumsum(np.hypot(*np.diff(t, axis=0).T)), 0, 0)
-            pts = CubicSpline(dist / dist[-1], t, bc_type='natural')(np.linspace(0, 1, 75))
-            ax.plot(*pts.T, '-', color=col('black'), lw=1, alpha=0.4, zorder=4)
-            ax.plot(t[:, 0], t[:, 1], 'o', color=col('black'), markersize=1.5, alpha=0.4, markeredgewidth=0, zorder=5)
+            pts = _smooth_trace_2d(t)
+            ax.plot(*pts.T, '-', color=col('black'), lw=lw, alpha=alpha, zorder=4)
+            ax.plot(t[:, 0], t[:, 1], 'o', color=col('black'), markersize=ms, alpha=alpha, markeredgewidth=0, zorder=5)
         else:
-            ax.plot(t[:, 0], t[:, 1], '-o', color=col('black'), lw=1, markersize=1.5, alpha=0.4, markeredgewidth=0, rasterized=True, zorder=4)
-        ax.plot(t[0, 0], t[0, 1], 's', color=col(START_COLOR), markersize=2, markeredgewidth=0, zorder=7)
-        ax.plot(t[-1, 0], t[-1, 1], 'o', color=col(END_COLOR), markersize=2, alpha=1, markeredgewidth=0, zorder=6)
+            ax.plot(t[:, 0], t[:, 1], '-o', color=col('black'), lw=lw, markersize=ms, alpha=alpha, markeredgewidth=0, rasterized=True, zorder=4)
+        ax.plot(t[0, 0], t[0, 1], 's', color=col(START_COLOR), markersize=2*ms, alpha=alpha, markeredgewidth=0, zorder=7)
+        ax.plot(t[-1, 0], t[-1, 1], 'o', color=col(END_COLOR), markersize=2*ms, alpha=alpha, markeredgewidth=0, zorder=6)
 
     # Title & save
-    if args.plot_title:
+    if args.plot_title and not args.paper_figures:
         ax.set_title(f"Simulation for {args.model}", fontsize=18, pad=12)
     fig.tight_layout()
     save_fig(fig, Path(getattr(args, 'output_dir', 'output')) / f'{filename}_{stamp}')

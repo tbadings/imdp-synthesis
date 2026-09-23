@@ -175,24 +175,18 @@ Depending on the benchmark and selected options, that directory may contain:
 - benchmark-specific GIFs for models such as Pendulum or MountainCar.
 
 Drone6D runs (including its variants) in both `Main_IMDP.py` and `Main_SVMDP.py`
-also export `traces_3d_pyvista_<timestamp>.png` and
-`traces_3d_visvis_<timestamp>.png`. The original Matplotlib 3D PNG/PDF remains
-available as a backup. The new renderers live in `core/plotting/drone3d.py` and
-approximate the supplied reference image's view: elevation 60°, visvis azimuth
-25°, with orthographic framing fitted to the domain. These differ from the
-old DynAbs script's saved defaults (25°, −35°). Surface tiles are decorative,
+also export `traces_3d_pyvista_<timestamp>.png`. The original Matplotlib 3D
+PNG/PDF remains available as a backup. The PyVista renderer lives in
+`core/plotting/drone3d.py` and approximates the supplied reference image's
+view at 60° elevation and 25° azimuth, with orthographic framing fitted to the
+domain. Surface tiles are decorative,
 with a spacing of up to two world
-units; they do not represent abstraction cells. Paths connect simulation
-samples directly, without spline smoothing.
+units; they do not represent abstraction cells. Paths use a shape-preserving
+cubic spline through the simulation samples.
 
-Install `requirements.txt` to obtain both rendering backends; retain its NumPy
-2.2.4 pin because visvis 1.15's axes are incompatible with NumPy 2.4+.
-PyVista renders
-off screen; visvis uses GLFW and needs a working desktop/OpenGL context (a
-window may appear briefly during export). Neither starts a blocking event
-loop. Each renderer runs in a separate process so even a native OpenGL crash
-does not interrupt the benchmark; failures are logged and the other renderer
-is still attempted.
+Install `requirements.txt` to obtain PyVista and VTK. Rendering runs in a
+separate process so a native OpenGL crash does not interrupt the benchmark;
+failures are logged and the Matplotlib backup remains available.
 
 # Running tests
 

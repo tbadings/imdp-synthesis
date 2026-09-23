@@ -52,7 +52,7 @@ class BaseRL:
         top_k = np.argsort(np.sum(diff ** 2, axis=-1), axis=1)[:, :num]
         return discrete_actions[top_k]
 
-    def evaluate(self, discrete_actions=None, seed=0, output_dir=None, return_trajectories=False):
+    def evaluate(self, args, discrete_actions=None, seed=0, output_dir=None, return_trajectories=False):
         env = self.env
         predict_fn = self.get_predict_fn()
         action_span = env.u_max_jnp - env.u_min_jnp
@@ -90,7 +90,7 @@ class BaseRL:
         plot_dims = getattr(env.model, "plot_dimensions", None)
         if plot_dims is not None and len(plot_dims) == 2:
             plot_rl_trajectories(
-                env.model, env, trajectories, list(plot_dims),
+                args, env.model, env, trajectories, list(plot_dims),
                 Path(output_dir or getattr(self.cfg, "output_dir", "output")),
                 algo_name=self.cfg.rl_algo,
             )

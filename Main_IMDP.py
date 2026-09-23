@@ -255,9 +255,9 @@ if __name__ == '__main__':
     if args.model.startswith('Drone6D'):
         print('Plot Drone6D traces in 3D...')
         plot_traces_3d(args, stamp, [0, 2, 4], partition, model, sim_results['traces'], num_traces=100, filename="traces_3d")
-        from core.plotting.drone3d import plot_drone_3d_backends
-        plot_drone_3d_backends(args, stamp, [0, 2, 4], partition, model,
-                               sim_results['traces'], num_traces=100)
+        from core.plotting.drone3d import plot_drone_3d_pyvista
+        plot_drone_3d_pyvista(args, stamp, [0, 2, 4], partition, model,
+                              sim_results['traces'], num_traces=10)
     heatmap(args, stamp, idx_show=model.plot_dimensions, partition=partition, results=V, filename="heatmap_satprob", model=model)
     
     if args.model == 'Pendulum':

@@ -43,7 +43,7 @@ ml-dtypes                 0.6.0                    pypi_0    pypi
 msgpack                   1.2.2                    pypi_0    pypi
 myst-parser               4.0.1                    pypi_0    pypi
 ncurses                   6.6                  he64c551_1    conda-forge
-numpy                     2.2.4                    pypi_0    pypi
+numpy                     2.5.2                    pypi_0    pypi
 openssl                   3.6.4                h55eecbc_0    conda-forge
 opt-einsum                3.4.0                    pypi_0    pypi
 optax                     0.2.8                    pypi_0    pypi
@@ -91,7 +91,6 @@ typing-extensions         4.16.0                   pypi_0    pypi
 tzdata                    2026c                h151e31d_0    conda-forge
 urllib3                   2.7.0                    pypi_0    pypi
 uvloop                    0.22.1                   pypi_0    pypi
-visvis                    1.15.0                   pypi_0    pypi
 wadler-lindig             0.1.7                    pypi_0    pypi
 wheel                     0.46.3                   pypi_0    pypi
 xlrd                      2.0.1                    pypi_0    pypi

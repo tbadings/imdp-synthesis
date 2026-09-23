@@ -93,7 +93,7 @@ def _plot_partition_grid(ax, eval_env, dims):
     )
 
 
-def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, max_trajectories=100, algo_name=None):
+def plot_rl_trajectories(args, base_model, eval_env, trajectories, dims, output_dir, max_trajectories=100, algo_name=None):
     # Plot 2D RL rollouts
     if len(dims) != 2:
         raise ValueError("Requires 2 dimensions.")
@@ -123,18 +123,46 @@ def plot_rl_trajectories(base_model, eval_env, trajectories, dims, output_dir, m
             ax.plot(t[-1, 0], t[-1, 1], 'o', color=col(END_COLOR), markersize=2, alpha=1, markeredgewidth=0, zorder=6)
 
     # Style axes
-    style_axes(ax)
-    set_plot_ticks(ax)
+    if not args.paper_figures:
+        style_axes(ax)
+        set_plot_ticks(ax)
+    else:
+        # No ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
+
     ax.set_xlim(eval_env.obs_low[d0], eval_env.obs_high[d0])
     ax.set_ylim(eval_env.obs_low[d1], eval_env.obs_high[d1])
     ax.set_box_aspect(1)
-    ax.set_xlabel(_format_state_label_math(base_model.state_variables[d0]), fontsize=18, labelpad=10)
-    ax.set_ylabel(_format_state_label_math(base_model.state_variables[d1]), fontsize=18, labelpad=10)
-    ax.set_title(f"{str(algo_name or 'RL').upper()} Trajectories ({base_model.__class__.__name__})", fontsize=18, pad=12)
 
-    # Legend & layout
-    if legend_handles:
-        ax.legend(handles=legend_handles, loc="upper right", frameon=True, facecolor='white', framealpha=1, edgecolor=col('lightgray'), fontsize=18)
+    if not args.paper_figures:
+        ax.set_xlabel(_format_state_label_math(base_model.state_variables[d0]), fontsize=18, labelpad=10)
+        ax.set_ylabel(_format_state_label_math(base_model.state_variables[d1]), fontsize=18, labelpad=10)
+        ax.set_title(f"{str(algo_name or 'RL').upper()} Trajectories ({base_model.__class__.__name__})", fontsize=18, pad=12)
+
+        # Legend & layout
+        if legend_handles:
+            ax.legend(handles=legend_handles, loc="upper right", frameon=True, facecolor='white', framealpha=1, edgecolor=col('lightgray'), fontsize=18)
+    else:
+        # Legend & layout
+        if legend_handles:
+            ax.legend(
+                handles=legend_handles,
+                loc="upper left",
+                bbox_to_anchor=(0, 1),
+                borderaxespad=0.2,
+                frameon=True,
+                facecolor="white",
+                framealpha=1,
+                edgecolor=col("lightgray"),
+                fontsize=48,
+                borderpad=0.2,
+                labelspacing=0.15,
+                handlelength=1.0,
+                handleheight=0.6,
+                handletextpad=0.35,
+            )
+
     fig.tight_layout()
     save_fig(fig, Path(output_dir) / 'rl_trajectories')
 

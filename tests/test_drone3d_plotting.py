@@ -5,11 +5,18 @@ import unittest
 
 import numpy as np
 
-from core.plotting.drone3d import REFERENCE_VIEW, _camera_scale, _camera_vectors, _scene, _tiled_box
+from core.plotting.drone3d import (
+    REFERENCE_VIEW,
+    _camera_scale,
+    _camera_vectors,
+    _scene,
+    _smooth_path,
+    _tiled_box,
+)
 
 
 class TestDrone3DPlotting(unittest.TestCase):
-    def test_camera_matches_visvis_rotation(self):
+    def test_camera_rotation(self):
         el, az = np.deg2rad([REFERENCE_VIEW['elevation'], REFERENCE_VIEW['azimuth']])
         a = 3 * np.pi / 2 + el
         rx = np.array([[1, 0, 0], [0, np.cos(a), -np.sin(a)], [0, np.sin(a), np.cos(a)]])
@@ -39,6 +46,17 @@ class TestDrone3DPlotting(unittest.TestCase):
         np.testing.assert_array_equal(vertices.min(axis=0), low)
         np.testing.assert_array_equal(vertices.max(axis=0), high)
         self.assertEqual(len(colors), len(faces))
+
+    def test_smooth_path_preserves_samples_and_endpoints(self):
+        points = np.array([[0, 0, 0], [1, 1, 0], [2, 1, 1], [4, 0, 1]], dtype=float)
+        smooth = _smooth_path(points, samples_per_segment=4)
+        np.testing.assert_allclose(smooth[::4], points)
+        np.testing.assert_array_equal(smooth[[0, -1]], points[[0, -1]])
+        self.assertEqual(len(smooth), 13)
+
+    def test_two_point_path_stays_linear(self):
+        points = np.array([[0, 1, 2], [3, 4, 5]], dtype=float)
+        np.testing.assert_array_equal(_smooth_path(points), points)
 
     def test_projection_trace_limit_and_repeated_points(self):
         partition = SimpleNamespace(boundary_lb=np.arange(6), boundary_ub=np.arange(6) + 10)

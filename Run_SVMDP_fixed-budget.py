@@ -23,37 +23,37 @@ def run_fixed_SVMDP(args: list[str | int]) -> None:
 if __name__ == "__main__":
 
     # MountainCar
-    run_fixed_SVMDP(args = ["--model", "MountainCar", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 108_157])
-    run_fixed_SVMDP(args = ["--model", "MountainCar", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 108_157, "--fix_num_actions", 3])
+    run_fixed_SVMDP(args = ["--model", "MountainCar", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 110_000])
+    run_fixed_SVMDP(args = ["--model", "MountainCar", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 110_000, "--fix_num_actions", 3])
 
     # Pendulum
-    run_fixed_SVMDP(args = ["--model", "Pendulum", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 316_919])
-    run_fixed_SVMDP(args = ["--model", "Pendulum", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 316_919, "--fix_num_actions", 5])
+    run_fixed_SVMDP(args = ["--model", "Pendulum", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 320_000])
+    run_fixed_SVMDP(args = ["--model", "Pendulum", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 320_000, "--fix_num_actions", 5])
 
     # Dubins3D
-    run_fixed_SVMDP(args = ["--model", "Dubins3D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 2_514_539])
-    run_fixed_SVMDP(args = ["--model", "Dubins3D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 2_514_539, "--fix_num_actions", 9])
+    run_fixed_SVMDP(args = ["--model", "Dubins3D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 2_500_000])
+    run_fixed_SVMDP(args = ["--model", "Dubins3D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 2_500_000, "--fix_num_actions", 9])
 
     # CartPole
-    run_fixed_SVMDP(args = ["--model", "CartPole", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 16_907_112])
-    run_fixed_SVMDP(args = ["--model", "CartPole", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 16_907_112, "--fix_num_actions", 5])
+    run_fixed_SVMDP(args = ["--model", "CartPole", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 17_000_000])
+    run_fixed_SVMDP(args = ["--model", "CartPole", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 17_000_000, "--fix_num_actions", 5])
 
     # Dubins4D
-    run_fixed_SVMDP(args = ["--model", "Dubins4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 19_168_229])
-    run_fixed_SVMDP(args = ["--model", "Dubins4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 19_168_229, "--fix_num_actions", 9])
+    run_fixed_SVMDP(args = ["--model", "Dubins4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 19_000_000])
+    run_fixed_SVMDP(args = ["--model", "Dubins4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 19_000_000, "--fix_num_actions", 9])
 
     # Drone4D
-    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 844_173])
-    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 844_173, "--fix_num_actions", 9])
+    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 790_000])
+    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--dense", "--fix_num_choices", 790_000, "--fix_num_actions", 9])
 
     # Drone4D (+damping)
-    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 846_826])
-    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 846_826, "--fix_num_actions", 9])
+    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 850_000])
+    run_fixed_SVMDP(args = ["--model", "Drone4D", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 850_000, "--fix_num_actions", 9])
 
     # Drone4D (+battery and damping)
-    run_fixed_SVMDP(args = ["--model", "Drone4D_battery", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 15_430_440])
-    run_fixed_SVMDP(args = ["--model", "Drone4D_battery", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 15_430_440, "--fix_num_actions", 25])
+    run_fixed_SVMDP(args = ["--model", "Drone4D_battery", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 16_000_000])
+    run_fixed_SVMDP(args = ["--model", "Drone4D_battery", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 16_000_000, "--fix_num_actions", 25])
 
     # Drone6D has no PPO/SAC choice averages in Table 1.
-    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 88_895_021])
-    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 88_895_021, "--fix_num_actions", 27])
+    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 89_000_000])
+    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 89_000_000, "--fix_num_actions", 27])

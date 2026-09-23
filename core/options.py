@@ -98,6 +98,8 @@ def parse_arguments(argv=None):
                         help="If True, plot titles in figures")
     parser.add_argument('--plot_ticks', action=argparse.BooleanOptionalAction, default=True,
                         help="If True, plot ticks in figures")
+    parser.add_argument('--paper_figures', action=argparse.BooleanOptionalAction, default=False,
+                            help="If True, create figures as used in the paper")
 
     # Reinforcement learning options.
     # Every option here defaults to None, meaning "not given". The actual defaults live in

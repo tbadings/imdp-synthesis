@@ -43,6 +43,7 @@ def find_active(model, args):
 
     # Rollouts and visited cell extraction
     goal_reached, newly_visited, trajectories = agent.evaluate(
+        args,
         discrete_actions=discrete_actions,
         seed=args.seed,
         output_dir=out_dir,

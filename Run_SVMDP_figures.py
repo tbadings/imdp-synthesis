@@ -22,5 +22,11 @@ def run_fixed_SVMDP(args: list[str | int]) -> None:
 # The second run also fixes the number of enabled RL actions per state.
 if __name__ == "__main__":
 
+    # Drone4D for overview figure
+    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo", "ppo", "--eval_episodes", "100", "--save_checkpoint", "--paper_figures"])
+
     # Figure for in appendix
-    run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo", "--eval_episodes", "100", "--plot_SA_tube", "--save_checkpoint"])
+    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo", "--eval_episodes", "100", "--plot_SA_tube", "--save_checkpoint"])
+
+    # Drone 6D
+    run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--load_checkpoint", "output/2026-09-23_14-58-07_Drone6D/checkpoint.pkl"])
