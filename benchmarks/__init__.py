@@ -1,5 +1,5 @@
 # Load the benchmarks from the subfiles
-from math import ceil, prod
+from math import prod
 
 import numpy as np
 
@@ -16,7 +16,7 @@ from .Test1D import Test1D
 
 def _fit_grid_budget(default_counts, budget):
 	'''
-	Scale each grid dimension proportionally and round up to the nearest integer.
+	Scale each grid dimension proportionally and round to the nearest integer.
 	'''
 	
 	if budget <= 0:
@@ -29,7 +29,7 @@ def _fit_grid_budget(default_counts, budget):
 		return [1] * len(defaults)
 
 	scale = (budget / prod(defaults)) ** (1 / len(defaults))
-	counts = [max(1, ceil(round(count * scale, 12))) for count in defaults]
+	counts = [max(1, round(count * scale)) for count in defaults]
 
 	return counts
 
