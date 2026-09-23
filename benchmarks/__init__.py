@@ -16,7 +16,7 @@ from .Test1D import Test1D
 
 def _fit_grid_budget(default_counts, budget):
 	'''
-	Scale each grid dimension proportionally and round up to the budget.
+	Scale each grid dimension proportionally and round up to the nearest integer.
 	'''
 	
 	if budget <= 0:

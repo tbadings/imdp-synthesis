@@ -1,4 +1,5 @@
 import copy
+import csv
 import datetime
 import logging
 import os
@@ -36,6 +37,7 @@ if __name__ == '__main__':
     args.root_dir = Path(args.cwd)
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    out_dict = {}
 
     if args.load_checkpoint:
         # --- Load SVMDP from checkpoint ---
@@ -79,7 +81,8 @@ if __name__ == '__main__':
             active_states, active_actions, _ = find_active(model, args=args)
             logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
-            logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
+            out_dict['time_RL'] = time.time() - t
+            logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', out_dict['time_RL'])
             t = time.time()
 
             # Create partition of the continuous state space into convex polytope
@@ -122,8 +125,9 @@ if __name__ == '__main__':
 
         del actions
 
+        out_dict['time_abstraction'] = time.time() - t
         logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
-        logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', time.time() - t)
+        logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', out_dict['time_abstraction'])
 
         if args.save_checkpoint:
             # Save checkpoint (strip JAX runtime objects that can't be pickled)
@@ -152,9 +156,12 @@ if __name__ == '__main__':
             policy_iteration=args.policy_iteration,
             prune_states=False
         )
-    logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', time.time() - t)
+
+    out_dict['time_synthesis'] = time.time() - t
+    logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', out_dict['time_synthesis'])
 
     s0 = partition.x2state(model.x0)[0]
+    out_dict['optimal_value'] = float(V[s0])
     logger.info('Value in initial state s0=%d: %.6f\n', s0, V[s0])
 
     # %% Extract policy inputs
@@ -178,7 +185,16 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces_3d
 
     sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=1000)
+    out_dict['empirical_satprob'] = sim.results['satprob']
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
+
+    # Export output dictionary to csv
+    csv_path = args.output_dir / 'summary.csv'
+    with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['metric', 'value'])
+        writer.writerows(out_dict.items())
+    logger.info('Run summary saved to %s', csv_path)
 
     heatmap(
         args, stamp, idx_show=model.plot_dimensions,
@@ -196,6 +212,9 @@ if __name__ == '__main__':
             args, stamp, [0, 2, 4], partition, model,
             sim.results['traces'], num_traces=100, filename="traces_3d",
         )
+        from core.plotting.drone3d import plot_drone_3d_backends
+        plot_drone_3d_backends(args, stamp, [0, 2, 4], partition, model,
+                               sim.results['traces'], num_traces=100)
 
     if args.model == 'Pendulum':
         print('Plot Pendulum gif...')
