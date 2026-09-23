@@ -87,13 +87,12 @@ class Drone6D(DroneDynamics):
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo="sac",
-            eval_episodes=100000,
-            total_timesteps=5000000,
+            total_timesteps=10000000,
             RL_actions_per_state=27,
             proximity_dims=[0, 2, 4],
             proximity_penalty=0.5,
             per_step_cost=0.05,
-            inflation_rate=[(-2, 2), (-2, 2), (-2, 2), (-2, 2), (-2, 2), (-2, 2)],
+            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2)],
         )
         return
 
