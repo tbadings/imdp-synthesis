@@ -55,5 +55,5 @@ if __name__ == "__main__":
     run_fixed_SVMDP(args = ["--model", "Drone4D_battery", "--solver", "jax", "--satprob", "0.99", "--damping", "0.1", "--dense", "--fix_num_choices", 15_430_440, "--fix_num_actions", 25])
 
     # Drone6D has no PPO/SAC choice averages in Table 1.
-
-    pass
+    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 88_895_021])
+    run_fixed_SVMDP(args = ["--model", "Drone6D", "--solver", "jax", "--satprob", "0.99", "--seed", "0", "--algo", "--dense", "--fix_num_choices", 88_895_021, "--fix_num_actions", 27])

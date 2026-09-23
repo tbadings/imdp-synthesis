@@ -245,9 +245,6 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
 
-    # Figure for in appendix
-    run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo", "--eval_episodes", "100", "--plot_SA_tube"])
-
     # # Drone6D
     run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
     run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
@@ -272,3 +269,6 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
+
+    # Figure for in appendix
+    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo", "--eval_episodes", "100", "--plot_SA_tube"])
