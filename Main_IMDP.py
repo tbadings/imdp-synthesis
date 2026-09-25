@@ -184,6 +184,8 @@ if __name__ == '__main__':
             logger.info('Checkpoint saved.')
 
     # %% Run dynamic programming to compute optimal policy
+    initial_states = partition.initial['idxs']
+    s0 = partition.x2state(x0_center)[0]
 
     logger.info('\n=== IMDP policy synthesis (solver=%s) ===', args.solver)
     if args.solver == 'jax':
@@ -192,7 +194,7 @@ if __name__ == '__main__':
             V, policy = RVI_JAX(
                 args=args,
                 imdp=imdp,
-                s0=partition.x2state(x0_center)[0],
+                s0=initial_states,
                 max_iterations=10000,
                 epsilon=1e-6,
                 RND_SWEEPS=True,
@@ -219,8 +221,13 @@ if __name__ == '__main__':
     mask = policy[:-1] >= 0
     policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
 
-    s0 = partition.x2state(x0_center)[0]
-    logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    
+    min_satprob = float(np.min(V[initial_states]))
+    max_satprob = float(np.max(V[initial_states]))
+    mean_satprob = float(np.mean(V[initial_states]))
+
+    logger.info('Value in center initial state s0=%s: %.6f', s0, V[s0])
+    logger.info('=== IMDP minimum satisfaction probability over all %d initial state(s) that intersect initial boxes: %.6f (max: %.6f, mean: %.6f) ===\n',
+                len(initial_states), min_satprob, max_satprob, mean_satprob)    
 
     # %% Simulations and plot
 

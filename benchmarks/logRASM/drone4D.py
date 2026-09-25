@@ -71,7 +71,7 @@ class Drone4D:
         elif layout == 2:
             self.partition['boundary'] = np.array([[-0.5, -0.5, -0.5, -0.5], [0.5, 0.5, 0.5, 0.5]])
             self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-            self.partition['number_per_dim'] = np.array([50, 50, 50, 50])
+            self.partition['number_per_dim'] = np.array([50, 20, 50, 20])
 
             self.goal = np.array([
                 [[0.3, -0.5, 0.3, -0.5], [0.5, 0.5, 0.5, 0.5]],
@@ -109,9 +109,9 @@ class Drone4D:
 
         self.rl_config = RLConfig(
             rl_algo="ppo",
-            total_timesteps=500000,
-            RL_actions_per_state=5,
-            inflation_rate=[(-2, 2), (-2, 2), (-2, 2), (-2, 2)],
+            total_timesteps=1000000,
+            RL_actions_per_state=9,
+            inflation_rate=[(-4, 4), (-4, 4), (-4, 4), (-4, 4)],
             proximity_dims=[0, 2],
             proximity_penalty=0.5,
             per_step_cost=0.05,

@@ -211,6 +211,32 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
     return critical
 
 
+def _compute_initial_regions(x0, lower_bounds, upper_bounds, region_idxs, size):
+    '''Boolean mask + index list of partition cells overlapping initial boxes.'''
+    t = time.time()
+    lb_np = np.asarray(lower_bounds)
+    ub_np = np.asarray(upper_bounds)
+
+    intersecting_mask = np.zeros(size, dtype=bool)
+    for box in np.asarray(x0, dtype=float):
+        box_lb, box_ub = box[0], box[1]
+        is_point = (box_ub - box_lb) <= 1e-7
+        dim_match = np.where(
+            is_point,
+            (lb_np <= box_ub + 1e-7) & (ub_np >= box_lb - 1e-7),
+            (lb_np < box_ub - 1e-7) & (ub_np > box_lb + 1e-7),
+        )
+        intersecting_mask |= np.all(dim_match, axis=-1)
+
+    logger.debug(f'- Initial regions defined (took {(time.time() - t):.3f} sec.)')
+    initial = {
+        'bools': jnp.array(intersecting_mask, dtype=bool),
+        'idxs': np.asarray(region_idxs)[intersecting_mask].tolist(),
+    }
+    logger.debug(f"-- Number of initial regions: {len(initial['idxs'])}")
+    return initial
+
+
 class _HyperrectangularPartition(object):
     """
     Base class for a partitioning of a state space into hyperrectangular regions (cells).
@@ -309,11 +335,18 @@ class _HyperrectangularPartition(object):
         self.critical = _compute_critical_regions(
             model.critical, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
         )
+        self.initial = _compute_initial_regions(
+            model.x0, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
+        )
 
         logger.debug(f'Partitioning took {(time.time() - t_total):.3f} sec.')
 
         logger.info(f"(Number of states: {len(self.regions['idxs'])})")
         logger.info(f"(Number of actions: {actions.shape[1]})")
+
+    def get_initial_states(self):
+        '''Return list of state IDs that intersect with the model initial boxes.'''
+        return self.initial['idxs']
 
     def _cells_and_actions(self, model):
         '''Return (centers_unit, actions): the kept unit-cube grid indices and their action vectors.'''

@@ -1,4 +1,5 @@
 import copy
+import csv
 import datetime
 import logging
 import os
@@ -48,6 +49,10 @@ if __name__ == '__main__':
         svmdp = ckpt['svmdp']
         args.model = ckpt['args'].model
 
+        x0_center = np.mean(model.x0[0], axis=0)
+
+        out_dict = ckpt.get('out_dict', {})
+
         run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
         run_output_dir.mkdir(parents=True, exist_ok=True)
         args.output_dir = run_output_dir
@@ -57,6 +62,7 @@ if __name__ == '__main__':
 
         logger.info('\n=== SVMDP loaded from checkpoint: %s ===', ckpt_path)
     else:
+        out_dict = {}
         t = time.time()
         
         # --- Build SVMDP from scratch ---
@@ -75,11 +81,14 @@ if __name__ == '__main__':
         if args.dense:
             logger.info('Using DensePartition (RL exploration skipped).')
             partition = DensePartition(model=model)
+            out_dict['time_RL'] = 0.0
+            t = time.time()
         else:
             active_states, active_actions, _ = find_active(model, args=args)
             logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
-            logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', time.time() - t)
+            out_dict['time_RL'] = time.time() - t
+            logger.info('<<< Generating model and running RL took %.3f sec. >>>\n', out_dict['time_RL'])
             t = time.time()
 
             # Create partition of the continuous state space into convex polytope
@@ -91,6 +100,7 @@ if __name__ == '__main__':
             del active_states, active_actions
 
         x0_center = np.mean(model.x0[0], axis=0)
+
         s_init, s_init_exists = partition.x2state(x0_center)
         if not s_init_exists:
             raise ValueError(f"Initial state x0={x0_center} is not in the partition.")
@@ -123,8 +133,14 @@ if __name__ == '__main__':
 
         del actions
 
-        logger.info('Initial state x0=%s → state index %d\n', x0_center, s_init)
-        logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', time.time() - t)
+        initial_states = partition.initial['idxs']
+        out_dict['time_abstraction'] = time.time() - t
+        out_dict['abstraction_states'] = len(svmdp.states)
+        out_dict['abstraction_actions'] = len(svmdp.A_id)
+        out_dict['abstraction_state-actions'] = len(svmdp.states) * len(svmdp.A_id)
+
+        logger.info('Initial state x0=%s → state index %d (%d state(s) intersect initial boxes)\n', x0_center, s_init, len(initial_states))
+        logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', out_dict['time_abstraction'])
 
         if args.save_checkpoint:
             # Save checkpoint (strip JAX runtime objects that can't be pickled)
@@ -134,10 +150,13 @@ if __name__ == '__main__':
             ckpt_path = args.output_dir / 'checkpoint.pkl'
             logger.info('Saving checkpoint to %s', ckpt_path)
             with open(ckpt_path, 'wb') as f:
-                pickle.dump({'model': model, 'partition': partition, 'svmdp': svmdp, 'args': args_to_save}, f)
+                pickle.dump({'model': model, 'partition': partition, 'svmdp': svmdp, 'args': args_to_save, 'out_dict': out_dict}, f)
             logger.info('Checkpoint saved.\n')
 
     # %% Run value iteration on the SVMDP
+
+    initial_states = partition.initial['idxs']
+    s0 = partition.x2state(x0_center)[0]
 
     logger.info('=== SVMDP policy synthesis ===')
     t = time.time()
@@ -145,7 +164,7 @@ if __name__ == '__main__':
         V, policy = SVMDP_DP(
             args=args,
             svmdp=svmdp,
-            s0=partition.x2state(x0_center)[0],
+            s0=initial_states,
             max_iterations=10000,
             epsilon=1e-6,
             RND_SWEEPS=True,
@@ -153,10 +172,19 @@ if __name__ == '__main__':
             policy_iteration=args.policy_iteration,
             prune_states=False
         )
-    logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', time.time() - t)
+    out_dict['time_synthesis'] = time.time() - t
+    logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', out_dict['time_synthesis'])
 
-    s0 = partition.x2state(x0_center)[0]
-    logger.info('Value in initial state s0=%d: %.6f\n', s0, V[s0])
+    min_satprob = float(np.min(V[initial_states]))
+
+    out_dict['optimal_value'] = min_satprob
+    out_dict['optimal_value_center'] = float(V[s0])
+    out_dict['min_satprob'] = min_satprob
+    out_dict['num_initial_states'] = len(initial_states)
+
+    logger.info('Value in center initial state s0=%d: %.6f', s0, V[s0])
+    logger.info('Minimum satisfaction probability over all %d initial state(s) that intersect initial boxes: %.6f\n',
+                len(initial_states), min_satprob)
 
     # %% Extract policy inputs
 
@@ -179,7 +207,15 @@ if __name__ == '__main__':
     from core.plotting.traces import plot_traces_3d
 
     sim = MonteCarloSim(model, partition, policy, policy_inputs, x0_center, verbose=False, iterations=1000)
+    out_dict['empirical_satprob'] = sim.results['satprob']
     logger.info('Empirical satisfaction probability: %s', sim.results['satprob'])
+
+    csv_path = args.output_dir / 'summary.csv'
+    with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['metric', 'value'])
+        writer.writerows(out_dict.items())
+    logger.info('Run summary saved to %s', csv_path)
 
     heatmap(
         args, stamp, idx_show=model.plot_dimensions,

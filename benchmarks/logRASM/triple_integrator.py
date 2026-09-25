@@ -74,7 +74,7 @@ class TripleIntegrator:
 
         self.rl_config = RLConfig(
             rl_algo="ppo",
-            total_timesteps=100000,
+            total_timesteps=500000,
             RL_actions_per_state=5,
             inflation_rate=[(-5, 5), (-5, 5), (-5, 5)],
             per_step_cost=0.05,

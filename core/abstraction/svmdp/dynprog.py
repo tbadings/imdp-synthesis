@@ -141,7 +141,7 @@ def SVMDP_DP(
 
     vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None), out_axes=(0)))
 
-    #####
+    s0 = np.atleast_1d(s0)
 
     # Count the total number of actions. A_id is a single shared list of action ids:
     # every state has the same actions enabled.
@@ -292,14 +292,10 @@ def SVMDP_DP(
         # Value iteration
         for iteration in range(max_iterations):
             pbar.update(1)
-            postfix_dict = {}
-            if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-            pbar.set_postfix(postfix_dict)
-            
+            pbar.set_postfix({'v_init_min': f'{float(np.min(V[s0])):.6f}'})
+
             V_old = V.copy()
-                
+
             # Policy evaluation + improvement
             for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, imp_batches):
                 V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, V)
@@ -307,8 +303,8 @@ def SVMDP_DP(
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(np.min(V[s0])) >= satprob:
+                pbar.write(f'Threshold reached: v_init_min={float(np.min(V[s0])):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence
@@ -359,22 +355,14 @@ def SVMDP_DP(
             # of blocking on a device_get after every one of the ~len(state_batches) batches.
             Vd = jnp.asarray(V)
             while True:
+                v_s0 = float(np.min(V[s0]))
+                sat_policy = v_s0 >= satprob
+                if sat_policy:
+                    logger.info(f'Policy is above the satisfaction threshold {satprob:.2f} after {iteration + 1} iterations')
+                pbar.set_postfix({'v_init_min': f'{v_s0:.6f}', 'eval_it': i})
 
-                postfix_dict = {}
-                if s0 is not None:
-                    postfix_dict[f'eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-                    postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
-
-                    # Check if policy is above the preset threshold quality
-                    if float(V[s0]) >= satprob:
-                        logger.info(f'Policy is above the satisfaction threshold {satprob:.2f} after {iteration + 1} iterations')
-                        # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
-                        sat_policy = True
-                    else:
-                        sat_policy = False
-                pbar.set_postfix(postfix_dict)
+                if sat_policy:
+                    break
 
                 V_old = V
 
@@ -385,15 +373,17 @@ def SVMDP_DP(
                 V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
 
                 delta = np.max(np.abs(V - V_old))
+                sat_reached = float(np.min(V[s0])) >= satprob
                 if (
                     delta < epsilon
                     or i >= max_eval_it
-                    or (float(V[s0]) >= satprob)
+                    or sat_reached
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
                     )
                 ):
+                    sat_policy = sat_reached
                     break
 
                 i += 1
@@ -415,8 +405,8 @@ def SVMDP_DP(
                 for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(np.min(V[s0])) >= satprob:
+                pbar.write(f'Threshold reached: v_init_min={float(np.min(V[s0])):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence: improvement step is monotone, so max gain suffices

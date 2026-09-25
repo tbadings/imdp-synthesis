@@ -146,7 +146,8 @@ def RVI_JAX(
 
     vmap_state_policy_evaluation = jax.jit(jax.vmap(state_policy_evaluation, in_axes=(0, 0, 0, None, 0), out_axes=(0)))
 
-    #####
+    s0 = np.atleast_1d(s0)
+
     # Padding the probability intervals and successor values for JAX vectorization
     total_actions = np.array([len(imdp.A_id[s]) for s in imdp.states if s in imdp.A_id])
     max_actions = np.max(total_actions) if len(total_actions) > 0 else 0
@@ -214,14 +215,10 @@ def RVI_JAX(
         # Value iteration
         for iteration in range(max_iterations):
             pbar.update(1)
-            postfix_dict = {}
-            if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-            pbar.set_postfix(postfix_dict)
-            
+            pbar.set_postfix({'v_init_min': f'{float(np.min(V[s0])):.6f}'})
+
             V_old = V.copy()
-                
+
             # Policy evaluation + improvement
             for state_batch in state_batches:
                 sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
@@ -235,10 +232,10 @@ def RVI_JAX(
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(np.min(V[s0])) >= satprob:
+                pbar.write(f'Threshold reached: v_init_min={float(np.min(V[s0])):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
-            
+
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
                 pbar.write(f'Converged after {iteration + 1} iterations')
@@ -256,35 +253,21 @@ def RVI_JAX(
 
             # Policy evaluation
             i = 0
-            while True: # TODO: Remove this hardcoding
+            while True:
+                v_s0 = float(np.min(V[s0]))
+                sat_policy = v_s0 >= satprob
+                pbar.set_postfix({'v_init_min': f'{v_s0:.6f}', 'eval_it': i})
 
-                postfix_dict = {}
-                if s0 is not None:
-                    postfix_dict[f'eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-                    postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
+                if sat_policy:
+                    break
 
-                    # Check if policy is above the preset threshold quality
-                    if float(V[s0]) >= satprob:
-                        sat_policy = True
-                    else:
-                        sat_policy = False
-                pbar.set_postfix(postfix_dict)
-
-                # print(f'- Policy evaluation iteration {i + 1}...')
                 V_old = V.copy()
-                
+
                 # Policy evaluation only
                 for state_batch in state_batches:
                     policy_actions = policy[state_batch]
-                    # t = time.time()
                     np_succ_slice = full_successors_array[state_batch, policy_actions]
                     sort_indices = np.argsort(V[np_succ_slice], axis=-1)
-                    # print(f'- Sort indices took: {time.time() - t:.6f} sec')
-                    # t = time.time()
-                    # print(f'- Data preparation took: {time.time() - t:.6f} sec')
-                    # t = time.time()
                     V_eval = vmap_state_policy_evaluation(
                                                 jax.device_put(np_succ_slice, args.rvi_device), 
                                                 jax.device_put(full_prob_lb_array[state_batch, policy_actions], args.rvi_device), 
@@ -292,18 +275,19 @@ def RVI_JAX(
                                                 V,
                                                 sort_indices)
                     V[state_batch] = np.asarray(jax.device_get(V_eval), dtype=args.floatprecision)
-                    # print(f'- Policy evaluation batch took: {time.time() - t:.6f} sec')
 
                 delta = np.max(np.abs(V - V_old))
+                sat_reached = float(np.min(V[s0])) >= satprob
                 if (
                     delta < epsilon
                     or i >= max_eval_it
-                    or (float(V[s0]) >= satprob)
+                    or sat_reached
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
                     )
                 ):
+                    sat_policy = sat_reached
                     break
 
                 i += 1
@@ -313,10 +297,7 @@ def RVI_JAX(
 
             if not sat_policy:
                 for state_batch in state_batches:
-                    # t = time.time()
                     sort_indices = np.argsort(V[full_successors_array[state_batch]], axis=-1)
-                    # print(f'- Sort indices took: {time.time() - t:.6f} sec')
-                    # t = time.time()
                     V_batch, policy_batch = vmap_state_policy_improvement(
                                                 jax.device_put(full_successors_array[state_batch], args.rvi_device),
                                                 jax.device_put(full_prob_lb_array[state_batch], args.rvi_device),
@@ -326,10 +307,9 @@ def RVI_JAX(
                     V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
                     V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
-                    # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
 
-            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(np.min(V[s0])) >= satprob:
+                pbar.write(f'Threshold reached: v_init_min={float(np.min(V[s0])):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence: improvement step is monotone, so max gain suffices
