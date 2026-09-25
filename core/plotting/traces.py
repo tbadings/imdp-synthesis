@@ -75,8 +75,12 @@ def plot_traces_3d(args, stamp, idx_show, partition, model, traces, num_traces=1
     for s in model.critical:
         _plot_cuboid(ax, np.array(s[0])[[i1, i2, i3]], np.array(s[1])[[i1, i2, i3]], CRITICAL_COLOR, alpha=0.4)
     for s in getattr(model, 'charging_station', []):
-        _plot_cuboid(ax, np.array(s[0])[[i1, i2, i3]], np.array(s[1])[[i1, i2, i3]], 'limegreen', alpha=0.4)
-        ax.text(*((np.array(s[0]) + np.array(s[1]))[[i1, i2, i3]] / 2), '⚡', fontsize=40, ha='center', va='center')
+        _plot_cuboid(ax, np.array(s[0])[[i1, i2, i3]], np.array(s[1])[[i1, i2, i3]], 'royalblue', alpha=0.4)
+        if args.paper_figures:
+            fs = 100
+        else:
+            fs = 40
+        ax.text(*((np.array(s[0]) + np.array(s[1]))[[i1, i2, i3]] / 2), '⚡', fontsize=fs, ha='center', va='center')
 
     # Simulation traces
     for trace in traces.values():
@@ -122,7 +126,10 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     fig, ax = plt.subplots(figsize=(10, 10), dpi=300)
     i1, i2 = np.array(idx_show, dtype=int)
 
-    if not args.paper_figures:
+    if args.paper_figures:
+        ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=60, labelpad=10)
+        ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=60, labelpad=10)
+    else:
         ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=18, labelpad=10)
         ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=18, labelpad=10)
 
@@ -142,7 +149,7 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         plot_grid(ax, np.array(partition.boundary_lb)[[i1, i2]], np.array(partition.boundary_ub)[[i1, i2]])
 
     # Target & unsafe boxes
-    plot_boxes(ax, model, plot_dimensions=[i1, i2])
+    plot_boxes(ax, args,model, plot_dimensions=[i1, i2])
 
     # Inactive missing cells
     idxs = np.asarray(partition.region_idx_inv, dtype=int)
@@ -185,6 +192,9 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         t = np.array(trace['x'])[:, [i1, i2]]
         if len(t) < 2:
             continue
+        
+        print(f'- Trace {i}, number of steps: {len(t)}, start: {t[0]}, end: {t[-1]}', flush=True)
+
         if line:
             pts = _smooth_trace_2d(t)
             ax.plot(*pts.T, '-', color=col('black'), lw=lw, alpha=alpha, zorder=4)
@@ -195,7 +205,7 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
         ax.plot(t[-1, 0], t[-1, 1], 'o', color=col(END_COLOR), markersize=2*ms, alpha=alpha, markeredgewidth=0, zorder=6)
 
     # Title & save
-    if args.plot_title and not args.paper_figures:
+    if args.plot_title or not args.paper_figures:
         ax.set_title(f"Simulation for {args.model}", fontsize=18, pad=12)
     fig.tight_layout()
     save_fig(fig, Path(getattr(args, 'output_dir', 'output')) / f'{filename}_{stamp}')

@@ -27,7 +27,7 @@ def col(c):
         return tuple(p * x + (1 - p) for x in rgb)
     return c
 
-def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, size=12):
+def plot_boxes(ax, args, model, plot_dimensions=[0, 1], labels=False, latex=False, size=12):
     # Target and unsafe regions
     d = plot_dimensions
     sets = [(model.goal, GOAL_COLOR, 'darkgreen', GOAL_HATCH, r'$\mathcal{X}_T$' if latex else 'X_T'),
@@ -39,8 +39,16 @@ def plot_boxes(ax, model, plot_dimensions=[0, 1], labels=False, latex=False, siz
             if labels:
                 ax.annotate(lbl, (s[0] + s[1])[d] / 2, color=col(ec), fontsize=size + 2, ha='center', va='center')
     for s in getattr(model, 'charging_station', []):
-        ax.add_patch(Rectangle(s[0][d], *(s[1] - s[0])[d], facecolor=col('limegreen'), alpha=0.4, lw=1))
-        ax.text(*(s[0] + s[1])[d] / 2, '⚡', fontsize=40 , ha='center', va='center', color=col('darkgreen'))
+        if args.paper_figures:
+            fs = 120
+        else:
+            fs = 40
+        ax.add_patch(Rectangle(s[0][d], *(s[1] - s[0])[d], facecolor=col('gold'), alpha=0.4, lw=1, zorder=10))
+        ax.text(*(s[0] + s[1])[d] / 2, '⚡', fontsize=fs , ha='center', va='center', color=col('darkgoldenrod'), zorder=11)
+        ax.annotate('charging\npad', (s[0] + s[1])[d] / 2,
+                    xytext=(0, -0.5 * fs), textcoords='offset points',
+                    fontsize=0.3 * fs, ha='center', va='top',
+                    color=col('darkgoldenrod'), zorder=11)
 
 def plot_grid(ax, state_min, state_max, size=[1, 1]):
     # Background grid lines

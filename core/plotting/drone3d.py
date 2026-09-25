@@ -19,7 +19,11 @@ from scipy.interpolate import PchipInterpolator
 # view from the opposite side. These angles approximate its projected edges.
 REFERENCE_VIEW = dict(elevation=60.0, azimuth=25.0)
 WINDOW_SIZE = (1000, 600)
-TRACE_COLOR = (0.36, 0.66, 1.0)
+# Match black at alpha=0.4 on the white background in traces.py.
+TRACE_COLOR = (0.6, 0.6, 0.6)
+MARKER_COLOR = (0,0,0)
+
+logger = logging.getLogger(__name__)
 
 
 def _pyvista_worker(*args, **kwargs):
@@ -49,7 +53,7 @@ def plot_drone_3d_pyvista(args, stamp, idx_show, partition, model, traces, num_t
     model/partition may otherwise contain large, non-picklable JAX objects.
     Call from a script protected by ``if __name__ == '__main__'``.
     """
-    logger = logging.getLogger(__name__)
+    
     options = SimpleNamespace(output_dir=str(getattr(args, 'output_dir', 'output')),
                               model=args.model, plot_title=getattr(args, 'plot_title', False))
     domain = SimpleNamespace(boundary_lb=np.asarray(partition.boundary_lb),
@@ -137,10 +141,13 @@ def _scene(partition, model, idx_show, traces, num_traces):
         for box in getattr(model, name, []):
             boxes.append((np.asarray(box, dtype=float)[:, dims], color))
     paths = []
-    for trace in islice(traces.values(), max(0, num_traces)):
+    for i, trace in enumerate(islice(traces.values(), max(0, num_traces))):
         states = np.asarray(trace['x'], dtype=float)
         if len(states) == 0:
             continue
+
+        print(f'- Trace {i}, number of steps: {len(states)} start: {states[0]}, end: {states[-1]}', flush=True)
+
         points = states[:, dims]
         if not np.isfinite(points).all():
             raise ValueError('Trajectory coordinates must be finite.')
@@ -218,11 +225,16 @@ def plot_traces_3d_pyvista(args, stamp, idx_show, partition, model, traces,
         for points in paths:
             if len(points) > 1:
                 smooth_points = _smooth_path(points)
-                tube = pv.lines_from_points(smooth_points).tube(radius=0.06, n_sides=8)
+                tube = pv.lines_from_points(smooth_points).tube(radius=0.15, n_sides=8)
                 plotter.add_mesh(tube, color=TRACE_COLOR, smooth_shading=True)
-            plotter.add_points(points, color=TRACE_COLOR, point_size=5,
-                               render_points_as_spheres=True)
-            plotter.add_mesh(pv.Sphere(radius=0.12, center=points[0]), color='black')
+            # Mark the original samples, not the interpolated path points.
+            # World-space spheres stay wider than the tube at every resolution.
+            markers = pv.PolyData(points).glyph(
+                geom=pv.Sphere(radius=0.25, theta_resolution=12, phi_resolution=12),
+                orient=False, scale=False,
+            )
+            plotter.add_mesh(markers, color=MARKER_COLOR, smooth_shading=True)
+            plotter.add_mesh(pv.Sphere(radius=0.22, center=points[0]), color='black')
         bounds = np.column_stack((low, high)).ravel()
         plotter.add_mesh(pv.Box(bounds=bounds).outline(), color='black', line_width=3)
         _pyvista_axes(plotter, pv, low, high)

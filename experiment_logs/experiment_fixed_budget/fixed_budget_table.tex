@@ -1,0 +1,61 @@
+\begin{tabular}{llll rrr rr}
+\toprule
+\multirow{2}{*}{\textbf{Benchmark}} & \multirow{2}{*}{$d$} & \multirow{2}{*}{$m$} & \multirow{2}{*}{\textbf{Method}} & \multicolumn{3}{c}{\textbf{Abstraction size}} & \multicolumn{2}{c}{\textbf{Reach-avoid probability}} \\
+\cmidrule(lr){5-7} \cmidrule(lr){8-9}
+& & & & States & Actions per state & State-actions & Optimal value $\satprob^\star_{s_0}$ & Empirical satprob \\
+\midrule
+\multirow{2}{*}{\textbf{MountainCar}} & \multirow{2}{*}{2} & \multirow{2}{*}{1}
+% Source: 2026-09-23_21-31-11_MountainCar; exact states=36806, actions=3, state-actions=110418, optimal=0.9657390713691711, empirical=1.0
+ & Dense (default actions) & $3.7 \times 10^{4}$ & $3$ & $1.1 \times 10^{5}$ & $96.6\%$ & $100.0\%$ \\
+% Source: 2026-09-23_21-32-31_MountainCar; exact states=36806, actions=3, state-actions=110418, optimal=0.9657390713691711, empirical=1.0
+ & & & Dense (fixed actions) & $3.7 \times 10^{4}$ & $3$ & $1.1 \times 10^{5}$ & $96.6\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{Pendulum}} & \multirow{2}{*}{2} & \multirow{2}{*}{1}
+% Source: 2026-09-23_21-33-42_Pendulum; exact states=29241, actions=11, state-actions=321651, optimal=0.9876595735549927, empirical=1.0
+ & Dense (default actions) & $2.9 \times 10^{4}$ & $11$ & $3.2 \times 10^{5}$ & $98.8\%$ & $100.0\%$ \\
+% Source: 2026-09-23_21-34-18_Pendulum; exact states=64009, actions=5, state-actions=320045, optimal=0.9900463819503784, empirical=1.0
+ & & & Dense (fixed actions) & $6.4 \times 10^{4}$ & $5$ & $3.2 \times 10^{5}$ & $99.0\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{Dubins3D}} & \multirow{2}{*}{3} & \multirow{2}{*}{2}
+% Source: 2026-09-23_21-35-09_Dubins3D; exact states=97336, actions=25, state-actions=2433400, optimal=0.9399896860122681, empirical=1.0
+ & Dense (default actions) & $9.7 \times 10^{4}$ & $25$ & $2.4 \times 10^{6}$ & $94.0\%$ & $100.0\%$ \\
+% Source: 2026-09-23_21-36-41_Dubins3D; exact states=274625, actions=9, state-actions=2471625, optimal=0.9902817010879517, empirical=1.0
+ & & & Dense (fixed actions) & $2.7 \times 10^{5}$ & $9$ & $2.5 \times 10^{6}$ & $99.0\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{CartPole}} & \multirow{2}{*}{4} & \multirow{2}{*}{1}
+% Source: 2026-09-23_21-38-07_CartPole; exact states=390625, actions=41, state-actions=16015625, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $3.9 \times 10^{5}$ & $41$ & $1.6 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-23_21-39-03_CartPole; exact states=3418801, actions=5, state-actions=17094005, optimal=0.0, empirical=0.0
+ & & & Dense (fixed actions) & $3.4 \times 10^{6}$ & $5$ & $1.7 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{Dubins4D}} & \multirow{2}{*}{4} & \multirow{2}{*}{2}
+% Source: 2026-09-23_21-41-48_Dubins4D; exact states=771750, actions=25, state-actions=19293750, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $7.7 \times 10^{5}$ & $25$ & $1.9 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-23_21-43-32_Dubins4D; exact states=2095875, actions=9, state-actions=18862875, optimal=0.5092505216598511, empirical=1.0
+ & & & Dense (fixed actions) & $2.1 \times 10^{6}$ & $9$ & $1.9 \times 10^{7}$ & $50.9\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{Drone4D}} & \multirow{2}{*}{4} & \multirow{2}{*}{2}
+% Source: 2026-09-24_00-27-38_Drone4D; exact states=36100, actions=25, state-actions=902500, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $3.6 \times 10^{4}$ & $25$ & $9.0 \times 10^{5}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-24_00-27-51_Drone4D; exact states=86436, actions=9, state-actions=777924, optimal=0.003600140567868948, empirical=1.0
+ & & & Dense (fixed actions) & $8.6 \times 10^{4}$ & $9$ & $7.8 \times 10^{5}$ & $0.4\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\shortstack[l]{\textbf{Drone4D}\\(+damping)}} & \multirow{2}{*}{4} & \multirow{2}{*}{2}
+% Source: 2026-09-24_00-29-04_Drone4D; exact states=36100, actions=25, state-actions=902500, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $3.6 \times 10^{4}$ & $25$ & $9.0 \times 10^{5}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-24_00-29-17_Drone4D; exact states=90000, actions=9, state-actions=810000, optimal=0.5335304737091064, empirical=1.0
+ & & & Dense (fixed actions) & $9.0 \times 10^{4}$ & $9$ & $8.1 \times 10^{5}$ & $53.4\%$ & $100.0\%$ \\
+\midrule
+\multirow{2}{*}{\shortstack[l]{\textbf{Drone4D}\\(+bat+damp)}} & \multirow{2}{*}{5} & \multirow{2}{*}{2}
+% Source: 2026-09-24_00-30-17_Drone4D_battery; exact states=576926, actions=25, state-actions=14423150, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $5.8 \times 10^{5}$ & $25$ & $1.4 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-24_00-37-12_Drone4D_battery; exact states=576926, actions=25, state-actions=14423150, optimal=0.0, empirical=0.0
+ & & & Dense (fixed actions) & $5.8 \times 10^{5}$ & $25$ & $1.4 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+\midrule
+\multirow{2}{*}{\textbf{Drone6D}} & \multirow{2}{*}{6} & \multirow{2}{*}{3}
+% Source: 2026-09-24_00-44-00_Drone6D; exact states=656640, actions=125, state-actions=82080000, optimal=0.0, empirical=0.0
+ & Dense (default actions) & $6.6 \times 10^{5}$ & $125$ & $8.2 \times 10^{7}$ & $0.0\%$ & $0.0\%$ \\
+% Source: 2026-09-24_01-03-36_Drone6D; exact states=2622000, actions=27, state-actions=70794000, optimal=0.0003605856909416616, empirical=1.0
+ & & & Dense (fixed actions) & $2.6 \times 10^{6}$ & $27$ & $7.1 \times 10^{7}$ & $0.0\%$ & $100.0\%$ \\
+\bottomrule
+\end{tabular}%

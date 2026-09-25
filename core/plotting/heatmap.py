@@ -72,7 +72,10 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
 
     model = kwargs.get('model')
     if model and hasattr(model, 'state_variables'):
-        if not args.paper_figures:
+        if args.paper_figures:
+            ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=45, labelpad=10)
+            ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=45, labelpad=10)
+        else:
             ax.set_xlabel(_format_state_label_math(model.state_variables[i1]), fontsize=18, labelpad=10)
             ax.set_ylabel(_format_state_label_math(model.state_variables[i2]), fontsize=18, labelpad=10)
     if args.plot_title and not args.paper_figures:

@@ -1,0 +1,8 @@
+metric,value
+time_abstraction,507.7413709163666
+abstraction_states,656640
+abstraction_actions,125
+abstraction_state-actions,82080000
+time_synthesis,644.4669511318207
+optimal_value,0.0
+empirical_satprob,0.0
