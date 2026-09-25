@@ -188,13 +188,17 @@ if __name__ == '__main__':
     if args.load_checkpoint:
         sim_results = ckpt['sim_results']
         logger.info('Loaded simulation traces; skipping Monte Carlo simulations.')
+    elif not args.mc_simulations:
+        sim_results = {'satprob': None, 'traces': {}}
+        logger.info('Skipping Monte Carlo simulations (--no-mc_simulations).')
     else:
         sim = MonteCarloSim(model, partition, policy, policy_inputs, model.x0, verbose=False, iterations=1000)
         sim_results = sim.results
         del sim
 
-    out_dict['empirical_satprob'] = sim_results['satprob']
-    logger.info('Empirical satisfaction probability: %s', sim_results['satprob'])
+    if sim_results['satprob'] is not None:
+        out_dict['empirical_satprob'] = sim_results['satprob']
+        logger.info('Empirical satisfaction probability: %s', sim_results['satprob'])
 
     # Save completed synthesis and validation before plotting, so plots can be regenerated
     # directly (and a plotting failure does not lose the expensive computation).
@@ -225,38 +229,39 @@ if __name__ == '__main__':
         partition=partition, results=V, filename='heatmap_satprob',
         model=model,
     )
-    plot_traces(
-        args, stamp, model.plot_dimensions, partition, model,
-        sim_results['traces'], line=False, num_traces=100, add_unsafe_box=False,
-    )
-
-    if args.model.startswith('Drone6D'):
-        print('Plot Drone6D traces in 3D...')
-        plot_traces_3d(
-            args, stamp, [0, 2, 4], partition, model,
-            sim_results['traces'], num_traces=100, filename="traces_3d",
-        )
-        from core.plotting.drone3d import plot_drone_3d_pyvista
-        plot_drone_3d_pyvista(args, stamp, [0, 2, 4], partition, model,
-                              sim_results['traces'], num_traces=10)
-
-    if args.model == 'Pendulum':
-        print('Plot Pendulum gif...')
-        model.plot_trajectory_gif(
-            np.array(sim_results['traces'][0]['x'])[:, 0],
-            filename=str(args.output_dir / f'pendulum_{stamp}.gif'),
+    if sim_results['traces']:
+        plot_traces(
+            args, stamp, model.plot_dimensions, partition, model,
+            sim_results['traces'], line=False, num_traces=100, add_unsafe_box=False,
         )
 
-    if args.model == 'MountainCar':
-        print('Plot MountainCar gif...')
-        model.plot_trajectory_gif(
-            np.array(sim_results['traces'][0]['x'])[:, 0],
-            filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
-        )
+        if args.model.startswith('Drone6D'):
+            print('Plot Drone6D traces in 3D...')
+            plot_traces_3d(
+                args, stamp, [0, 2, 4], partition, model,
+                sim_results['traces'], num_traces=100, filename="traces_3d",
+            )
+            from core.plotting.drone3d import plot_drone_3d_pyvista
+            plot_drone_3d_pyvista(args, stamp, [0, 2, 4], partition, model,
+                                  sim_results['traces'], num_traces=10)
 
-    if args.model == 'CartPole':
-        print('Plot CartPole gif...')
-        model.plot_trajectory_gif(
-            np.array(sim_results['traces'][0]['x'])[:, [0, 2]],
-            filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
-        )
+        if args.model == 'Pendulum':
+            print('Plot Pendulum gif...')
+            model.plot_trajectory_gif(
+                np.array(sim_results['traces'][0]['x'])[:, 0],
+                filename=str(args.output_dir / f'pendulum_{stamp}.gif'),
+            )
+
+        if args.model == 'MountainCar':
+            print('Plot MountainCar gif...')
+            model.plot_trajectory_gif(
+                np.array(sim_results['traces'][0]['x'])[:, 0],
+                filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
+            )
+
+        if args.model == 'CartPole':
+            print('Plot CartPole gif...')
+            model.plot_trajectory_gif(
+                np.array(sim_results['traces'][0]['x'])[:, [0, 2]],
+                filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
+            )

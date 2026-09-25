@@ -71,6 +71,19 @@ def resolve_rl_config(model, args) -> RLConfig:
     """Merge model.rl_config with CLI argument overrides."""
     base_cfg = getattr(model, "rl_config", None) or RLConfig()
     overrides = {name: getattr(args, name) for name in RL_FIELDS if getattr(args, name, None) is not None}
+
+    raw_inf = overrides.get("inflation_rate")
+    if raw_inf is not None and not (isinstance(raw_inf, (list, tuple)) and raw_inf and isinstance(raw_inf[0], tuple)):
+        dim = len(model.partition["number_per_dim"])
+        if len(raw_inf) == dim:
+            overrides["inflation_rate"] = tuple((-abs(int(v)), abs(int(v))) for v in raw_inf)
+        elif len(raw_inf) == 2 * dim:
+            overrides["inflation_rate"] = tuple((int(raw_inf[2 * i]), int(raw_inf[2 * i + 1])) for i in range(dim))
+        elif len(raw_inf) == 1:
+            overrides["inflation_rate"] = tuple((-abs(int(raw_inf[0])), abs(int(raw_inf[0]))) for _ in range(dim))
+        else:
+            raise ValueError(f"Expected 1, {dim}, or {2 * dim} values for --inflation_rate, got {len(raw_inf)}")
+
     resolved = replace(base_cfg, **overrides)
     logger.info("Resolved RL config (algorithm: %s): %s", resolved.rl_algo, resolved)
     return resolved

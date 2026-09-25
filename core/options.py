@@ -89,6 +89,8 @@ def parse_arguments(argv=None):
                              'regenerates plots without rerunning either.')
     parser.add_argument('--save_checkpoint', action=argparse.BooleanOptionalAction, default=False,
                         help="Save a checkpoint after policy synthesis and simulation, before plotting")
+    parser.add_argument('--mc_simulations', action=argparse.BooleanOptionalAction, default=True,
+                        help="If True, run Monte Carlo simulations after policy synthesis. Use --no-mc_simulations to skip.")
     # Plotting options
     parser.add_argument('--plot_SA_tube', action=argparse.BooleanOptionalAction, default=False,
                             help="If True, create plot for the state-action tube around the RL rollouts")
@@ -205,6 +207,8 @@ def parse_arguments(argv=None):
                     help="Method for creating the state-space tube around the policy's trajectories used for abstraction.")
     rl.add_argument("--smart_tube_rate", type=float, default=None,
                     help="Noise support rate used for reachability-guided (smart) tube expansion.")
+    rl.add_argument("--inflation_rate", type=int, nargs='+', default=None,
+                    help="Custom tube inflation rate offsets per dimension (symmetric or lower/upper bounds).")
 
     # Parse arguments
     args = parser.parse_args(argv)
