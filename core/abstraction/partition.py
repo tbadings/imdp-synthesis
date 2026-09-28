@@ -6,8 +6,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .polytope import hyperrectangles_isdisjoint_multi
-
 EPS = 1e-3
 
 logger = logging.getLogger(__name__)
@@ -45,72 +43,28 @@ def define_grid_jax(low, high, size):
 
 
 @jax.jit
-def center2halfspace(center, cell_width):
-    '''
-    From given centers and cell widths, compute the halfspace inequalities Ax <= b.
-
-    :param center:
-    :param cell_width:
-    :return:
-    '''
-
-    A1 = jnp.identity(len(center))
-    A2 = -jnp.identity(len(center))
-
-    b1 = center + cell_width / 2
-    b2 = -(center - cell_width / 2)
-
-    A = jnp.concatenate((A1, A2))
-    b = jnp.concatenate((b1, b2))
-
-    return A, b
-
-
-# Vectorized function over different polytopes
-from .polytope import points_in_polytope
-
-vmap_points_in_polytope = jax.jit(jax.vmap(points_in_polytope, in_axes=(0, 0, None), out_axes=0))
-
-from .polytope import any_points_in_polytope
-
-vmap_any_points_in_polytope = jax.jit(jax.vmap(any_points_in_polytope, in_axes=(0, 0, None), out_axes=0))
+def _cells_contained_in_any_box(cell_lbs, cell_ubs, box_lbs, box_ubs):
+    """Return which cells are fully contained in at least one axis-aligned box."""
+    # XLA fuses these broadcasts with both reductions, so the logical (cells, boxes, dimensions)
+    # array is not materialized. This avoids the sequential fori_loop overhead, especially for the
+    # common single-goal case, while still doing one pass over the cell bounds.
+    contained_per_box = jnp.all(
+        (cell_lbs[:, None, :] >= box_lbs[None, :, :])
+        & (cell_ubs[:, None, :] <= box_ubs[None, :, :]),
+        axis=2,
+    )
+    return jnp.any(contained_per_box, axis=1)
 
 
 @jax.jit
-def check_if_region_in_goal(goals_A, goals_b, points):
-    # Vectorized over all goal regions
-    points_contained = vmap_points_in_polytope(goals_A, goals_b, points)
-
-    # Check for every goal region if all points are contained in the polytope
-    all_points_contained = jnp.all(points_contained, axis=1)
-
-    # If any goal region is contained in the polytope, then set current polytope as goal
-    return jnp.any(all_points_contained)
-
-
-# Vectorized function over different sets of points
-vmap_check_if_region_in_goal = jax.jit(jax.vmap(check_if_region_in_goal, in_axes=(None, None, 0), out_axes=0))
-
-
-@jax.jit
-def get_vertices_from_bounds(lb, ub):
-    # Stack lower and upper bounds in one array
-    stacked = jnp.vstack((lb, ub))
-
-    # Get all vertices (by taking combinations of lower and upper bounds)
-    vertices = meshgrid_jax(stacked.T, lb)
-
-    return vertices
-
-
-# Jitted vmapped kernels used during partition construction. Defined once at module level so the
-# compilation cache is shared across every partition instance (re-wrapping them inside __init__ would
-# force a fresh trace/compile each time).
-vmap_get_vertices_from_bounds = jax.jit(jax.vmap(get_vertices_from_bounds, in_axes=(0, 0), out_axes=0))
-vmap_center2halfspace = jax.jit(jax.vmap(center2halfspace, in_axes=(0, 0), out_axes=(0, 0)))
-vmap_hyperrectangles_isdisjoint = jax.jit(
-    jax.vmap(hyperrectangles_isdisjoint_multi, in_axes=(0, 0, None, None), out_axes=0)
-)
+def _cells_overlapping_any_box(cell_lbs, cell_ubs, box_lbs, box_ubs):
+    """Return which cells overlap at least one axis-aligned box."""
+    overlapping_per_box = jnp.all(
+        (cell_ubs[:, None, :] >= box_lbs[None, :, :])
+        & (cell_lbs[:, None, :] <= box_ubs[None, :, :]),
+        axis=2,
+    )
+    return jnp.any(overlapping_per_box, axis=1)
 
 
 def _compute_linear_strides(number_per_dim):
@@ -154,24 +108,20 @@ def _build_sparse_region_index(centers):
     return region_idx_dict
 
 
-def _compute_goal_regions(goal_regions, number_per_dim, all_vertices, region_idxs, size):
+def _compute_goal_regions(goal_regions, lower_bounds, upper_bounds, region_idxs, size):
     '''Boolean mask + index list of partition cells fully contained in any goal region.'''
     t = time.time()
     if len(goal_regions) > 0:
-        # Compute halfspace representation of the goal regions
-        goal_centers = np.zeros((len(goal_regions), len(number_per_dim)))
-        goal_widths = np.zeros((len(goal_regions), len(number_per_dim)))
-        for i, goal in enumerate(goal_regions):
-            goal_centers[i] = (goal[1] + goal[0]) / 2
-            goal_widths[i] = (goal[1] - goal[0]) + EPS
-
-        goal_centers = jnp.array(goal_centers, dtype=float)
-        goal_widths = jnp.array(goal_widths, dtype=float)
-
-        goals_A, goals_b = vmap_center2halfspace(goal_centers, goal_widths)
-
-        # Determine goal regions
-        goal_regions_bools = vmap_check_if_region_in_goal(goals_A, goals_b, all_vertices)
+        goals = jnp.asarray(goal_regions, dtype=lower_bounds.dtype)
+        # The previous vertex/halfspace check expanded the full goal width by EPS, which moves
+        # each face outward by EPS / 2. Comparing cell bounds directly is equivalent for boxes and
+        # avoids materialising all 2**dimension vertices of every cell.
+        goal_regions_bools = _cells_contained_in_any_box(
+            lower_bounds,
+            upper_bounds,
+            goals[:, 0, :] - EPS / 2,
+            goals[:, 1, :] + EPS / 2,
+        )
         goal_regions_idxs = region_idxs[goal_regions_bools]
     else:
         goal_regions_bools = jnp.full(size, False, dtype=bool)
@@ -190,12 +140,14 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
     '''Boolean mask + index list of partition cells overlapping any critical (unsafe) region.'''
     t = time.time()
     if len(critical_regions) > 0:
-        # Check which regions (hyperrectangles) are *not* disjoint from the critical regions (also hyperrectangles)
-        critical_lbs = critical_regions[:, 0, :]
-        critical_ubs = critical_regions[:, 1, :]
-
-        critical_regions_bools = ~vmap_hyperrectangles_isdisjoint(
-            lower_bounds, upper_bounds, critical_lbs + EPS, critical_ubs - EPS
+        critical = jnp.asarray(critical_regions, dtype=lower_bounds.dtype)
+        # Preserve the previous unsafe-set tolerance: shrink every critical box by EPS on each face
+        # and mark partition cells whose closed bounds still overlap it.
+        critical_regions_bools = _cells_overlapping_any_box(
+            lower_bounds,
+            upper_bounds,
+            critical[:, 0, :] + EPS,
+            critical[:, 1, :] - EPS,
         )
         critical_regions_idxs = region_idxs[critical_regions_bools]
     else:
@@ -215,7 +167,7 @@ class _HyperrectangularPartition(object):
     """
     Base class for a partitioning of a state space into hyperrectangular regions (cells).
 
-    Each cell is defined by its center, bounds, and vertices. Subclasses only decide *which* cells
+    Each cell is defined by its center and bounds. Subclasses only decide *which* cells
     are kept and *what* action vectors each cell carries (via `_cells_and_actions`); the index maps,
     bounds, goal/critical detection, and coordinate lookup are all common and built here.
     """
@@ -276,9 +228,7 @@ class _HyperrectangularPartition(object):
         lower_bounds = centers - self.cell_width / 2
         upper_bounds = centers + self.cell_width / 2
 
-        # Determine the vertices of all partition elements (only needed transiently for goal detection).
-        all_vertices = vmap_get_vertices_from_bounds(lower_bounds, upper_bounds)
-        logger.debug(f'- Grid points defined (took {(time.time() - t):.3f} sec.)')
+        logger.debug(f'- Grid cells defined (took {(time.time() - t):.3f} sec.)')
 
         self.regions = {
             'centers': jnp.array(centers, dtype=float),
@@ -305,7 +255,9 @@ class _HyperrectangularPartition(object):
             'upper_bounds': upper_bounds_per_dim,
         }
 
-        self.goal = _compute_goal_regions(model.goal, self.number_per_dim, all_vertices, region_idxs, self.size)
+        self.goal = _compute_goal_regions(
+            model.goal, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
+        )
         self.critical = _compute_critical_regions(
             model.critical, self.regions['lower_bounds'], self.regions['upper_bounds'], region_idxs, self.size
         )
@@ -350,9 +302,11 @@ class DensePartition(_HyperrectangularPartition):
     rectangular = True
 
     def __init__(self, model, verbose=False):
+        t = time.time()
         logger.info('Define dense partition...')
         super().__init__(model)
 
+        logger.info(f"Time to build dense partition: %.3f seconds" % (time.time() - t))
         print('')
 
     def _cells_and_actions(self, model):
@@ -379,11 +333,13 @@ class SparsePartition(_HyperrectangularPartition):
     rectangular = False
 
     def __init__(self, model, active_states, active_actions, verbose=False):
+        t = time.time()
         logger.info('=== Define sparse partition ===')
         self._active_states = active_states
         self._active_actions = active_actions
         super().__init__(model)
 
+        logger.info(f"Time to build sparse partition: %.3f seconds" % (time.time() - t))
         print('')
 
     def _cells_and_actions(self, model):

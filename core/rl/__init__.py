@@ -1,6 +1,7 @@
 import itertools
 import logging
 from pathlib import Path
+import time
 import numpy as np
 
 from .base import BaseRL
@@ -48,11 +49,14 @@ def find_active(model, args):
         seed=args.seed,
         output_dir=out_dir,
         return_trajectories=True,
+        return_visited_array=True,
     )
     logger.info("Goal reached in %d/%d evaluation episodes.", goal_reached, cfg.eval_episodes)
 
     # Tube construction (active states)
+    t = time.time()
     active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)
+    print('(Time to extract state tube: %.2f seconds)' % (time.time() - t))
 
     if args.plot_SA_tube:
         plot_dims = getattr(model, "plot_dimensions", None)
@@ -68,8 +72,15 @@ def find_active(model, args):
             )
 
     # Discretized active policy actions
-    top_k = agent.get_policy_actions(active_states, discrete_actions, num=cfg.RL_actions_per_state)
-    active_actions = {tuple(cell): top_k[i] for i, cell in enumerate(active_states.tolist())}
+    t = time.time()
+    selected_actions = agent.get_policy_actions(
+        active_states, discrete_actions, num=cfg.RL_actions_per_state
+    )
+    active_actions = {
+        tuple(cell): selected_actions[i]
+        for i, cell in enumerate(active_states.tolist())
+    }
+    print('(Time to extract active actions: %.2f seconds)' % (time.time() - t))
 
     return active_states, active_actions, agent
 

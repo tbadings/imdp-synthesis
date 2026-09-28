@@ -199,3 +199,5 @@ class SAC(BaseRL):
     def get_predict_fn(self):
         return lambda norm_obs: jnp.tanh(self.actor_net.apply(self.params, norm_obs)[0])
 
+    def _policy_apply(self, params, norm_obs):
+        return jnp.tanh(self.actor_net.apply(params, norm_obs)[0])

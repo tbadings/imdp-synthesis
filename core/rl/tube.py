@@ -11,27 +11,142 @@ from .config import RLConfig
 logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 16384
+_DENSE_INFLATION_BYTES = 128 * 1024 * 1024
+_ID_CHUNK_SIZE = 262144
+_PREFIX_BYTES = 256 * 1024 * 1024
+
+
+@partial(jax.jit, static_argnums=(1, 2))
+def _dilate_mask(mask, rates, wrap):
+    """Compile only Boolean dilation; no floating-point cell decisions change."""
+    dim = mask.ndim
+    for d, (lo, hi) in enumerate(rates):
+        width = hi - lo + 1
+        if lo == hi == 0:
+            continue
+        if wrap[d] and width >= mask.shape[d]:
+            mask = jnp.broadcast_to(jnp.any(mask, axis=d, keepdims=True), mask.shape)
+            continue
+        window = [1] * dim
+        window[d] = width
+        padding = [(0, 0)] * dim
+        if wrap[d]:
+            # Move the first requested offset to zero. The remaining offsets
+            # form one nonnegative window, which can be padded periodically
+            # even when the original interval lies wholly above or below zero.
+            mask = jnp.roll(mask, lo, axis=d)
+            padding[d] = (width - 1, 0)
+            mask = jnp.pad(mask, padding, mode="wrap")
+            padding = [(0, 0)] * dim
+        else:
+            padding[d] = (hi, -lo)
+        mask = jax.lax.reduce_window(mask, False, jax.lax.bitwise_or, window, [1] * dim, padding)
+    return mask
+
+
+class _SparseActiveCells:
+    """Sorted occupancy IDs for grids too large for a dense Boolean mask."""
+
+    def __init__(self, size):
+        self.size = size
+        self.ids = np.empty(0, dtype=np.int64)
+
+    def __getitem__(self, ids):
+        positions = np.searchsorted(self.ids, ids)
+        if not len(self.ids):
+            return np.zeros(np.shape(ids), dtype=bool)
+        return (positions < len(self.ids)) & (self.ids[np.minimum(positions, len(self.ids) - 1)] == ids)
+
+    def add(self, ids):
+        self.ids = np.union1d(self.ids, ids)
+
+
+def _cells_from_flat_ids(ids, number_per_dim):
+    """Decode sorted IDs without allocating one full array per dimension."""
+    cells = np.empty((len(ids), len(number_per_dim)), dtype=np.int64)
+    for d, stride in enumerate(_compute_linear_strides(number_per_dim)):
+        cells[:, d] = (ids // stride) % number_per_dim[d]
+    return cells
+
+
+def _unique_id_chunks(chunks):
+    """Merge incrementally instead of retaining every duplicate candidate."""
+    levels = []
+    for chunk in chunks:
+        ids = np.unique(chunk)
+        if not len(ids):
+            continue
+        level = 0
+        while level < len(levels) and levels[level] is not None:
+            ids = np.union1d(levels[level], ids)
+            levels[level] = None
+            level += 1
+        if level == len(levels):
+            levels.append(ids)
+        else:
+            levels[level] = ids
+    result = np.empty(0, dtype=np.int64)
+    for ids in levels:
+        if ids is not None:
+            result = np.union1d(result, ids)
+    return result
 
 
 def _inflate_cells(visited_cells, inflation_rate, number_per_dim, wrap):
-    """Inflate visited grid cells by a fixed ratio."""
+    """Inflate visited cells with a cropped dense Boolean mask."""
     dim = len(number_per_dim)
-    cells = np.asarray(list(visited_cells), dtype=np.int64).reshape(-1, dim)
+    # Accept both the ndarray produced by rollout extraction and the legacy set
+    # of coordinate tuples. From here onward cells always has shape [N, D].
+    cells = np.asarray(visited_cells if isinstance(visited_cells, np.ndarray) else list(visited_cells), dtype=np.int64).reshape(-1, dim)
+    rates = np.array(inflation_rate, dtype=np.int64)
+    wrap = np.asarray(wrap, dtype=bool)
 
-    axes = [np.arange(int(lo), int(hi) + 1, dtype=np.int64) for lo, hi in inflation_rate]
-    offsets = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, dim)
+    # Offsets farther than a complete nonperiodic axis cannot add cells, so
+    # trim them before allocating the mask. Periodic axes retain their full
+    # rates because their offsets wrap around the grid.
+    rates[:, 0] = np.where(wrap, rates[:, 0], np.maximum(rates[:, 0], 1 - number_per_dim))
+    rates[:, 1] = np.where(wrap, rates[:, 1], np.minimum(rates[:, 1], number_per_dim - 1))
+    if not len(cells) or np.any(rates[:, 1] < rates[:, 0]):
+        return np.empty((0, dim), dtype=int)
 
-    strides = _compute_linear_strides(number_per_dim)
-    unique_ids = []
+    # Determine the exact output box. Periodic axes retain their full extent
+    # so dilation can wrap at the original grid boundary.
+    cell_lower = cells.min(axis=0)
+    cell_upper = cells.max(axis=0) + 1
+    lower = np.where(wrap, 0, np.maximum(0, cell_lower + rates[:, 0]))
+    upper = np.where(wrap, number_per_dim, np.minimum(number_per_dim, cell_upper + rates[:, 1]))
+    if np.any(upper <= lower):
+        return np.empty((0, dim), dtype=int)
 
-    for i in range(0, len(cells), CHUNK_SIZE):
-        chunk = (cells[i : i + CHUNK_SIZE, None, :] + offsets[None, :, :]).reshape(-1, dim)
-        valid = np.all((chunk >= 0) & (chunk < number_per_dim) | wrap, axis=1)
-        valid_cells = np.where(wrap, chunk[valid] % number_per_dim, chunk[valid])
-        unique_ids.append(valid_cells @ strides)
+    # Inflation intervals normally contain zero, in which case this canvas is
+    # exactly the output box. Including the visited box as well also preserves
+    # the legacy behavior for one-sided intervals such as (1, 3).
+    canvas_lower = np.where(wrap, 0, np.minimum(lower, cell_lower))
+    canvas_upper = np.where(wrap, number_per_dim, np.maximum(upper, cell_upper))
+    canvas_shape = canvas_upper - canvas_lower
 
-    all_ids = np.unique(np.concatenate(unique_ids))
-    return np.stack(np.unravel_index(all_ids, number_per_dim), axis=-1).astype(int)
+    # Translate into the cropped coordinate system and mark every visited
+    # cell. Rectangular inflation is separable, so the jitted kernel dilates
+    # the mask one state dimension at a time without constructing all offsets.
+    mask = np.zeros(tuple(canvas_shape), dtype=bool)
+    mask[tuple((cells - canvas_lower).T)] = True
+    mask = np.asarray(
+        _dilate_mask(mask, tuple(map(tuple, rates.tolist())), tuple(wrap.tolist()))
+    )
+
+    # Discard the extra source-only portion needed by one-sided intervals.
+    output_slices = tuple(
+        slice(int(lo - canvas_lo), int(hi - canvas_lo))
+        for lo, hi, canvas_lo in zip(lower, upper, canvas_lower)
+    )
+    mask = mask[output_slices]
+
+    # flatnonzero returns row-major IDs, so decoding them preserves the
+    # deterministic ordering obtained by sorting global linear cell IDs.
+    ids = np.flatnonzero(mask)
+    result = _cells_from_flat_ids(ids, upper - lower)
+    result += lower
+    return result
 
 
 @partial(jax.jit, static_argnums=(0,))
@@ -41,33 +156,56 @@ def _compute_batch_frs_bounds(step_set_fn, s_mins, s_maxs, actions_batch):
     return jax.vmap(_per_state)(s_mins, s_maxs, actions_batch)
 
 
-def _extract_frs_cells(lbs, ubs, number_per_dim, strides, wrap):
-    spans = ubs - lbs + 1
-    offsets = np.stack(
-        [g.ravel() for g in np.meshgrid(*[np.arange(s) for s in np.max(spans, axis=0)], indexing="ij")],
-        axis=-1,
-    )
-    coords = lbs[:, None, :] + offsets
-    valid_mask = np.all(coords <= ubs[:, None, :], axis=-1)
-
-    flat_cells = np.zeros(coords.shape[:-1], dtype=np.int64)
-    for d, (num_d, stride_d, is_wrap) in enumerate(zip(number_per_dim, strides, wrap)):
-        c_d = coords[..., d]
-        if is_wrap:
-            flat_cells += (c_d % num_d) * stride_d
-        else:
-            valid_mask &= (c_d >= 0) & (c_d < num_d)
-            flat_cells += np.clip(c_d, 0, num_d - 1) * stride_d
-
-    return flat_cells, valid_mask
-
-
 def _build_prefix_sum(active_mask, number_per_dim):
-    grid = active_mask.reshape(number_per_dim).astype(np.int32)
+    dtype = np.int32 if active_mask.size <= np.iinfo(np.int32).max else np.int64
+    prefix_table = np.zeros(tuple(np.asarray(number_per_dim) + 1), dtype=dtype)
+    prefix_table[(slice(1, None),) * len(number_per_dim)] = active_mask.reshape(number_per_dim)
     for d in range(len(number_per_dim)):
-        grid = np.cumsum(grid, axis=d)
-    prefix_table = np.pad(grid, [(1, 0)] * len(number_per_dim), mode="constant")
+        np.cumsum(prefix_table, axis=d, out=prefix_table)
     return prefix_table.ravel(), _compute_linear_strides(prefix_table.shape)
+
+
+def _iter_box_cell_ids(lbs, ubs, number_per_dim, strides, wrap):
+    """Yield (flat cell IDs, box indices) without padding to the largest box.
+
+    A linear position in the concatenated boxes identifies its owning box via
+    searchsorted. Mixed-radix decoding then needs only O(chunk size) scratch,
+    even when a single reachable box spans millions of cells.
+    """
+    lbs = np.asarray(lbs).reshape(-1, len(number_per_dim))
+    ubs = np.asarray(ubs).reshape(lbs.shape)
+    wrap = np.asarray(wrap, dtype=bool)
+    lower = np.where(wrap, lbs, np.maximum(lbs, 0))
+    upper = np.where(wrap, ubs, np.minimum(ubs, number_per_dim - 1))
+    spans = np.maximum(0, upper - lower + 1)
+    spans = np.where(wrap, np.minimum(spans, number_per_dim), spans)
+    volumes = np.prod(spans, axis=1, dtype=np.int64)
+    ends = np.cumsum(volumes, dtype=np.int64)
+    if not len(ends):
+        return
+    starts = ends - volumes
+    for start in range(0, int(ends[-1]), _ID_CHUNK_SIZE):
+        positions = np.arange(start, min(start + _ID_CHUNK_SIZE, int(ends[-1])), dtype=np.int64)
+        owners = np.searchsorted(ends, positions, side="right")
+        remainder = positions - starts[owners]
+        ids = np.zeros(len(positions), dtype=np.int64)
+        for d in range(len(number_per_dim) - 1, -1, -1):
+            width = spans[owners, d]
+            coords = lower[owners, d] + remainder % width
+            remainder //= width
+            if wrap[d]:
+                coords %= number_per_dim[d]
+            ids += coords * strides[d]
+        yield ids, owners
+
+
+def _box_count_active(active_mask, lbs, ubs, number_per_dim, strides):
+    # The legacy prefix query clamps at every boundary, including periodic
+    # dimensions. Counting and successor enumeration intentionally differ here.
+    counts = np.zeros(int(np.prod(lbs.shape[:-1])), dtype=np.int64)
+    for ids, owners in _iter_box_cell_ids(lbs, ubs, number_per_dim, strides, np.zeros(len(number_per_dim), dtype=bool)):
+        counts += np.bincount(owners[active_mask[ids]], minlength=len(counts))
+    return counts.reshape(lbs.shape[:-1]).astype(np.int32)
 
 
 def _box_count_prefix_sum(prefix_flat, prefix_strides, lbs, ubs, number_per_dim):
@@ -96,38 +234,37 @@ def _expand_cells_batch(
     prefix_data=None,
     noise_support=0.0,
 ):
-    num_states = len(coords)
-    new_flats_list = []
+    def new_chunks():
+        for start in range(0, len(coords), CHUNK_SIZE):
+            end = min(start + CHUNK_SIZE, len(coords))
+            c_chunk = coords[start:end]
+            a_chunk = actions_batch[start:end]
 
-    for start in range(0, num_states, CHUNK_SIZE):
-        end = min(start + CHUNK_SIZE, num_states)
-        c_chunk = coords[start:end]
-        a_chunk = actions_batch[start:end]
+            s_mins = val_env.obs_low + c_chunk * val_env.bin_widths
+            s_maxs = s_mins + val_env.bin_widths
 
-        s_mins = val_env.obs_low + c_chunk * val_env.bin_widths
-        s_maxs = s_mins + val_env.bin_widths
+            frs_mins, frs_maxs = _compute_batch_frs_bounds(
+                model.step_set, s_mins, s_maxs, jnp.asarray(a_chunk, dtype=jnp.float32)
+            )
+            lbs = np.floor((np.asarray(frs_mins) - noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
+            ubs = np.floor((np.asarray(frs_maxs) + noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
 
-        frs_mins, frs_maxs = _compute_batch_frs_bounds(
-            model.step_set, s_mins, s_maxs, jnp.asarray(a_chunk, dtype=jnp.float32)
-        )
-        lbs = np.floor((np.asarray(frs_mins) - noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
-        ubs = np.floor((np.asarray(frs_maxs) + noise_support - val_env.obs_low) / val_env.bin_widths).astype(int)
+            if actions_batch.shape[1] > 1 and prefix_data is not None:
+                if prefix_data is False:
+                    counts = _box_count_active(active_mask, lbs, ubs, number_per_dim, strides)
+                else:
+                    prefix_flat, prefix_strides = prefix_data
+                    counts = _box_count_prefix_sum(prefix_flat, prefix_strides, lbs, ubs, number_per_dim)
+                best_acts = np.argmax(counts, axis=1)
+                row_idx = np.arange(end - start)
+                lbs, ubs = lbs[row_idx, best_acts], ubs[row_idx, best_acts]
+            else:
+                lbs, ubs = lbs[:, 0, :], ubs[:, 0, :]
 
-        if actions_batch.shape[1] > 1 and prefix_data is not None:
-            prefix_flat, prefix_strides = prefix_data
-            counts = _box_count_prefix_sum(prefix_flat, prefix_strides, lbs, ubs, number_per_dim)
-            best_acts = np.argmax(counts, axis=1)
-            row_idx = np.arange(end - start)
-            lbs, ubs = lbs[row_idx, best_acts], ubs[row_idx, best_acts]
-        else:
-            lbs, ubs = lbs[:, 0, :], ubs[:, 0, :]
+            for ids, _ in _iter_box_cell_ids(lbs, ubs, number_per_dim, strides, model.wrap):
+                yield ids[~active_mask[ids]]
 
-        flat_cells, valid_mask = _extract_frs_cells(lbs, ubs, number_per_dim, strides, model.wrap)
-        is_new = valid_mask & (~active_mask[flat_cells])
-        if np.any(is_new):
-            new_flats_list.append(flat_cells[is_new])
-
-    return np.unique(np.concatenate(new_flats_list)) if new_flats_list else np.empty(0, dtype=np.int64)
+    return _unique_id_chunks(new_chunks())
 
 
 def _smart_inflate_cells(
@@ -142,10 +279,19 @@ def _smart_inflate_cells(
     """Reachability-guided tube expansion (smart inflate)."""
     dim = len(number_per_dim)
     strides = _compute_linear_strides(number_per_dim)
-    active_mask = np.zeros(int(np.prod(number_per_dim)), dtype=bool)
+    grid_size = int(np.prod(number_per_dim))
+    active_mask = np.zeros(grid_size, dtype=bool) if grid_size <= _DENSE_INFLATION_BYTES else _SparseActiveCells(grid_size)
 
-    visited_arr = np.asarray(list(visited), dtype=np.int64).reshape(-1, dim)
-    active_mask[np.dot(visited_arr, strides)] = True
+    def add_active(ids):
+        if isinstance(active_mask, _SparseActiveCells):
+            active_mask.add(ids)
+        else:
+            active_mask[ids] = True
+
+    visited_arr = np.asarray(visited if isinstance(visited, np.ndarray) else list(visited), dtype=np.int64).reshape(-1, dim)
+    visited_ids = np.unique(np.dot(visited_arr, strides))
+    add_active(visited_ids)
+    active_count = len(visited_ids)
     noise_support = model.noise["support_radius"] * cfg.smart_tube_rate
 
     logger.info("Phase 1: Expanding FRS for visited states...")
@@ -153,27 +299,33 @@ def _smart_inflate_cells(
     queue_flats = _expand_cells_batch(
         visited_arr.astype(np.float32), init_actions, model, val_env, number_per_dim, strides, active_mask, noise_support=noise_support
     )
-    active_mask[queue_flats] = True
-    logger.info("- Phase 1 complete: %d active cells. Queue size: %d.", int(np.sum(active_mask)), len(queue_flats))
+    add_active(queue_flats)
+    active_count += len(queue_flats)
+    logger.info("- Phase 1 complete: %d active cells. Queue size: %d.", active_count, len(queue_flats))
 
     p2_iter = 0
     while len(queue_flats) > 0:
         p2_iter += 1
-        queue_coords = np.stack(np.unravel_index(queue_flats, number_per_dim), axis=-1).astype(np.float32)
+        queue_coords = _cells_from_flat_ids(queue_flats, number_per_dim).astype(np.float32)
         queue_actions = agent.get_policy_actions(queue_coords, discrete_actions, num=cfg.RL_actions_per_state)
-        prefix_data = _build_prefix_sum(active_mask, number_per_dim)
+        prefix_data = None
+        if queue_actions.shape[1] > 1:
+            prefix_itemsize = 4 if active_mask.size <= np.iinfo(np.int32).max else 8
+            prefix_bytes = int(np.prod(number_per_dim + 1, dtype=object)) * prefix_itemsize
+            prefix_data = _build_prefix_sum(active_mask, number_per_dim) if prefix_bytes <= _PREFIX_BYTES and not isinstance(active_mask, _SparseActiveCells) else False
 
         new_flats = _expand_cells_batch(
             queue_coords, queue_actions, model, val_env, number_per_dim, strides, active_mask,
             prefix_data=prefix_data, noise_support=noise_support
         )
-        active_mask[new_flats] = True
+        add_active(new_flats)
+        active_count += len(new_flats)
         queue_flats = new_flats
-        logger.info("- Phase 2 iter %d: added %d cells. Total active: %d.", p2_iter, len(queue_flats), int(np.sum(active_mask)))
+        logger.info("- Phase 2 iter %d: added %d cells. Total active: %d.", p2_iter, len(queue_flats), active_count)
 
-    logger.info("- Phase 2 complete. Total active states: %d.", int(np.sum(active_mask)))
-    all_active_flats = np.where(active_mask)[0]
-    return np.stack(np.unravel_index(all_active_flats, number_per_dim), axis=-1).astype(int)
+    logger.info("- Phase 2 complete. Total active states: %d.", active_count)
+    all_active_flats = active_mask.ids if isinstance(active_mask, _SparseActiveCells) else np.flatnonzero(active_mask)
+    return _cells_from_flat_ids(all_active_flats, number_per_dim)
 
 
 def build_tube(visited, cfg: RLConfig, model, env, agent=None, discrete_actions=None):

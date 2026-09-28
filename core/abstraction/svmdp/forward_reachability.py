@@ -312,7 +312,7 @@ class RectangularForward(object):
 
         self.id = np.arange(self.num_actions)
 
-        logger.info(f'Reachability computations took {(time.time() - t_total):.3f} sec.')
+        logger.info(f'Time for reachability computations: {(time.time() - t_total):.3f} sec.')
 
         # The successor cell IDs spanned by each box are NOT materialised here: that array has
         # shape [S, A, max_active_noise_cells, prod(max_span)] and is tens of GB for 3-D models.

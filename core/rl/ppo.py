@@ -185,3 +185,6 @@ class PPO(BaseRL):
 
     def get_predict_fn(self):
         return lambda norm_obs: self.network.apply(self.params, norm_obs)[0]
+
+    def _policy_apply(self, params, norm_obs):
+        return self.network.apply(params, norm_obs)[0]
