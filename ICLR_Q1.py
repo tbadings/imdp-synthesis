@@ -156,6 +156,8 @@ def config_Drone4D_battery() -> list[str]:
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
 
+    run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--total_timesteps","1000000"])
+
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
 
     # MountainCar

@@ -225,9 +225,10 @@ class RectangularForward(object):
 
         t = time.time()
 
-        # Allocate output arrays. Per (state, action) the function returns C entries (one per noise
-        # cell); cells mapping to the same successor box are merged, so only the leading num_active
-        # entries of each (state, action) row are populated and the rest are inactive padding.
+        # Per (state, action) the function returns C entries (one per noise cell), but merging leaves
+        # only the leading num_active entries populated. Keep compact per-batch results until the
+        # global active width is known. Allocating [S, A, C, ...] here and compacting afterwards can
+        # otherwise make both the uncompressed and compressed arrays resident at the same time.
         self.num_regions = len(partition.regions['lower_bounds'])
         self.num_actions = partition.regions['actions'].shape[1]
         S, A, C, D = self.num_regions, self.num_actions, noise_cells.shape[0], partition.dimension
@@ -238,9 +239,7 @@ class RectangularForward(object):
         # state downstream), and box_to_ids_single enumerates `arange(span) + idx_lb` masking `col < 0`,
         # so the sign must be preserved. Models with a dimension > 127 cells (e.g. MountainCar) keep int16.
         idx_dtype = np.int8 if int(np.max(partition.number_per_dim)) <= INT8_MAX else np.int16
-        self.frs_idx_lb = np.zeros((S, A, C, D), dtype=idx_dtype)
-        self.frs_idx_ub = np.zeros((S, A, C, D), dtype=idx_dtype)
-        self.frs_noise_probs = np.zeros((S, A, C), dtype=args.floatprecision)
+        frs_blocks = []
         self.frs_noise_num_active = np.zeros((S, A), dtype=np.int32)
         # max_slice is computed incrementally per batch to avoid a second pass over the indices.
         
@@ -278,9 +277,18 @@ class RectangularForward(object):
                         f"FRS grid index out of int8 range in batch [{batch_start}:{batch_end}] "
                         f"(min {int(frs_lb.min())}, max {int(frs_ub.max())})."
                     )
-            self.frs_idx_lb[batch_start:batch_end] = frs_lb.astype(idx_dtype)
-            self.frs_idx_ub[batch_start:batch_end] = frs_ub.astype(idx_dtype)
-            self.frs_noise_probs[batch_start:batch_end] = frs_prob
+            batch_active = int(np.max(frs_nact))
+            # Slice before converting/copying so inactive padding never enters the retained host
+            # representation. ascontiguousarray also ensures a narrow slice does not keep the full
+            # JAX output buffer alive through its original strides.
+            assert np.all(frs_prob[:, :, batch_active:] == 0)
+            frs_blocks.append((
+                batch_start,
+                batch_end,
+                np.ascontiguousarray(frs_lb[:, :, :batch_active], dtype=idx_dtype),
+                np.ascontiguousarray(frs_ub[:, :, :batch_active], dtype=idx_dtype),
+                np.ascontiguousarray(frs_prob[:, :, :batch_active], dtype=args.floatprecision),
+            ))
             self.frs_noise_num_active[batch_start:batch_end] = frs_nact
             # Update max span incrementally (padding entries span 1 cell, so never inflate the max).
             np.maximum(max_span, np.max(frs_span, axis=(0, 1, 2)).astype(int), out=max_span)
@@ -293,15 +301,20 @@ class RectangularForward(object):
         self.max_slice = tuple(max_span.tolist())
         self.max_active_noise_cells = max_active_noise_cells
 
-        # Remove noise cells that were merged (after a sanity check that we are only throwing away probability zero cells).
-        # Wrap each truncation in np.ascontiguousarray: a bare slice on the noise axis is a *view* that (a) stays
-        # C-non-contiguous (strided along that axis) and (b) keeps the entire pre-truncation [S, A, Cmax, D] buffer
-        # alive, so resident memory is Cmax/Cact larger than the logical data. Compacting here frees that buffer and
-        # makes every later axis-0 gather (e.g. building imp_batches in the DP) a fast contiguous row copy.
-        assert np.all(self.frs_noise_probs[:, :, self.max_active_noise_cells:] == 0)
-        self.frs_idx_lb = np.ascontiguousarray(self.frs_idx_lb[:, :, :self.max_active_noise_cells, :])
-        self.frs_idx_ub = np.ascontiguousarray(self.frs_idx_ub[:, :, :self.max_active_noise_cells, :])
-        self.frs_noise_probs = np.ascontiguousarray(self.frs_noise_probs[:, :, :self.max_active_noise_cells])
+        # Allocate only the final compressed shape. np.zeros leaves untouched padding backed by zero
+        # pages on platforms with demand paging. Drain one retained block at a time and release it as
+        # soon as it has been copied, avoiding coexistence of two complete reachability datasets.
+        K = int(self.max_active_noise_cells)
+        self.frs_idx_lb = np.zeros((S, A, K, D), dtype=idx_dtype)
+        self.frs_idx_ub = np.zeros((S, A, K, D), dtype=idx_dtype)
+        self.frs_noise_probs = np.zeros((S, A, K), dtype=args.floatprecision)
+        for i, (batch_start, batch_end, frs_lb, frs_ub, frs_prob) in enumerate(frs_blocks):
+            batch_active = frs_prob.shape[2]
+            self.frs_idx_lb[batch_start:batch_end, :, :batch_active] = frs_lb
+            self.frs_idx_ub[batch_start:batch_end, :, :batch_active] = frs_ub
+            self.frs_noise_probs[batch_start:batch_end, :, :batch_active] = frs_prob
+            frs_blocks[i] = None
+        del frs_blocks, frs_lb, frs_ub, frs_prob
         logger.info(f"- FRS index boxes stored as {np.dtype(idx_dtype).name}")
 
         logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")
