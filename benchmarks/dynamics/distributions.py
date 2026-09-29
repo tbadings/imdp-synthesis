@@ -149,6 +149,10 @@ class GaussianDistr(dict):
 		self.partition = {
 			"cells": all_cells,
 			"probs": all_probs,
+			# Per-dimension intervals ([n_d, 2] each, ascending) and probabilities ([n_d] each) whose
+			# Cartesian product / product are the cells and probs above.
+			"per_dim_cells": per_dim_cells,
+			"per_dim_probs": per_dim_probs,
 			"remainder": 1.0 - jnp.sum(all_probs)
 		}
 
@@ -347,6 +351,10 @@ class TriangularDistr(dict):
 		self.partition = {
 			"cells": all_cells,
 			"probs": all_probs,
+			# Per-dimension intervals ([n_d, 2] each, ascending) and probabilities ([n_d] each) whose
+			# Cartesian product / product are the cells and probs above.
+			"per_dim_cells": per_dim_cells,
+			"per_dim_probs": per_dim_probs,
 			"remainder": 1.0 - jnp.sum(all_probs)
 		}
 
