@@ -78,6 +78,14 @@ def forward_reach_noise(state_min, state_max, input, step_set, cell_width, bound
         lb = jnp.floor((frs_min[d] + noise_lb[d] - boundary_lb[d]) / cell_width[d]).astype(int)
         ub = jnp.floor((frs_max[d] + noise_ub[d] - boundary_lb[d]) / cell_width[d]).astype(int)
 
+        if lb.shape[0] == 1:
+            # A single noise interval (e.g. a dimension without noise) is always one merged interval.
+            merged_lb.append(lb)
+            merged_ub.append(ub)
+            merged_probs.append(noise_probs[d])
+            num_merged.append(1)
+            continue
+
         # The noise intervals are ascending, so lb and ub are non-decreasing and equal (lb, ub) pairs
         # are adjacent: label the start of each run, pack the runs at the top and sum their probabilities.
         is_first = jnp.concatenate([jnp.array([True]), (lb[1:] != lb[:-1]) | (ub[1:] != ub[:-1])])
@@ -91,22 +99,50 @@ def forward_reach_noise(state_min, state_max, input, step_set, cell_width, bound
     # function stays jit/vmap-able): row i combines interval j_d of every dimension d, where
     # (j_0, ..., j_{D-1}) are the mixed-radix digits of i in base (num_merged_0, ..., num_merged_{D-1}).
     # So the prod_d num_merged_d boxes are packed at the top and the remaining rows are inactive
-    # padding (index 0, probability 0).
-    num_merged = jnp.stack(num_merged)
-    num_active = jnp.prod(num_merged)
+    # padding (index 0, probability 0). A dimension with a single noise interval always has digit 0.
     row = jnp.arange(num_boxes)
-    strides = jnp.concatenate([jnp.cumprod(num_merged[::-1])[::-1][1:], jnp.ones(1, num_merged.dtype)])
-    digits = (row[:, None] // strides) % num_merged                          # (num_boxes, D)
+    digits, stride = [None] * len(num_merged), jnp.ones((), row.dtype)
+    for d in reversed(range(len(num_merged))):
+        digits[d] = jnp.zeros_like(row) if noise_lb[d].shape[0] == 1 else (row // stride) % num_merged[d]
+        stride = stride * num_merged[d]
+    num_active = stride                                                      # prod_d num_merged_d
     active = row < num_active                                                # (num_boxes,)
 
-    idx_lb = jnp.stack([x[digits[:, d]] for d, x in enumerate(merged_lb)], axis=1) * active[:, None]
-    idx_ub = jnp.stack([x[digits[:, d]] for d, x in enumerate(merged_ub)], axis=1) * active[:, None]
-    probs = jnp.prod(jnp.stack([x[digits[:, d]] for d, x in enumerate(merged_probs)], axis=1), axis=1) * active
+    idx_lb = jnp.stack([x[digits[d]] for d, x in enumerate(merged_lb)], axis=1) * active[:, None]
+    idx_ub = jnp.stack([x[digits[d]] for d, x in enumerate(merged_ub)], axis=1) * active[:, None]
+    probs = jnp.prod(jnp.stack([x[digits[d]] for d, x in enumerate(merged_probs)], axis=1), axis=1) * active
 
     # Number of grid cells each (merged) forward reachable set spans per dimension.
     frs_span = idx_ub - idx_lb + 1
 
     return frs_span, idx_lb, idx_ub, probs, num_active
+
+def count_merged_boxes(state_min, state_max, input, step_set, cell_width, boundary_lb, shrink_frs,
+                       noise_lb, noise_ub):
+    """
+    Number of merged forward reachable sets (num_active) and their maximum span per dimension, as
+    forward_reach_noise computes them, but without composing the boxes. Used as a cheap first pass
+    to size the stored arrays exactly (see RectangularForward), so it must use the same arithmetic.
+
+    The arguments are those of forward_reach_noise (noise_probs and num_boxes are not needed).
+
+    :return: Tuple (num_active, max_span): the number of merged entries (scalar) and the maximum
+        number of grid cells a merged forward reachable set spans per dimension (shape: [state_dim])
+    """
+    epsilon = 0.0
+    frs_min, frs_max = step_set(state_min, state_max, input - epsilon, input + epsilon)
+    frs_min = frs_min + shrink_frs
+    frs_max = frs_max - shrink_frs
+
+    num_merged, max_span = [], []
+    for d in range(len(noise_lb)):
+        lb = jnp.floor((frs_min[d] + noise_lb[d] - boundary_lb[d]) / cell_width[d]).astype(int)
+        ub = jnp.floor((frs_max[d] + noise_ub[d] - boundary_lb[d]) / cell_width[d]).astype(int)
+        # The merged intervals are the runs of equal (lb, ub) pairs, so they have the same spans.
+        num_merged.append(1 + jnp.sum((lb[1:] != lb[:-1]) | (ub[1:] != ub[:-1])))
+        max_span.append(jnp.max(ub - lb + 1))
+
+    return jnp.prod(jnp.stack(num_merged)), jnp.stack(max_span)
 
 class RectangularForward(object):
     """
@@ -190,14 +226,34 @@ class RectangularForward(object):
         # varying arguments are mapped. This reduces Python–JAX round trips from num_regions to
         # ceil(num_regions / frs_batch_size).
         vmap_over_actions = jax.vmap(frs_fn, in_axes=(None, None, 0))
-        batch_forward_reach = jax.jit(jax.vmap(vmap_over_actions, in_axes=(0, 0, 0)))
+        vmap_over_states = jax.vmap(vmap_over_actions, in_axes=(0, 0, 0))
+
+        @jax.jit
+        def batch_forward_reach(state_min, state_max, inputs):
+            # The first pass provides max_slice, so the (full-size) span output is dropped; XLA then
+            # never materialises it.
+            _, idx_lb, idx_ub, probs, num_active = vmap_over_states(state_min, state_max, inputs)
+            return idx_lb, idx_ub, probs, num_active
+
+        # First pass: only the number of merged entries and the span per (state, action).
+        count_fn = partial(
+            count_merged_boxes,
+            step_set=model.step_set,
+            cell_width=cw_dev,
+            boundary_lb=blb_dev,
+            shrink_frs=args.shrink_frs,
+            noise_lb=noise_lb_dev,
+            noise_ub=noise_ub_dev,
+        )
+        vmap_count = jax.vmap(jax.vmap(count_fn, in_axes=(None, None, 0)), in_axes=(0, 0, 0))
+
+        @jax.jit
+        def batch_count(state_min, state_max, inputs):
+            num_active, span = vmap_count(state_min, state_max, inputs)
+            return num_active, jnp.max(span, axis=(0, 1))
 
         t = time.time()
 
-        # Per (state, action) the function returns num_boxes entries, but merging leaves only the
-        # leading num_active entries populated. Keep compact per-batch results until the global active
-        # width is known. Allocating [S, A, num_boxes, ...] here and compacting afterwards can
-        # otherwise make both the uncompressed and compressed arrays resident at the same time.
         self.num_regions = len(partition.regions['lower_bounds'])
         self.num_actions = partition.regions['actions'].shape[1]
         S, A, D = self.num_regions, self.num_actions, partition.dimension
@@ -209,36 +265,57 @@ class RectangularForward(object):
         # so the sign must be preserved. Models with a dimension > 127 cells (e.g. MountainCar) keep int16.
         idx_dtype = np.int8 if int(np.max(partition.number_per_dim)) <= INT8_MAX else np.int16
         idx_info = np.iinfo(idx_dtype)
-        frs_blocks = []
-        self.frs_noise_num_active = np.zeros((S, A), dtype=np.int32)
-        # max_slice is computed incrementally per batch to avoid a second pass over the indices.
-        
-        max_span = np.zeros(D, dtype=int)
-        max_active_noise_cells = 0
 
         # Process state regions in batches: each call handles a [batch, num_actions] computation
         # instead of one [num_actions] computation, reducing Python–JAX round trips by frs_batch_size.
         starts, ends = create_batches(self.num_regions, args.frs_batch_size)
-        pbar = tqdm(zip(starts, ends), total=len(starts))
-        for batch_start, batch_end in pbar:
-            batch_size = batch_end - batch_start
+
+        def batch_inputs(batch_start, batch_end):
+            # The three loop-varying arguments for states [batch_start:batch_end]; the rest are bound.
             actions_slice = partition.regions['actions']
             # DensePartition stores actions as (1, num_actions, action_dim); broadcast to batch size.
             # SparsePartition stores (num_states, num_actions, action_dim); slice normally.
             if actions_slice.shape[0] == 1:
-                actions_batch = jnp.broadcast_to(actions_slice, (batch_size, *actions_slice.shape[1:]))
+                actions_batch = jnp.broadcast_to(actions_slice, (batch_end - batch_start, *actions_slice.shape[1:]))
             else:
                 actions_batch = actions_slice[batch_start:batch_end]
-            # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
-            frs_span, frs_lb, frs_ub, frs_prob, frs_nact = batch_forward_reach(
-                partition.regions['lower_bounds'][batch_start:batch_end],
-                partition.regions['upper_bounds'][batch_start:batch_end],
-                actions_batch,
-            )
-            # JAX dispatches asynchronously; block so the timing reflects actual compute.
-            jax.block_until_ready((frs_span, frs_lb, frs_ub, frs_prob, frs_nact))
+            return (partition.regions['lower_bounds'][batch_start:batch_end],
+                    partition.regions['upper_bounds'][batch_start:batch_end],
+                    actions_batch)
 
-            frs_span, frs_lb, frs_ub, frs_prob, frs_nact = jax.device_get((frs_span, frs_lb, frs_ub, frs_prob, frs_nact))
+        # Pass 1: the number of merged entries per (state, action) and the maximum span, so the final
+        # arrays can be allocated at their exact size up front. Pass 2 then writes every batch straight
+        # into them, so no second copy of the (multi-GB) reachability data is ever resident.
+        self.frs_noise_num_active = np.zeros((S, A), dtype=np.int32)
+        max_span = np.zeros(D, dtype=int)
+        for batch_start, batch_end in tqdm(zip(starts, ends), total=len(starts), desc='FRS pass 1/2'):
+            num_active, batch_span = jax.device_get(batch_count(*batch_inputs(batch_start, batch_end)))
+            self.frs_noise_num_active[batch_start:batch_end] = num_active
+            np.maximum(max_span, batch_span, out=max_span)
+
+        # TODO: With no wrap, max_span is potentially conservative (there may be many indices OOB that can already be ignored)
+
+        # Store the maximum span of forward reachable sets
+        # This is used to allocate sufficient memory for transition probability computations
+        self.max_slice = tuple(max_span.tolist())
+        self.max_active_noise_cells = int(self.frs_noise_num_active.max(initial=0))
+        # num_boxes is a static bound on the number of merged entries; fail loudly if it was too small.
+        assert self.max_active_noise_cells <= num_boxes, \
+            f"{self.max_active_noise_cells} merged boxes exceed the bound num_boxes={num_boxes}"
+
+        # Pass 2: per (state, action) the kernel returns num_boxes entries, of which merging leaves
+        # only the leading num_active populated, so only the first K are stored.
+        K = self.max_active_noise_cells
+        self.frs_idx_lb = np.zeros((S, A, K, D), dtype=idx_dtype)
+        self.frs_idx_ub = np.zeros((S, A, K, D), dtype=idx_dtype)
+        self.frs_noise_probs = np.zeros((S, A, K), dtype=args.floatprecision)
+        for batch_start, batch_end in tqdm(zip(starts, ends), total=len(starts), desc='FRS pass 2/2'):
+            # Only the three loop-varying arguments are passed; the rest are bound in frs_fn.
+            frs_lb, frs_ub, frs_prob, frs_nact = batch_forward_reach(*batch_inputs(batch_start, batch_end))
+            # JAX dispatches asynchronously; block so the timing reflects actual compute.
+            jax.block_until_ready((frs_lb, frs_ub, frs_prob, frs_nact))
+
+            frs_lb, frs_ub, frs_prob, frs_nact = jax.device_get((frs_lb, frs_ub, frs_prob, frs_nact))
             # Indices may run slightly outside [0, number_per_dim) (OOB successors). Cheap per-batch
             # guard so an unexpected out-of-range index fails loudly instead of silently wrapping.
             if int(frs_lb.min()) < idx_info.min or int(frs_ub.max()) > idx_info.max:
@@ -246,46 +323,12 @@ class RectangularForward(object):
                     f"FRS grid index out of {np.dtype(idx_dtype).name} range in batch [{batch_start}:{batch_end}] "
                     f"(min {int(frs_lb.min())}, max {int(frs_ub.max())})."
                 )
-            batch_active = int(np.max(frs_nact))
-            # num_boxes is a static bound on the number of merged entries; fail loudly if it was too small.
-            assert batch_active <= num_boxes, f"{batch_active} merged boxes exceed the bound num_boxes={num_boxes}"
-            # Slice before converting/copying so inactive padding never enters the retained host
-            # representation. ascontiguousarray also ensures a narrow slice does not keep the full
-            # JAX output buffer alive through its original strides.
-            assert np.all(frs_prob[:, :, batch_active:] == 0)
-            frs_blocks.append((
-                batch_start,
-                batch_end,
-                np.ascontiguousarray(frs_lb[:, :, :batch_active], dtype=idx_dtype),
-                np.ascontiguousarray(frs_ub[:, :, :batch_active], dtype=idx_dtype),
-                np.ascontiguousarray(frs_prob[:, :, :batch_active], dtype=args.floatprecision),
-            ))
-            self.frs_noise_num_active[batch_start:batch_end] = frs_nact
-            # Update max span incrementally (padding entries span 1 cell, so never inflate the max).
-            np.maximum(max_span, np.max(frs_span, axis=(0, 1, 2)).astype(int), out=max_span)
-            max_active_noise_cells = max(max_active_noise_cells, batch_active)
-
-        # TODO: With no wrap, max_span is potentially conservative (there may be many indices OOB that can already be ignored)
-
-        # Store the maximum span of forward reachable sets
-        # This is used to allocate sufficient memory for transition probability computations
-        self.max_slice = tuple(max_span.tolist())
-        self.max_active_noise_cells = max_active_noise_cells
-
-        # Allocate only the final compressed shape. np.zeros leaves untouched padding backed by zero
-        # pages on platforms with demand paging. Drain one retained block at a time and release it as
-        # soon as it has been copied, avoiding coexistence of two complete reachability datasets.
-        K = self.max_active_noise_cells
-        self.frs_idx_lb = np.zeros((S, A, K, D), dtype=idx_dtype)
-        self.frs_idx_ub = np.zeros((S, A, K, D), dtype=idx_dtype)
-        self.frs_noise_probs = np.zeros((S, A, K), dtype=args.floatprecision)
-        while frs_blocks:
-            # pop(0) keeps the forward (batch) order of filling the final arrays.
-            batch_start, batch_end, frs_lb, frs_ub, frs_prob = frs_blocks.pop(0)
-            batch_active = frs_prob.shape[2]
-            self.frs_idx_lb[batch_start:batch_end, :, :batch_active] = frs_lb
-            self.frs_idx_ub[batch_start:batch_end, :, :batch_active] = frs_ub
-            self.frs_noise_probs[batch_start:batch_end, :, :batch_active] = frs_prob
+            # Both passes count the same merged entries, and the entries beyond K are empty padding.
+            assert np.array_equal(frs_nact, self.frs_noise_num_active[batch_start:batch_end])
+            assert np.all(frs_prob[:, :, K:] == 0)
+            self.frs_idx_lb[batch_start:batch_end] = frs_lb[:, :, :K]
+            self.frs_idx_ub[batch_start:batch_end] = frs_ub[:, :, :K]
+            self.frs_noise_probs[batch_start:batch_end] = frs_prob[:, :, :K]
         logger.info(f"- FRS index boxes stored as {np.dtype(idx_dtype).name}")
 
         logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")
