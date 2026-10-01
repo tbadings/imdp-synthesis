@@ -6,7 +6,8 @@ class SVMDP:
     Class to construct the SVMDP abstraction.
     """
 
-    def __init__(self, partition, states, x0, goal_regions, critical_regions, P_full, S_idx_lb, S_idx_ub, box_to_ids, A_id, P_absorbing):
+    def __init__(self, partition, states, x0, goal_regions, critical_regions, interval_lb, interval_ub, box_probs,
+                 slots, max_slice, union_span, grid, A_id, P_absorbing):
         '''
         Generate the SVMDP abstraction
 
@@ -15,12 +16,15 @@ class SVMDP:
         :param x0:
         :param goal_regions:
         :param critical_regions:
-        :param P_full: Per-(state, action, noise cell) probability mass, shape [S, A, nc]
-        :param S_idx_lb: Lower grid-index bound of each forward-reachable box, shape [S, A, nc, D]
-        :param S_idx_ub: Upper grid-index bound of each forward-reachable box, shape [S, A, nc, D]
-        :param box_to_ids: Single-box -> successor state IDs function (shape [D] -> [prod(max_span)])
-            with the static partition/grid data bound (see successor_ids.make_box_to_ids). The DP
-            recomposes successor IDs on the fly from the boxes instead of storing them materialised.
+        :param interval_lb: Lower grid indices of the merged successor intervals per (state, action), dimension
+            after dimension, shape [S, A, sum(slots)] (see forward_reachability.RectangularForward)
+        :param interval_ub: Upper grid indices of the merged successor intervals, shape [S, A, sum(slots)]
+        :param box_probs: Probability of each successor box (combination of one interval per dimension, C order
+            over the dimensions), shape [S, A, prod(slots)]
+        :param slots: Number of stored successor intervals per dimension (tuple of D ints)
+        :param max_slice: Largest span of a successor interval per dimension (tuple of D ints)
+        :param union_span: Largest span of the union of a pair's successor intervals per dimension (tuple of D ints)
+        :param grid: TiledGrid of the partition (see successor_ids), on which the DP keeps the state values
         :param A_id: Single shared list of enabled action ids (every state has all actions
             enabled). The action index chosen by the DP maps to a label through this list.
         :param P_absorbing:
@@ -30,10 +34,13 @@ class SVMDP:
 
         self.goal_regions = goal_regions
         self.critical_regions = critical_regions
-        self.P_full = P_full
-        self.S_idx_lb = S_idx_lb
-        self.S_idx_ub = S_idx_ub
-        self.box_to_ids = box_to_ids
+        self.interval_lb = interval_lb
+        self.interval_ub = interval_ub
+        self.box_probs = box_probs
+        self.slots = slots
+        self.max_slice = max_slice
+        self.union_span = union_span
+        self.grid = grid
         self.A_id = A_id
         self.P_absorbing = P_absorbing
 

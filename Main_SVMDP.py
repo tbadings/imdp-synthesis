@@ -12,7 +12,7 @@ import numpy as np
 
 import benchmarks
 from core.abstraction.svmdp.forward_reachability import RectangularForward
-from core.abstraction.svmdp.successor_ids import make_box_to_ids
+from core.abstraction.svmdp.successor_ids import TiledGrid
 from core.abstraction.svmdp.svmdp import SVMDP
 from core.abstraction.svmdp.dynprog import SVMDP_DP
 from core.options import parse_arguments
@@ -102,7 +102,8 @@ if __name__ == '__main__':
         if not s_init_exists:
             raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
 
-        # Compute forward reachable sets and noise-shifted successor cell IDs.
+        # Compute forward reachable sets: the merged successor intervals per dimension and the
+        # probabilities of the successor boxes they compose.
         actions = RectangularForward(args=args, partition=partition, model=model)
 
         # All partition states have all actions enabled (rectangular partition),
@@ -110,20 +111,20 @@ if __name__ == '__main__':
         states = np.array(partition.regions['idxs'])
         A_id = list(range(actions.num_actions))
 
-        # Recompose successor IDs on the fly in the DP from the compact boxes (frs_idx_lb/frs_idx_ub)
-        # rather than materialising the [S, A, nc, prod(max_span)] ID array (tens of GB for 3-D models).
-        box_to_ids = make_box_to_ids(max_span=actions.max_slice, wrap=model.wrap, partition=partition)
-
         svmdp = SVMDP(
             partition=partition,
             states=states,
             x0=model.x0,
             goal_regions=np.array(partition.goal['bools']),
             critical_regions=np.array(partition.critical['bools']),
-            P_full=actions.frs_noise_probs,
-            S_idx_lb=actions.frs_idx_lb,
-            S_idx_ub=actions.frs_idx_ub,
-            box_to_ids=box_to_ids,  
+            interval_lb=actions.interval_lb,
+            interval_ub=actions.interval_ub,
+            box_probs=actions.box_probs,
+            slots=actions.slots,
+            max_slice=actions.max_slice,
+            union_span=actions.union_span,
+            # The DP keeps the state values on this grid and reads the successor cells' values by position
+            grid=TiledGrid(partition=partition, wrap=model.wrap),
             A_id=A_id,
             P_absorbing=model.noise.partition['remainder'],
         )
@@ -154,11 +155,8 @@ if __name__ == '__main__':
                 s0=partition.x2state(model.x0)[0],
                 max_iterations=10000,
                 epsilon=1e-6,
-                RND_SWEEPS=True,
                 sweep_priority=sweep_priority,
-                BATCH_SIZE=1000,
                 policy_iteration=args.policy_iteration,
-                prune_states=False
             )
 
         out_dict['time_synthesis'] = time.time() - t

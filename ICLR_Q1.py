@@ -156,7 +156,7 @@ def config_Drone4D_battery() -> list[str]:
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
 
-    run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--load_policy", "output/2026-10-01_18-56-50_Drone6D/rl_policy.pkl"])
+    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
 
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--dp_backend", "jax"])
 
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
 
     # Dubins4D
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--dense"])
+    run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
@@ -288,6 +288,7 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
 
     # Drone6D
+    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--dense"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
