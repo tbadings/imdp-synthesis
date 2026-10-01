@@ -164,7 +164,7 @@ class Drone6D_small(DroneDynamics):
 
 class Drone6D_battery(DroneDynamics_battery):
     '''
-    Drone benchmark, with a 6D state space and a 3D control input space.
+    Drone benchmark with 6D motion, one battery state, and 3D control.
     '''
 
     def __init__(self, args):
@@ -196,40 +196,53 @@ class Drone6D_battery(DroneDynamics_battery):
 
         self.max_charge = 100
 
-        # Expand the battery_charge boundary by 5 to ensure we do not go out of bounds in the simulation
-        self.partition['boundary'] = np.array([[-7, v_min, -7, v_min, -7, v_min, 0], [7, v_max, 7, v_max, 7, v_max, self.max_charge+5]])
+        # The x and y axes span the same bounds as Drone4D_battery. The z axis
+        # spans [-2, 2] at the same 0.5 m resolution as x and y.
+        self.partition['boundary'] = np.array([
+            [-10, v_min, -10, v_min, -2, v_min, 0],
+            [10, v_max, 10, v_max, 2, v_max, self.max_charge],
+        ])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([28, 14, 28, 14, 28, 14, 21])
-        
+        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 8, 10, 40])
+
         self.goal = np.array([
-            [[5, v_min, 5, v_min, -7, v_min, 50], [7, v_max, 7, v_max, 7, v_max, self.max_charge]]
+            [
+                [6, v_min, 6, v_min, -2, v_min, 20],
+                [10, v_max, 10, v_max, 2, v_max, self.max_charge],
+            ]
         ], dtype=float)
 
-        self.critical = np.array([
-            # [[-7, v_min, 1, v_min, -7, v_min, 0], [-1, v_max, 3, v_max, 7, v_max, self.max_charge]],
-            # [[3, v_min, -7, v_min, -7, v_min, 0], [7, v_max, -3, v_max, 7, v_max, self.max_charge]],
-        ], dtype=float)
+        self.critical = np.empty((0, 2, 7), dtype=float)
 
         self.charging_station = np.array([
-            [[-7, v_min, -2, v_min, -2, v_min, 0], [-3, v_max, 2, v_max, 2, v_max, self.max_charge]]
+            [
+                [-9, v_min, -2, v_min, -2, v_min, 0],
+                [-5, v_max, 2, v_max, 2, v_max, self.max_charge],
+            ]
         ], dtype=float)
 
-        self.x0 = np.array([-5, 0.01, -5, 0.01, 0.01, 0.01, 50])
+        self.x0 = np.array([-5, 0.01, -9, 0.01, 0, 0.01, 50])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            pi_arch=[64, 64],
-            vf_arch=[64, 64],
-            total_timesteps=400000,
-            eval_episodes=1000,
-            goal_reward=5,
-            unsafe_penalty=-5,
-            out_of_bounds_penalty=-5,
-            per_step_cost=0.1,
-            distance_cost=0.0,
+            rl_algo="ppo",
+            total_timesteps=1000000,
+            pi_arch=[256, 256],
+            vf_arch=[256, 256],
             RL_actions_per_state=27,
-            inflation_rate=[(-2, 2), (-1, 1), (-2, 2), (-1, 1), (-2, 2), (-1, 1), (-1, 1)],
+            proximity_dims=[0, 2, 4],
+            proximity_penalty=0.5,
+            per_step_cost=0.05,
+            inflation_rate=[
+                (-3, 3),
+                (-2, 2),
+                (-3, 3),
+                (-2, 2),
+                (-3, 3),
+                (-2, 2),
+                (-3, 3),
+            ],
         )
 
         return

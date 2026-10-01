@@ -76,11 +76,14 @@ if __name__ == '__main__':
 
         model = benchmarks.create_model(args)
 
+        # DP sweep priority per partition state (aligned with active_states), from the RL rollouts.
+        # None for --sweep_order random and for the dense partition.
+        sweep_priority = None
         if args.dense:
             logger.info('Using DensePartition (RL exploration skipped).')
             partition = DensePartition(model=model)
         else:
-            active_states, active_actions, _ = find_active(model, args=args)
+            active_states, active_actions, _, sweep_priority = find_active(model, args=args, return_sweep_priority=True)
             logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
 
             out_dict['time_RL'] = time.time() - t
@@ -152,6 +155,7 @@ if __name__ == '__main__':
                 max_iterations=10000,
                 epsilon=1e-6,
                 RND_SWEEPS=True,
+                sweep_priority=sweep_priority,
                 BATCH_SIZE=1000,
                 policy_iteration=args.policy_iteration,
                 prune_states=False
@@ -259,7 +263,7 @@ if __name__ == '__main__':
                 filename=str(args.output_dir / f'mountaincar_{stamp}.gif'),
             )
 
-        if args.model == 'CartPole':
+        if args.model.startswith('CartPole'):
             print('Plot CartPole gif...')
             model.plot_trajectory_gif(
                 np.array(sim_results['traces'][0]['x'])[:, [0, 2]],

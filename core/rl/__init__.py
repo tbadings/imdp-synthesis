@@ -9,7 +9,7 @@ from .config import RLConfig, resolve_rl_config
 from .env import BenchmarkEnv
 from .ppo import PPO
 from .sac import SAC
-from .tube import build_tube
+from .tube import build_tube, rollout_sweep_priority
 from .plotting import plot_rl_trajectories_with_active_states
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,12 @@ def get_rl_algo(algo: str, env, cfg) -> BaseRL:
     return SAC(env, cfg) if str(algo).lower().strip() == "sac" else PPO(env, cfg)
 
 
-def find_active(model, args):
-    """Find active states and discrete actions using reinforcement learning exploration."""
+def find_active(model, args, return_sweep_priority=False):
+    """Find active states and discrete actions using reinforcement learning exploration.
+
+    With return_sweep_priority, also return each active state's DP sweep priority (see
+    rollout_sweep_priority), which is None unless --sweep_order is 'trajectory'.
+    """
     cfg = resolve_rl_config(model, args)
     env = BenchmarkEnv(model, cfg)
     agent = get_rl_algo(cfg.rl_algo, env, cfg)
@@ -82,7 +86,17 @@ def find_active(model, args):
     }
     print('(Time to extract active actions: %.2f seconds)' % (time.time() - t))
 
-    return active_states, active_actions, agent
+    if not return_sweep_priority:
+        return active_states, active_actions, agent
+
+    sweep_priority = None
+    if getattr(args, "sweep_order", "random") == "trajectory":
+        t = time.time()
+        sweep_priority = rollout_sweep_priority(trajectories, active_states, env)
+        if sweep_priority is None:
+            logger.warning("No evaluation rollout reached the goal; keeping the random sweep order.")
+        print('(Time to compute sweep priority: %.2f seconds)' % (time.time() - t))
+    return active_states, active_actions, agent, sweep_priority
 
 
 __all__ = [

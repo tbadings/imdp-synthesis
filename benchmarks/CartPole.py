@@ -59,6 +59,10 @@ class CartPole(CartPoleDynamics):
         self.rl_config = RLConfig(
             rl_algo="sac",
             total_timesteps= 5000000,
+            goal_reward=20.0,
+            unsafe_penalty=-20.0,
+            out_of_bounds_penalty=-20.0,
+            distance_cost=[0.1, 0.0, 0.0, 0.0],
             per_step_cost=0.05,
             inflation_rate=[(-7, 7), (-7, 7), (-7, 7), (-7, 7)],
             RL_actions_per_state=5,
@@ -81,13 +85,14 @@ class CartPole(CartPoleDynamics):
         thetas = trajectory[:, 1]
 
         x_lim = 2.4
-        pole_len = 1.0  # Visual length of the pole
+        pole_len = 2 * self.length  # Physical length of the pole (self.length is half of it)
         cart_w, cart_h = 0.4, 0.2
+        y_top = cart_h + pole_len + 0.3
 
         # Prepare figure
         fig, ax = plt.subplots(figsize=(6, 4))
         ax.set_xlim(-x_lim - 1, x_lim + 1)
-        ax.set_ylim(-0.5, pole_len + 0.5)
+        ax.set_ylim(-0.5, y_top)
         ax.set_aspect('equal')
         ax.grid()
 
@@ -95,6 +100,12 @@ class CartPole(CartPoleDynamics):
         ax.axhline(0, color='black', lw=1)
 
         from matplotlib.patches import Rectangle
+
+        # Obstacles hanging from the ceiling; their lower edge is measured from the pole's pivot
+        for x_min, x_max, bottom in getattr(self, 'obstacles', []):
+            ax.add_patch(Rectangle((x_min, cart_h + bottom), x_max - x_min, y_top - cart_h - bottom,
+                                   facecolor='tab:red', edgecolor='darkred', hatch='//', alpha=0.6))
+
         cart = Rectangle((0, 0), cart_w, cart_h, facecolor='black')
         ax.add_patch(cart)
         pole, = ax.plot([], [], '-', lw=4, color='tab:brown')

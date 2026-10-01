@@ -1,4 +1,5 @@
 import logging
+from functools import partial
 import numpy as np
 from tqdm import tqdm
 import jax
@@ -14,14 +15,64 @@ from core.utils import create_batches
 logger = logging.getLogger(__name__)
 
 
+def _union_kernels(union_box_to_ids, union_span, noise_dims):
+    """
+    Policy improvement and evaluation kernels (batched, as in SVMDP_DP) that read V once over the union box of
+    a state-action pair's noise cells. The noise cells' boxes coincide along the dimensions without noise, so V
+    is first minimised over those (once, for all noise cells), and each noise cell's minimum then needs a mask
+    over the noise dimensions only.
+
+    :param union_box_to_ids: box_to_ids bound to max_span=union_span
+    :param union_span: Static span of the union boxes (tuple of D Python ints)
+    :param noise_dims: Dimensions in which the noise cells' boxes differ (tuple of Python ints)
+    :return: Tuple (vmap_state_policy_improvement, vmap_state_policy_evaluation)
+    """
+    other_dims = tuple(d for d in range(len(union_span)) if d not in noise_dims)
+    noise_cols = [jnp.arange(union_span[d]) for d in noise_dims]
+
+    def union_lower_val(idx_lb, idx_ub, probs, V):
+        '''Robust value of one state-action pair from its noise cells' union box (same value as compute_lower_val).'''
+        active = probs > 0
+        lb, ub = idx_lb.astype(jnp.int32), idx_ub.astype(jnp.int32)
+        ulb = jnp.where(jnp.any(active), jnp.min(jnp.where(active[:, None], lb, jnp.iinfo(jnp.int32).max), axis=0), lb[0])
+        uub = jnp.where(jnp.any(active), jnp.max(jnp.where(active[:, None], ub, jnp.iinfo(jnp.int32).min), axis=0), ub[0])
+        values = V[union_box_to_ids(ulb, uub)].reshape(union_span)
+
+        # Along the dimensions without noise, every noise cell's box spans exactly the union, so minimise there first
+        reduced = jnp.min(values, axis=other_dims) if other_dims else values
+
+        # inside[j, cell]: the cell (over the noise dimensions) lies in noise cell j's box. Outer product of
+        # per-dimension masks; the union's cells are padded by repeating its upper index, as in box_to_ids.
+        inside = jnp.ones((lb.shape[0],) + (1,) * len(noise_dims), dtype=bool)
+        for k, d in enumerate(noise_dims):
+            col = jnp.minimum(noise_cols[k] + ulb[d], uub[d])
+            mask = (col[None, :] >= lb[:, d, None]) & (col[None, :] <= ub[:, d, None])
+            shape = [lb.shape[0]] + [1] * len(noise_dims)
+            shape[1 + k] = union_span[d]
+            inside = inside & mask.reshape(shape)
+        min_values = jnp.min(jnp.where(inside.reshape(lb.shape[0], -1), reduced.reshape(1, -1), jnp.inf), axis=1)
+
+        # Noise cells with probability 0 (padding) contribute 0, as in compute_lower_val
+        min_values = jnp.where(active, min_values, 0.0)
+        return jnp.clip(probs @ min_values, 0.0, 1.0)
+
+    def union_policy_improvement(idx_lb_slice, idx_ub_slice, prob_slice, V):
+        lower_vals = jax.vmap(union_lower_val, in_axes=(0, 0, 0, None))(idx_lb_slice, idx_ub_slice, prob_slice, V)
+        return jnp.max(lower_vals), jnp.argmax(lower_vals)
+
+    return (jax.jit(jax.vmap(union_policy_improvement, in_axes=(0, 0, 0, None), out_axes=(0, 0))),
+            jax.jit(jax.vmap(union_lower_val, in_axes=(0, 0, 0, None), out_axes=0)))
+
+
 def SVMDP_DP(
     args: argparse.Namespace, 
     svmdp: SVMDP, 
     s0: Optional[int] = None, 
     max_iterations: int = 1000, 
     epsilon: float = 1e-6, 
-    RND_SWEEPS: bool = False, 
-    BATCH_SIZE: int = 2000, 
+    RND_SWEEPS: bool = False,
+    sweep_priority: Optional[np.ndarray] = None,
+    BATCH_SIZE: int = 2000,
     policy_iteration: bool = False,
     prune_states: bool = True,
     phase1_initial_it: int = 10,
@@ -39,6 +90,8 @@ def SVMDP_DP(
     :param max_iterations: Maximum number of iterations
     :param epsilon: Convergence threshold
     :param RND_SWEEPS: Whether to use random state sweeps
+    :param sweep_priority: Optional per-state priority (e.g. steps-to-goal along the RL rollouts); states are
+        swept in ascending priority, with ties in random order. Overrides the random order of RND_SWEEPS.
     :param BATCH_SIZE: Batch size for state updates
     :param policy_iteration: Whether to use policy iteration instead of value iteration
     :param phase1_initial_it: Base cap on inner policy-evaluation sweeps in the first outer iteration
@@ -252,36 +305,91 @@ def SVMDP_DP(
     policy = np.zeros(svmdp.nr_states, dtype=np.int32)
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
 
+    # Sweep order. It is set before the FRS inputs are gathered below, so they are copied only once, in this order.
+    if RND_SWEEPS or sweep_priority is not None:
+        perm = np.random.permutation(len(states_to_update))
+        if sweep_priority is not None:
+            # States nearest the goal first, so one Gauss-Seidel sweep carries value back along the RL
+            # rollouts; the stable sort keeps the random order above among equal priorities.
+            perm = perm[np.argsort(sweep_priority[states_to_update[perm]], kind='stable')]
+        logger.info('- State sweep order: %s', 'by sweep priority' if sweep_priority is not None else 'random')
+        states_to_update = states_to_update[perm]
+
     # The policy-improvement inputs (lower/upper FRS index boxes and probabilities) span all actions per
     # state and depend only on the (fixed) FRS data, not on V or the policy, so they are identical on every
-    # outer iteration. Gather them into compact arrays once here instead of re-slicing the multi-GB
-    # [S, A, C, D] source arrays every iteration. Both the improvement step (all actions) and the evaluation
-    # step (the policy-selected action) read from these.
-    #
-    # states_to_update == svmdp.states[~skip_mask] is ascending, so this single gather is a monotonic,
-    # locality-friendly pass over the source (which is contiguous after the FRS truncation now uses
-    # np.ascontiguousarray). We compact *first* and then derive batches, rather than fancy-indexing the
-    # multi-GB source once per batch with scattered (permuted) indices.
+    # outer iteration. Gather them into compact arrays once here, in sweep order, instead of re-slicing the
+    # multi-GB [S, A, C, D] source arrays every iteration; the batches below are then contiguous slices
+    # (views) of these. Both the improvement step (all actions) and the evaluation step (the policy-selected
+    # action) read from them. Each source array is released right after its copy, so at most one of them is
+    # held twice. (Not used after the DP returns.)
     lb_c = svmdp.S_idx_lb[states_to_update]
+    svmdp.S_idx_lb = None
     ub_c = svmdp.S_idx_ub[states_to_update]
+    svmdp.S_idx_ub = None
     p_c = svmdp.P_full[states_to_update]
-    # Delete the originals to save memory; everything below works off the compact arrays. (Not used after the DP returns.)
-    svmdp.S_idx_lb = svmdp.S_idx_ub = svmdp.P_full = None
+    svmdp.P_full = None
 
-    if RND_SWEEPS:
-        # Randomise the sweep order by permuting the already-compacted (small, contiguous, in-RAM) rows
-        # rather than re-scattering the source. states_to_update is permuted with the same permutation so
-        # each batch's state IDs stay aligned with its FRS-input rows. The per-batch tuples below are then
-        # plain contiguous slices (views) of the permuted compact arrays — no further copy.
-        perm = np.random.permutation(len(states_to_update))
-        states_to_update = states_to_update[perm]
-        lb_c, ub_c, p_c = lb_c[perm], ub_c[perm], p_c[perm]
+    if RND_SWEEPS or sweep_priority is not None:
         starts = range(0, len(states_to_update), BATCH_SIZE)
         state_batches = [states_to_update[i:i + BATCH_SIZE] for i in starts]
         imp_batches = [(lb_c[i:i + BATCH_SIZE], ub_c[i:i + BATCH_SIZE], p_c[i:i + BATCH_SIZE]) for i in starts]
     else:
         state_batches = [states_to_update]
         imp_batches = [(lb_c, ub_c, p_c)]
+
+    # Union boxes of the noise cells. The successor boxes of one state-action pair are the same
+    # forward-reachable box widened by each noise cell's interval, so they overlap. If their union (the
+    # largest over all state-action pairs) has fewer cells than the noise cells' boxes together, V is read
+    # once over the union and each noise cell's minimum is taken from it with a mask: the same minima with
+    # fewer successor lookups. Decided once per model; otherwise the per-noise-cell kernels above are kept.
+    box_kw = getattr(svmdp.box_to_ids, 'keywords', None)
+    num_noise = p_c.shape[2]
+    if box_kw is not None and num_noise > 1 and len(states_to_update) > 0:
+
+        @jax.jit
+        def union_extent(lb, ub, p):
+            active = (p > 0)[..., None]
+            lb, ub = lb.astype(jnp.int32), ub.astype(jnp.int32)
+            lo = jnp.min(jnp.where(active, lb, jnp.iinfo(jnp.int32).max), axis=-2)
+            hi = jnp.max(jnp.where(active, ub, jnp.iinfo(jnp.int32).min), axis=-2)
+            span = jnp.where(jnp.any(active, axis=-2), hi - lo + 1, 1)
+            # Dimensions in which the active noise cells' boxes of a state-action pair differ
+            varies = jnp.any(active & ((lb != lo[..., None, :]) | (ub != hi[..., None, :])), axis=(0, 1, 2))
+            return jnp.max(span.reshape(-1, span.shape[-1]), axis=0), varies
+
+        union_span = np.ones(lb_c.shape[-1], dtype=np.int64)
+        varies = np.zeros(lb_c.shape[-1], dtype=bool)
+        for i in range(0, len(states_to_update), 65536):
+            span_i, varies_i = union_extent(lb_c[i:i + 65536], ub_c[i:i + 65536], p_c[i:i + 65536])
+            union_span, varies = np.maximum(union_span, np.asarray(span_i)), varies | np.asarray(varies_i)
+        union_span = tuple(int(x) for x in union_span)
+        noise_dims = tuple(int(d) for d in np.flatnonzero(varies))
+
+        # Work per state-action pair: lookups of the union, plus a mask over the noise dimensions per noise cell,
+        # against the lookups of all noise cells' boxes
+        union_cells = int(np.prod(union_span))
+        union_work = union_cells + num_noise * int(np.prod([union_span[d] for d in noise_dims]))
+        slice_work = num_noise * int(np.prod(box_kw['max_span']))
+        use_union = union_work < slice_work
+        logger.info(f'- Noise-cell boxes: union span {union_span} = {union_cells} cells, noise in dims {noise_dims}; '
+                    f'work {union_work} (union) vs {slice_work} (per noise cell) -> '
+                    + ('union kernels' if use_union else 'per-noise-cell kernels'))
+
+        if use_union:
+            union_box_to_ids = partial(svmdp.box_to_ids.func, **{**box_kw, 'max_span': union_span})
+            vmap_state_policy_improvement, vmap_state_policy_evaluation = _union_kernels(union_box_to_ids, union_span, noise_dims)
+
+    # Per-batch updates that also write the batch's new values into V. V is donated, so XLA updates it
+    # in place instead of copying the whole value vector after every batch (V.at[...].set outside jit).
+    # Callers must not use a V after passing it in, and copy V at the host boundary (jnp.array / np.array).
+    @partial(jax.jit, donate_argnums=(0,))
+    def improve_batch(V, state_batch, idx_lb, idx_ub, probs):
+        V_batch, policy_batch = vmap_state_policy_improvement(idx_lb, idx_ub, probs, V)
+        return V.at[state_batch].set(V_batch), policy_batch
+
+    @partial(jax.jit, donate_argnums=(0,))
+    def evaluate_batch(V, state_batch, idx_lb, idx_ub, probs):
+        return V.at[state_batch].set(vmap_state_policy_evaluation(idx_lb, idx_ub, probs, V))
 
     logger.info(f'- SVMDP defined (took {time.time() - start_time:.3f}s)')
     start_time = time.time()
@@ -294,21 +402,25 @@ def SVMDP_DP(
             pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
+                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.8f}'
+                postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.8f}'
             pbar.set_postfix(postfix_dict)
             
             V_old = V.copy()
                 
-            # Policy evaluation + improvement
+            # Policy evaluation + improvement (V stays on the device and each batch is written in place;
+            # later batches see earlier updates, as before)
+            Vd = jnp.array(V)
+            policy_refs = []
             for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, imp_batches):
-                V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, V)
-                V_batch, policy_batch = jax.device_get((V_batch, policy_batch))
-                V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
+                Vd, policy_batch = improve_batch(Vd, state_batch, lb_d, ub_d, p_d)
+                policy_refs.append(policy_batch)
+            V = np.array(Vd, dtype=args.floatprecision)
+            for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
             if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.8f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence
@@ -326,6 +438,7 @@ def SVMDP_DP(
         # action is currently reflected for state s, so we only re-gather rows whose policy changed.
         eval_batches = [None] * len(imp_batches)
         eval_policy_state = np.empty(svmdp.nr_states, dtype=np.int32)
+        num_batches = len(state_batches)
 
         # Policy iteration
         for iteration in range(max_iterations):
@@ -353,19 +466,19 @@ def SVMDP_DP(
                         ev_p[changed] = p_a[changed, csel]
                 eval_policy_state[sb] = sel
 
-            # Keep V resident on the device across the whole evaluation phase. Each batch update is a
-            # functional scatter (Gauss-Seidel: later batches see earlier updates, as before), so we
+            # Keep V resident on the device across the whole evaluation phase. Each batch update is an
+            # in-place scatter (Gauss-Seidel: later batches see earlier updates, as before), so we
             # only pull V back to the host once per sweep for the convergence/postfix checks instead
             # of blocking on a device_get after every one of the ~len(state_batches) batches.
-            Vd = jnp.asarray(V)
+            Vd = jnp.array(V)
             while True:
 
                 postfix_dict = {}
                 if s0 is not None:
-                    postfix_dict[f'eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
-                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
-                    postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
+                    postfix_dict[f'eval_it'] = f'{i}'
+                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.8f}'
+                    postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.8f}'
+                    postfix_dict[f'max(v-v_old)'] = f'{delta:.8f}'
 
                     # Check if policy is above the preset threshold quality
                     if float(V[s0]) >= satprob:
@@ -379,10 +492,12 @@ def SVMDP_DP(
                 V_old = V
 
                 # Policy evaluation only (V stays on the device; scatter each batch's result back in)
-                for state_batch, (ev_lb, ev_ub, ev_p) in zip(state_batches, eval_batches):
-                    V_eval = vmap_state_policy_evaluation(ev_lb, ev_ub, ev_p, Vd)
-                    Vd = Vd.at[state_batch].set(V_eval)
-                V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
+                for j,(state_batch, (ev_lb, ev_ub, ev_p)) in enumerate(zip(state_batches, eval_batches)):
+                    # postfix_dict[f'eval_it'] = f'{i} (eval batch {j}/{num_batches})'
+                    # pbar.set_postfix(postfix_dict)
+
+                    Vd = evaluate_batch(Vd, state_batch, ev_lb, ev_ub, ev_p)
+                V = np.array(Vd, dtype=args.floatprecision)
 
                 delta = np.max(np.abs(V - V_old))
                 if (
@@ -405,18 +520,20 @@ def SVMDP_DP(
                 # Same device-resident, Gauss-Seidel pattern as evaluation: scatter each batch's
                 # improved values back into the on-device V and only sync once at the end (for V and
                 # for the whole policy update) rather than blocking after every batch.
-                Vd = jnp.asarray(V)
+                Vd = jnp.array(V)
                 policy_refs = []
-                for state_batch, (lb_d, ub_d, p_d) in zip(state_batches, imp_batches):
-                    V_batch, policy_batch = vmap_state_policy_improvement(lb_d, ub_d, p_d, Vd)
-                    Vd = Vd.at[state_batch].set(V_batch)
+                for j,(state_batch, (lb_d, ub_d, p_d)) in enumerate(zip(state_batches, imp_batches)):
+                    # postfix_dict[f'eval_it'] = f'{i} (improv batch {j}/{num_batches})'
+                    # pbar.set_postfix(postfix_dict)
+
+                    Vd, policy_batch = improve_batch(Vd, state_batch, lb_d, ub_d, p_d)
                     policy_refs.append(policy_batch)
-                V = np.asarray(jax.device_get(Vd), dtype=args.floatprecision)
+                V = np.array(Vd, dtype=args.floatprecision)
                 for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
             if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.8f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence: improvement step is monotone, so max gain suffices

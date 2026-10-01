@@ -68,6 +68,8 @@ def parse_arguments(argv=None):
     
     parser.add_argument('--policy_iteration', action=argparse.BooleanOptionalAction, default=True,
                         help="If true, run policy iteration. Otherwise, run value iteration")
+    parser.add_argument('--sweep_order', type=str, default='trajectory', choices=['random', 'trajectory'],
+                        help="Order of the DP state sweeps: random, or by steps-to-goal along the RL rollouts (nearest the goal first)")
     parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
                         help="Solver backend to use for robust dynamic programming")
 

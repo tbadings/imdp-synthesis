@@ -4,6 +4,7 @@ import logging
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy.spatial import cKDTree
 
 from core.abstraction.partition import _compute_linear_strides
 from .config import RLConfig
@@ -339,3 +340,34 @@ def build_tube(visited, cfg: RLConfig, model, env, agent=None, discrete_actions=
             cfg=cfg, number_per_dim=number_per_dim,
         )
     return _inflate_cells(visited, cfg.inflation_rate, number_per_dim, model.wrap)
+
+
+def rollout_sweep_priority(trajectories, active_states, env, chunk_size=1 << 20):
+    """Per active state, the steps-to-goal of the nearest cell on a goal-reaching rollout.
+
+    Lower values are closer to the goal, so sweeping states in ascending order carries value
+    back along the rollouts within a single sweep. Returns None if no rollout reached the goal.
+    """
+    ref_cells, ref_steps = [], []
+    for tr in trajectories:
+        if not np.any(np.all((tr[-1] >= env.goal[:, 0]) & (tr[-1] <= env.goal[:, 1]), axis=-1)):
+            continue
+        ref_cells.append(np.clip((tr - env.obs_low) // env.bin_widths, 0, env.number_per_dim - 1).astype(np.int64))
+        ref_steps.append(np.arange(len(tr) - 1, -1, -1))
+    if not ref_cells:
+        return None
+
+    # A cell visited at several steps keeps its smallest steps-to-goal, so lookups are unambiguous.
+    ref_steps = np.concatenate(ref_steps)
+    order = np.argsort(ref_steps, kind="stable")
+    ref_cells, first = np.unique(np.concatenate(ref_cells)[order], axis=0, return_index=True)
+    ref_steps = ref_steps[order][first]
+
+    # L-inf distance in grid cells matches the box-shaped tube inflation. Querying in chunks keeps
+    # the float64 copy of the queried states small.
+    tree = cKDTree(ref_cells)
+    priority = np.empty(len(active_states), dtype=np.int32)
+    for start in range(0, len(active_states), chunk_size):
+        _, idx = tree.query(active_states[start:start + chunk_size], p=np.inf, workers=-1)
+        priority[start:start + chunk_size] = ref_steps[idx]
+    return priority
