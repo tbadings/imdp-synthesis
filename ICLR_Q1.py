@@ -204,7 +204,7 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--load_policy", "output/2026-10-01_15-41-10_CartPole_hard/rl_policy.pkl"])
+    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--load_policy", "output/2026-10-02_08-49-57_CartPole_hard/rl_policy.pkl"])
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--dp_backend", "numba"])
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
 
     # Dubins4D
-    run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--dense"])
+    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
@@ -319,7 +319,7 @@ if __name__ == "__main__":
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
+    run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
     # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])

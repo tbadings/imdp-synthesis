@@ -12,6 +12,10 @@ from core.abstraction.svmdp.svmdp import SVMDP
 
 logger = logging.getLogger(__name__)
 
+# XLA:CPU hands the minima to a YNNPACK fusion, which keeps the V gather from fusing into them: every batch
+# then writes out and reads back all values of its union boxes. Without it the DP is ~3x faster.
+_COMPILER_OPTIONS = {'xla_cpu_experimental_ynn_fusion_type': ''}
+
 
 def _interval_minima(values, starts, lengths, axis, width):
     """
@@ -86,12 +90,12 @@ def _batch_updates(grid, slots, union_span, max_span):
 
     # V is donated, so XLA writes the batch's values in place instead of copying the whole value array
     # after every batch. Callers must not use a V after passing it in.
-    @partial(jax.jit, donate_argnums=(0,))
+    @partial(jax.jit, donate_argnums=(0,), compiler_options=_COMPILER_OPTIONS)
     def improve_batch(V, directory, pos, lb, ub, probs):
         values, actions = improve(lb, ub, probs, V, directory)
         return V.at[pos].set(values), actions
 
-    @partial(jax.jit, donate_argnums=(0,))
+    @partial(jax.jit, donate_argnums=(0,), compiler_options=_COMPILER_OPTIONS)
     def evaluate_batch(V, directory, pos, lb, ub, probs):
         return V.at[pos].set(evaluate(lb, ub, probs, V, directory))
 

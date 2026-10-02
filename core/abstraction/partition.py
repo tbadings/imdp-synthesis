@@ -338,6 +338,9 @@ class SparsePartition(_HyperrectangularPartition):
         self._active_states = active_states
         self._active_actions = active_actions
         super().__init__(model)
+        # Only needed to build the partition. The action map's values are views of the RL's per-state action
+        # array (states x actions x input dim), which would otherwise stay alive for the whole run.
+        del self._active_states, self._active_actions
 
         logger.info(f"Time to build sparse partition: %.3f seconds" % (time.time() - t))
         print('')

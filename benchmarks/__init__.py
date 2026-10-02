@@ -6,6 +6,7 @@ import numpy as np
 from .Dubins3D import Dubins3D
 from .Dubins4D import Dubins4D
 from .Drone4D import Drone4D, Drone4D_battery
+from .Drone4D_2agent import Drone4D_2agent
 from .Drone6D import Drone6D, Drone6D_small, Drone6D_battery
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
@@ -43,6 +44,7 @@ def create_model(args):
 		'Dubins4D': Dubins4D,
 		'Drone4D': Drone4D,
 		'Drone4D_battery': Drone4D_battery,
+		'Drone4D_2agent': Drone4D_2agent,
 		'Drone6D': Drone6D,
 		'Drone6D_small': Drone6D_small,
 		'Drone6D_battery': Drone6D_battery,

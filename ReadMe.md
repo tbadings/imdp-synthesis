@@ -72,6 +72,7 @@ The current benchmark registry includes:
 - `Dubins3D`: 3D Dubins vehicle with 2D control input.
 - `Dubins4D`: 4D Dubins vehicle with 2D control input.
 - `Drone4D`: 4D quadrotor model.
+- `Drone4D_2agent`: two independent Drone4D agents (8D state, 4D control input).
 - `Drone6D`: 6D quadrotor model.
 - `Drone6D_small`: reduced 6D quadrotor configuration for faster debugging.
 - `Pendulum`: inverted pendulum benchmark.

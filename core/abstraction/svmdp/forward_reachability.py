@@ -58,9 +58,9 @@ def count_successor_intervals(state_min, state_max, input, step_set, cell_width,
                                           shrink_frs, noise_lb, noise_ub):
         # The merged intervals are the runs of equal (lb, ub) pairs, so they have the same spans; lb and ub
         # are non-decreasing, so the union runs from the first lb to the last ub.
-        num.append(1 + jnp.sum((lb[1:] != lb[:-1]) | (ub[1:] != ub[:-1])))
-        span.append(jnp.max(ub - lb + 1))
-        union.append(ub[-1] - lb[0] + 1)
+        num.append(1 + jnp.sum((lb[1:] != lb[:-1]) | (ub[1:] != ub[:-1]))) # Number of different (lb, ub) pairs after merging
+        span.append(jnp.max(ub - lb + 1)) # Largest span of a single interval
+        union.append(ub[-1] - lb[0] + 1) # Span of the union of all intervals
     return jnp.stack(num), jnp.stack(span), jnp.stack(union)
 
 
@@ -255,8 +255,8 @@ class RectangularForward(object):
             self.interval_lb[batch_start:batch_end] = lb
             self.interval_ub[batch_start:batch_end] = ub
             self.box_probs[batch_start:batch_end] = probs
-        logger.info(f"- FRS index intervals stored as {np.dtype(idx_dtype).name}")
 
+        logger.info(f"- FRS index intervals stored as {np.dtype(idx_dtype).name}")
         logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")
         logger.info(f"- Successor intervals per dimension: {self.slots} -> {num_boxes} successor boxes per "
                     f"state-action; span of their union: {self.union_span}")

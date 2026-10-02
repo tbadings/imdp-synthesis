@@ -287,6 +287,57 @@ class DroneDynamics:
 
         return state_next_min, state_next_max
 
+class DroneDynamics_2agent(DroneDynamics):
+
+    def __init__(self, args, dim=2):
+        super().__init__(args, dim=dim)
+
+        single_agent_n = self.n
+        single_agent_p = self.p
+        single_agent_state_variables = self.state_variables
+        single_agent_wrap = self.wrap
+        single_agent_state_dims = self.independent_state_dims
+        single_agent_input_dims = self.independent_input_dims
+        single_agent_A = self.A
+        single_agent_B = self.B
+
+        self.n = 2 * single_agent_n
+        self.p = 2 * single_agent_p
+        self.state_variables = [
+            f'drone_{agent}_{variable}'
+            for agent in (1, 2)
+            for variable in single_agent_state_variables
+        ]
+        self.wrap = jnp.tile(single_agent_wrap, 2)
+
+        self.independent_state_dims = [
+            [index + agent * single_agent_n for index in dimensions]
+            for agent in range(2)
+            for dimensions in single_agent_state_dims
+        ]
+        self.independent_input_dims = [
+            [index + agent * single_agent_p for index in dimensions]
+            for agent in range(2)
+            for dimensions in single_agent_input_dims
+        ]
+
+        self.A = scipy.linalg.block_diag(single_agent_A, single_agent_A)
+        self.B = scipy.linalg.block_diag(single_agent_B, single_agent_B)
+        self.Q = np.zeros((self.n, 1))
+
+        # The two agents are also subject to independent, identically distributed
+        # process noise.  Repeating the per-agent parameters creates a diagonal
+        # joint distribution without introducing cross-agent correlations.
+        if args.noise_distr == 'gaussian':
+            cov = 0.001 * np.tile(np.asarray(self.noise['cov_diag']), 2)
+            num_cells = ([1, 1, 1, 1] if dim == 2 else [5, 1, 5, 1, 5, 1]) * 2
+            self.noise = GaussianDistr(cov)
+        else:
+            halfwidth = np.tile(np.asarray(self.noise['halfwidth']), 2)
+            num_cells = ([10, 1, 10, 1] if dim == 2 else [10, 1, 10, 1, 10, 1]) * 2
+            self.noise = TriangularDistr(halfwidth)
+        self.noise.set_partition_probs(num_cells=num_cells)
+
 class DroneDynamics_battery:
     def __init__(self, args, dim=2):
 
@@ -357,9 +408,9 @@ class DroneDynamics_battery:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = np.array([0.1, 0, 0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
+                cov = 0.001 * np.array([0.1, 0, 0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[5, 1, 5, 1, 5, 1, 1])
+                self.noise.set_partition_probs(num_cells=[1, 1, 1, 1, 1, 1, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.1, 0, 0.1, 0, 0.1, 0, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
