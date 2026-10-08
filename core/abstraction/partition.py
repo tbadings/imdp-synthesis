@@ -333,13 +333,19 @@ class SparsePartition(_HyperrectangularPartition):
     rectangular = False
 
     def __init__(self, model, active_states, active_actions, verbose=False):
+        '''
+        :param model: Benchmark model
+        :param active_states: Grid cells of the active states, shape [num_states, state_dim]
+        :param active_actions: Discrete actions of the active states, shape [num_states, num_actions, input_dim],
+            where row i holds the actions of active_states[i] (see core.rl.find_active). Kept, without a copy,
+            as regions['actions'].
+        '''
         t = time.time()
         logger.info('=== Define sparse partition ===')
         self._active_states = active_states
         self._active_actions = active_actions
         super().__init__(model)
-        # Only needed to build the partition. The action map's values are views of the RL's per-state action
-        # array (states x actions x input dim), which would otherwise stay alive for the whole run.
+        # Only needed to build the partition (the actions live on as regions['actions'])
         del self._active_states, self._active_actions
 
         logger.info(f"Time to build sparse partition: %.3f seconds" % (time.time() - t))
@@ -349,15 +355,9 @@ class SparsePartition(_HyperrectangularPartition):
         # The sparse partition is defined directly by the RL-explored active states.
         centers_unit = jnp.array(self._active_states, dtype=int)
 
-        # Gather each state's enabled action vectors from the per-state action map.
-        keys = np.asarray(centers_unit, dtype=int).tolist()
-        example = self._active_actions[tuple(keys[0])]
-        actions = np.zeros((len(keys), example.shape[0], example.shape[1]), dtype=float)
-        for i, key in enumerate(keys):
-            a = self._active_actions[tuple(key)]
-            assert a.shape == example.shape, (
-                f"State {i} has action shape {a.shape}, expected {example.shape}. "
-                "All states must have the same number of actions."
-            )
-            actions[i] = a
-        return centers_unit, jnp.array(actions, dtype=float)
+        # Every state has the same number of actions; row i belongs to state i. The array is used as is: a
+        # copy would double its memory (states x actions x input dim).
+        actions = self._active_actions
+        assert actions.ndim == 3 and len(actions) == len(centers_unit), (
+            f"Expected actions of shape [{len(centers_unit)}, num_actions, input_dim], got {actions.shape}.")
+        return centers_unit, actions

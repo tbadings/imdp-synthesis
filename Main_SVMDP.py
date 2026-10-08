@@ -93,9 +93,9 @@ if __name__ == '__main__':
             # Create partition of the continuous state space into convex polytope
             partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
 
-            # The RL exploration outputs are only needed to build the partition; free them
-            # (and let the PPO model / vec envs held internally be reclaimed) before the
-            # large forward-reachability arrays are allocated below.
+            # The active states are only needed to build the partition; free them before the large
+            # forward-reachability arrays are allocated below. The action array lives on (without a copy)
+            # as partition.regions['actions'].
             del active_states, active_actions
 
         s_init, s_init_exists = partition.x2state(model.x0)
@@ -267,3 +267,9 @@ if __name__ == '__main__':
                 np.array(sim_results['traces'][0]['x'])[:, [0, 2]],
                 filename=str(args.output_dir / f'cartpole_{stamp}.gif'),
             )
+
+        if args.model == 'Drone4D_2agent':
+            print('Plot Drone4D_2agent trace and gif...')
+            trajectory = np.array(sim_results['traces'][0]['x'])
+            model.plot_trace(trajectory, filename=args.output_dir / f'drone4d_2agent_trace_{stamp}')
+            model.plot_trajectory_gif(trajectory, filename=str(args.output_dir / f'drone4d_2agent_{stamp}.gif'))

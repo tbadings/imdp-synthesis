@@ -138,7 +138,7 @@ class Drone4D_battery(DroneDynamics_battery):
             proximity_dims = [0, 2],
             proximity_penalty=0.5,
             per_step_cost=0.05,
-            inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4)],
+            inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2), (-2, 2)],
             RL_actions_per_state=25,
         )
 

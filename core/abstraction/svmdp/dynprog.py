@@ -114,7 +114,7 @@ def SVMDP_DP(
     max_iterations: int = 1000,
     epsilon: float = 1e-6,
     sweep_priority: Optional[np.ndarray] = None,
-    BATCH_SIZE: int = 8192,
+    BATCH_SIZE: int = 1000,
     policy_iteration: bool = False,
     phase1_initial_it: int = 10,
     phase1_increment_it: int = 10,
@@ -251,6 +251,8 @@ def SVMDP_DP(
         for iteration in range(max_iterations):
 
             pbar.update(1)
+
+            print(f'Iteration {iteration + 1}')
 
             # Policy evaluation. The policy is fixed throughout, so gather the policy-selected action's inputs
             # once here, rather than on every inner sweep.

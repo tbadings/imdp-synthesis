@@ -12,6 +12,7 @@ import scipy
 
 from benchmarks.dynamics.distributions import GaussianDistr, TriangularDistr
 from benchmarks.dynamics import setmath
+from core.abstraction.partition import EPS
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +238,8 @@ class DroneDynamics:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
         else:
-            self.damping = 0.0
+            self.damping = args.damping
+
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock)
             self.B  = scipy.linalg.block_diag(Bblock, Bblock, Bblock)
 
@@ -329,8 +331,13 @@ class DroneDynamics_2agent(DroneDynamics):
         # process noise.  Repeating the per-agent parameters creates a diagonal
         # joint distribution without introducing cross-agent correlations.
         if args.noise_distr == 'gaussian':
-            cov = 0.001 * np.tile(np.asarray(self.noise['cov_diag']), 2)
+            cov = np.tile(np.asarray(self.noise['cov_diag']), 2)
             num_cells = ([1, 1, 1, 1] if dim == 2 else [5, 1, 5, 1, 5, 1]) * 2
+            
+            cov = np.array([0.05, 0, 0, 0,
+                            0, 0, 0.05, 0])**2
+            num_cells = ([5, 1, 1, 1,
+                          1, 1, 5, 1])
             self.noise = GaussianDistr(cov)
         else:
             halfwidth = np.tile(np.asarray(self.noise['halfwidth']), 2)
@@ -398,7 +405,8 @@ class DroneDynamics_battery:
                 raise ValueError(f'Unsupported noise distribution: {args.noise_distr}. Expected "gaussian" or "triangular".')
 
         else:
-            self.damping = 0.0
+            self.damping = args.damping
+            
             self.A  = scipy.linalg.block_diag(Ablock, Ablock, Ablock, 1)
             self.B  = np.zeros((7, 3))
             self.B[:6, :3] = scipy.linalg.block_diag(Bblock, Bblock, Bblock)
@@ -408,9 +416,9 @@ class DroneDynamics_battery:
 
             # Covariance of the process noise
             if args.noise_distr == 'gaussian':
-                cov = 0.001 * np.array([0.1, 0, 0.1, 0, 0.1, 0, 0])**2 # From stdev to covariance
+                cov = np.array([0.05, 0, 0, 0, 0.05, 0, 0])**2 # From stdev to covariance
                 self.noise = GaussianDistr(cov)
-                self.noise.set_partition_probs(num_cells=[1, 1, 1, 1, 1, 1, 1])
+                self.noise.set_partition_probs(num_cells=[5, 1, 1, 1, 5, 1, 1])
             elif args.noise_distr == 'triangular':
                 cov = np.array([0.1, 0, 0.1, 0, 0.1, 0, 0]) # Halfwidth
                 self.noise = TriangularDistr(cov)
@@ -461,8 +469,11 @@ class DroneDynamics_battery:
         cs_min = self.charging_station[0][0]
         cs_max = self.charging_station[0][1]
 
-        entirely_inside = jnp.all((state_min >= cs_min) & (state_max <= cs_max))
-        intersects = jnp.all((state_max >= cs_min) & (state_min <= cs_max))
+        # Same tolerances as the goal (containment) and critical (overlap) regions of the partition: a cell
+        # that only touches the station does not intersect it, and cell bounds that round past a station face
+        # (e.g. the top velocity cell's upper bound, 2.0000002 for v_max = 2) still count as inside
+        entirely_inside = jnp.all((state_min >= cs_min - EPS / 2) & (state_max <= cs_max + EPS / 2))
+        intersects = jnp.all((state_max >= cs_min + EPS) & (state_min <= cs_max - EPS))
 
         # entirely_inside: every state charges -> both bounds +10
         # partial overlap: some states charge, some drain -> min -5, max +10

@@ -23,6 +23,10 @@ def get_rl_algo(algo: str, env, cfg) -> BaseRL:
 def find_active(model, args, return_sweep_priority=False):
     """Find active states and discrete actions using reinforcement learning exploration.
 
+    Returns (active_states, active_actions, agent): the grid cells of the active states, shape
+    [num_states, state_dim], and their discrete actions, shape [num_states, RL_actions_per_state,
+    input_dim] (float32), where row i holds the actions of active_states[i].
+
     With return_sweep_priority, also return each active state's DP sweep priority (see
     rollout_sweep_priority), which is None unless --sweep_order is 'trajectory'.
     """
@@ -75,15 +79,11 @@ def find_active(model, args, return_sweep_priority=False):
                 algo_name=cfg.rl_algo,
             )
 
-    # Discretized active policy actions
+    # Discretized active policy actions (row i belongs to active_states[i])
     t = time.time()
-    selected_actions = agent.get_policy_actions(
+    active_actions = agent.get_policy_actions(
         active_states, discrete_actions, num=cfg.RL_actions_per_state
     )
-    active_actions = {
-        tuple(cell): selected_actions[i]
-        for i, cell in enumerate(active_states.tolist())
-    }
     print('(Time to extract active actions: %.2f seconds)' % (time.time() - t))
 
     if not return_sweep_priority:

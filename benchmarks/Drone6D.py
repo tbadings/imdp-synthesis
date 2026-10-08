@@ -196,45 +196,66 @@ class Drone6D_battery(DroneDynamics_battery):
 
         self.max_charge = 100
 
-        # The x and y axes span the same bounds as Drone4D_battery. The z axis
-        # spans [-2, 2] at the same 0.5 m resolution as x and y.
-        self.partition['boundary'] = np.array([
-            [-10, v_min, -10, v_min, -2, v_min, 0],
-            [10, v_max, 10, v_max, 2, v_max, self.max_charge],
-        ])
+        # Same layout as Drone6D (bounds, obstacles, goal, and initial state), plus the battery dimension
+        self.partition['boundary'] = np.array([[-17, v_min, -9, v_min, -7, v_min, 0],
+                                               [17, v_max, 9, v_max, 7, v_max, self.max_charge]])
         self.partition['boundary_jnp'] = jnp.array(self.partition['boundary'])
-        self.partition['number_per_dim'] = np.array([40, 10, 40, 10, 8, 10, 40])
+        self.partition['number_per_dim'] = np.array([68, 8, 36, 8, 28, 8, 20])
 
         self.goal = np.array([
-            [
-                [6, v_min, 6, v_min, -2, v_min, 20],
-                [10, v_max, 10, v_max, 2, v_max, self.max_charge],
-            ]
+            [[11, v_min, 1, v_min, -7, v_min, 20], [15, v_max, 5, v_max, -3, v_max, self.max_charge]]
         ], dtype=float)
 
-        self.critical = np.empty((0, 2, 7), dtype=float)
+        self.critical = np.array([
+            # Hole 1
+            [[-11, v_min, -1, v_min, -7, v_min, 0], [-5, v_max, 9, v_max, -5, v_max, self.max_charge]],
+            [[-11, v_min, 5, v_min, -5, v_min, 0], [-5, v_max, 9, v_max, 5, v_max, self.max_charge]],
+            [[-11, v_min, -1, v_min, -5, v_min, 0], [-5, v_max, 3, v_max, 3, v_max, self.max_charge]],
 
+            # Hole 2
+            [[-1, v_min, 1, v_min, -7, v_min, 0], [3, v_max, 9, v_max, -1, v_max, self.max_charge]],
+            [[-1, v_min, 1, v_min, 3, v_min, 0], [3, v_max, 9, v_max, 5, v_max, self.max_charge]],
+            [[-1, v_min, 1, v_min, -1, v_min, 0], [3, v_max, 3, v_max, 3, v_max, self.max_charge]],
+            [[-1, v_min, 7, v_min, -1, v_min, 0], [3, v_max, 9, v_max, 3, v_max, self.max_charge]],
+
+            # Tower
+            [[-1, v_min, -3, v_min, -7, v_min, 0], [3, v_max, 1, v_max, 7, v_max, self.max_charge]],
+
+            # Wall between routes
+            [[3, v_min, -3, v_min, -7, v_min, 0], [9, v_max, 1, v_max, -1, v_max, self.max_charge]],
+
+            # Long route obstacles
+            [[-1, v_min, -9, v_min, -7, v_min, 0], [3, v_max, -3, v_max, -5, v_max, self.max_charge]],
+
+            # Overhanging
+            [[-1, v_min, -9, v_min, 3, v_min, 0], [3, v_max, -3, v_max, 7, v_max, self.max_charge]],
+
+            # Small last obstacle
+            [[11, v_min, -9, v_min, -7, v_min, 0], [15, v_max, -5, v_max, -5, v_max, self.max_charge]],
+
+            # Obstacle next to goal
+            [[9, v_min, 5, v_min, -7, v_min, 0], [15, v_max, 9, v_max, 1, v_max, self.max_charge]],
+        ], dtype=float)
+
+        # Charging pad in the minimal (x, y, z) corner of the state space
         self.charging_station = np.array([
-            [
-                [-9, v_min, -2, v_min, -2, v_min, 0],
-                [-5, v_max, 2, v_max, 2, v_max, self.max_charge],
-            ]
+            [[-15, v_min, -9, v_min, -7, v_min, 0], [-7, v_max, -4, v_max, 0, v_max, self.max_charge]]
         ], dtype=float)
 
-        self.x0 = np.array([-5, 0.01, -9, 0.01, 0, 0.01, 50])
+        self.x0 = np.array([-14.5, 0.01, 6, 0.01, 2, 0.01, 50])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
-            rl_algo="ppo",
-            total_timesteps=1000000,
-            pi_arch=[256, 256],
-            vf_arch=[256, 256],
+            rl_algo="sac",
+            total_timesteps=25000000,
             RL_actions_per_state=27,
             proximity_dims=[0, 2, 4],
             proximity_penalty=0.5,
             per_step_cost=0.05,
-            inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4)]
+            unsafe_penalty=-10,
+            out_of_bounds_penalty=-10,
+            inflation_rate=[(-3, 3), (-2, 2), (-3, 3), (-2, 2), (-3, 3), (-2, 2), (-2, 2)],
         )
 
         return
