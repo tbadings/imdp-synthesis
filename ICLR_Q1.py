@@ -3,325 +3,62 @@ Fixed-arguments launcher for experimentation.
 
 The RL settings (PPO training, reward function, and the tube around the rollouts) live in
 each benchmark's `rl_config` in `benchmarks/`; only what is not benchmark-specific is passed
-here. Any RL option can still be overridden per run by adding e.g. "--total_timesteps",
-"1000" below, which takes precedence over the benchmark's `rl_config`.
+here. Any RL option can still be overridden for all runs by adding e.g. "--total_timesteps",
+"1000" to EXTRA_ARGS below, which takes precedence over the benchmark's `rl_config`.
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
-def run_fixed_SVMDP(args: list[str]) -> None:
+def run_fixed_SVMDP(args: list[str | int]) -> None:
     root = Path(__file__).resolve().parent
     runfile = root / "Main_SVMDP.py"
 
-    cmd = [sys.executable, str(runfile), *args]
+    cmd = [sys.executable, str(runfile), *(str(arg) for arg in args)]
     subprocess.run(cmd, check=True, cwd=root)
 
-def config_MountainCar() -> list[str]:
-    return [
-        "--model",
-        "MountainCar",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
+# Every benchmark of the experiment: the model-specific arguments, and whether the dense (no RL) baseline is run
+BENCHMARKS = {
+    'MountainCar':      {'args': ["--model", "MountainCar"], 'dense': True},
+    'Pendulum':         {'args': ["--model", "Pendulum"], 'dense': True},
+    'CartPole':         {'args': ["--model", "CartPole"], 'dense': False},
+    'CartPole_hard':    {'args': ["--model", "CartPole_hard"], 'dense': False},
+    'Dubins3D':         {'args': ["--model", "Dubins3D"], 'dense': True},
+    'Dubins4D':         {'args': ["--model", "Dubins4D"], 'dense': True},
+    'Drone4D':          {'args': ["--model", "Drone4D"], 'dense': True},
+    'Drone4D_damping':  {'args': ["--model", "Drone4D", "--damping", 0.1], 'dense': True},
+    'Drone4D_2agent':   {'args': ["--model", "Drone4D_2agent"], 'dense': False},
+    'Drone6D':          {'args': ["--model", "Drone6D"], 'dense': True},
+    'Drone6D_small':    {'args': ["--model", "Drone6D_small"], 'dense': False},
+    'Drone4D_battery':  {'args': ["--model", "Drone4D_battery", "--damping", 0.1], 'dense': True},
+    'Drone6D_battery':  {'args': ["--model", "Drone6D_battery", "--damping", 0], 'dense': False},
+}
 
-def config_CartPole() -> list[str]:
-    return [
-        "--model",
-        "CartPole",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
+# Arguments shared by all runs
+COMMON_ARGS = ["--solver", "jax", "--satprob", 0.99]
 
-def config_Pendulum() -> list[str]:
-    return [
-        "--model",
-        "Pendulum",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
+# To run particular benchmarks, simply change the selection below
+RUN_BENCHMARKS = ['Drone4D_2agent']
+RUN_DENSE = False           # Also run the dense baseline (once, seed 0) for benchmarks that have one
+ALGOS = ['sac']             # Any of 'ppo', 'sac'
+SEEDS = [0]                 # E.g. range(5)
+EXTRA_ARGS = []             # Appended to every run, e.g. ["--total_timesteps", 1000]
 
-def config_Dubins3D() -> list[str]:
-    return [
-        "--model",
-        "Dubins3D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-def config_Dubins4D() -> list[str]:
-    return [
-        "--model",
-        "Dubins4D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-def config_Drone4D() -> list[str]:
-    return [
-        "--model",
-        "Drone4D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-def config_Drone6D_small() -> list[str]:
-    return [
-        "--model",
-        "Drone6D_small",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-def config_Drone6D() -> list[str]:
-    return [
-        "--model",
-        "Drone6D",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-def config_Drone4D_battery() -> list[str]:
-    return [
-        "--model",
-        "Drone4D_battery",
-        # "--batch_size",
-        # "1000",
-        "--solver",
-        "jax",
-        # "--dense",
-        "--satprob",
-        "0.99",
-        "--seed",
-        "0",
-    ]
-
-# To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
 
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
+    queue = []
+    for name in RUN_BENCHMARKS:
+        benchmark = BENCHMARKS[name]
+        if RUN_DENSE and benchmark['dense']:
+            queue.append((f'{name} (dense)', [*benchmark['args'], *COMMON_ARGS, "--seed", 0, "--dense", *EXTRA_ARGS]))
+        for algo in ALGOS:
+            for seed in SEEDS:
+                queue.append((f'{name} ({algo}, seed {seed})',
+                              [*benchmark['args'], *COMMON_ARGS, "--seed", seed, "--algo", algo, *EXTRA_ARGS]))
 
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--dp_backend", "jax"])
-
-    # MountainCar
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Pendulum
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Pendulum", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # CartPole
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--total_timesteps","100000"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # CartPole_hard
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--load_policy", "output/2026-10-02_08-49-57_CartPole_hard/rl_policy.pkl"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--dp_backend", "numba"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","CartPole_hard", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Dubins3D
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Dubins4D
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Dubins4D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Drone4D
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Drone4D
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
-
-    # Drone4D_2agent
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_2agent", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # DroneDubins7D
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","DroneDubins7D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Drone6D
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac"])
-
-    # Drone4D_battery
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--dense"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone4D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
-
-    # Drone6D_battery
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","ppo"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0", "--seed","0", "--algo","sac", "--save_checkpoint"]) 
-        # "--load_checkpoint", "output/2026-10-04_11-43-11_Drone6D_battery/checkpoint.pkl"]) # "--load_policy", "output/2026-10-02_17-06-07_Drone6D_battery/rl_policy.pkl", 
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","1", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","2", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","3", "--algo","sac"])
-    # run_fixed_SVMDP(args = ["--model","Drone6D_battery", "--solver","jax", "--satprob","0.99", "--damping","0.1", "--seed","4", "--algo","sac"])
+    num_runs = len(queue)
+    while queue:
+        label, args = queue.pop(0)
+        print(f'\n=== Run {num_runs - len(queue)}/{num_runs}: {label} ===', flush=True)
+        run_fixed_SVMDP(args=args)

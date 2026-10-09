@@ -76,7 +76,6 @@ class Drone4D_2agent(DroneDynamics_2agent):
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo="ppo",
-            # TODO: Long training is still needed here; can we reduce that?
             total_timesteps=5000000,
             RL_actions_per_state=3**4,
             inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],

@@ -256,7 +256,7 @@ def RVI_JAX(
 
             # Policy evaluation
             i = 0
-            while True: # TODO: Remove this hardcoding
+            while True:
 
                 postfix_dict = {}
                 if s0 is not None:
