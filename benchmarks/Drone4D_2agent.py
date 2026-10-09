@@ -55,21 +55,29 @@ class Drone4D_2agent(DroneDynamics_2agent):
         self.partition['number_per_dim'] = np.array([20, 8, 20, 8, 20, 8, 20, 8])
 
         self.goal = np.array([
-            [[0.5, v_min, 0.5, v_min, 0.5, v_min, -2.5, v_min],
-             [2.5, v_max, 2.5, v_max, 2.5, v_max, -0.5, v_max]]
+            [[-2.5, v_min, -1, v_min, 1.25, v_min, -1, v_min],
+             [-1.25, v_max, 1, v_max, 2.5, v_max, 1, v_max]],
+            [[1.25, v_min, -1, v_min, -2.5, v_min, -1, v_min],
+             [2.5, v_max, 1, v_max, -1.25, v_max, 1, v_max]]
         ], dtype=float)
 
-        # Collisions: both drones in the same position cell
-        self.critical = self.collision_boxes()
+        # Obstacles in the position plane, as [[x_lo, y_lo], [x_hi, y_hi]]; both drones must avoid them
+        self.obstacles = np.array([
+            [[-0.5, -0.5], [0.5, 0.5]],
+            [[-2.5, 1], [-0.5, 1.5]]
+        ], dtype=float)
 
-        self.x0 = np.array([-2.25, 0.01, -2.25, 0.01, -2.25, 0.01, 2.25, -0.01])
+        # Critical: either drone in an obstacle, or both drones in the same position cell (a collision)
+        self.critical = np.concatenate([self.obstacle_boxes(self.obstacles), self.collision_boxes()])
+
+        self.x0 = np.array([-1.5, 0, 2.25, -0.01, 1.5, 0, -2.25, 0.01])
 
         # RL configuration: networks, PPO training, reward function, and the tube
         # grown around the RL rollouts to form the abstraction.
         self.rl_config = RLConfig(
             rl_algo="ppo",
             # TODO: Long training is still needed here; can we reduce that?
-            total_timesteps=10000000,
+            total_timesteps=5000000,
             RL_actions_per_state=3**4,
             inflation_rate=[(-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1), (-3, 3), (-1, 1)],
                         # [(-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4), (-2, 2), (-4, 4), (-2, 2)],
@@ -77,8 +85,8 @@ class Drone4D_2agent(DroneDynamics_2agent):
             goal_reward=50.0,
             unsafe_penalty=-50.0,
             out_of_bounds_penalty=-50.0,
-            distance_cost=[0.1, 0.0, 0.1, 0.0,
-                        0.1, 0.0, 0.1, 0.0],
+            distance_cost=[0.0, 0.0, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 0.0],
             per_step_cost=0.01,
             proximity_penalty=0.1,
             eval_episodes=100,
@@ -87,6 +95,28 @@ class Drone4D_2agent(DroneDynamics_2agent):
         )
 
         return
+
+    def obstacle_boxes(self, obstacles):
+        '''
+        Lift obstacles in the position plane to boxes in the state space, one per obstacle and drone.
+
+        The box of a drone restricts that drone's position (x, y) to the obstacle and leaves all other dimensions
+        free, so it covers the states where that drone is in the obstacle, wherever the other drone is.
+
+        Args:
+            obstacles: np.ndarray of shape (N, 2, 2), the lower and upper (x, y) corners of every obstacle
+        '''
+
+        lower, upper = self.partition['boundary']
+
+        boxes = []
+        for obstacle in obstacles:
+            for dims in self.POSITION_DIMS:
+                box = np.array([lower, upper], dtype=float)
+                box[:, list(dims)] = obstacle
+                boxes.append(box)
+
+        return np.array(boxes).reshape(-1, 2, len(lower))
 
     def collision_boxes(self):
         '''
@@ -119,7 +149,8 @@ class Drone4D_2agent(DroneDynamics_2agent):
 
     def _plot_position_plane(self, ax):
         '''
-        Draw the position plane shared by both drones: the position cells of the partition and each drone's goal.
+        Draw the position plane shared by both drones: the position cells of the partition, each drone's goal, and
+        the obstacles.
         '''
 
         # The model parser turns the boundary into a JAX array
@@ -140,6 +171,10 @@ class Drone4D_2agent(DroneDynamics_2agent):
                 ax.add_patch(Rectangle((goal[0, ix], goal[0, iy]), goal[1, ix] - goal[0, ix], goal[1, iy] - goal[0, iy],
                                        facecolor=color, edgecolor=color, alpha=0.2, hatch='//', lw=0,
                                        label=f'Goal drone {agent + 1}'))
+
+        for (x_lo, y_lo), (x_hi, y_hi) in self.obstacles:
+            ax.add_patch(Rectangle((x_lo, y_lo), x_hi - x_lo, y_hi - y_lo, facecolor='dimgray', alpha=0.6, lw=0,
+                                   label='Obstacle'))
 
     def plot_trace(self, trajectory, filename):
         '''
