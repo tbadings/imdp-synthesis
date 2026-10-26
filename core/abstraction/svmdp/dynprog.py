@@ -252,8 +252,6 @@ def SVMDP_DP(
 
             pbar.update(1)
 
-            print(f'Iteration {iteration + 1}')
-
             # Policy evaluation. The policy is fixed throughout, so gather the policy-selected action's inputs
             # once here, rather than on every inner sweep.
             i = 0
