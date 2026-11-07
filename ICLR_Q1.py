@@ -23,26 +23,28 @@ BENCHMARKS = {
     'MountainCar':      {'args': ["--model", "MountainCar"], 'dense': True},
     'Pendulum':         {'args': ["--model", "Pendulum"], 'dense': True},
     'CartPole':         {'args': ["--model", "CartPole"], 'dense': False},
-    'CartPole_hard':    {'args': ["--model", "CartPole_hard"], 'dense': False},
+    # 'CartPole_hard':    {'args': ["--model", "CartPole_hard"], 'dense': False},
     'Dubins3D':         {'args': ["--model", "Dubins3D"], 'dense': True},
-    'Dubins4D':         {'args': ["--model", "Dubins4D"], 'dense': True},
+    'Dubins4D':         {'args': ["--model", "Dubins4D"], 'dense': False},
     'Drone4D':          {'args': ["--model", "Drone4D"], 'dense': True},
     'Drone4D_damping':  {'args': ["--model", "Drone4D", "--damping", 0.1], 'dense': True},
-    'Drone4D_2agent':   {'args': ["--model", "Drone4D_2agent"], 'dense': False},
-    'Drone6D':          {'args': ["--model", "Drone6D"], 'dense': True},
-    'Drone6D_small':    {'args': ["--model", "Drone6D_small"], 'dense': False},
+    # 'Drone4D_2agent':   {'args': ["--model", "Drone4D_2agent"], 'dense': False},
+    'Drone6D':          {'args': ["--model", "Drone6D"], 'dense': False},
+    # 'Drone6D_small':    {'args': ["--model", "Drone6D_small"], 'dense': False},
     'Drone4D_battery':  {'args': ["--model", "Drone4D_battery", "--damping", 0.1], 'dense': True},
-    'Drone6D_battery':  {'args': ["--model", "Drone6D_battery", "--damping", 0], 'dense': False},
+    # 'Drone6D_battery':  {'args': ["--model", "Drone6D_battery", "--damping", 0], 'dense': False},
 }
 
 # Arguments shared by all runs
 COMMON_ARGS = ["--solver", "jax", "--satprob", 0.99]
 
 # To run particular benchmarks, simply change the selection below
-RUN_BENCHMARKS = ['Drone4D_2agent']
-RUN_DENSE = False           # Also run the dense baseline (once, seed 0) for benchmarks that have one
-ALGOS = ['sac']             # Any of 'ppo', 'sac'
-SEEDS = [0]                 # E.g. range(5)
+# RUN_BENCHMARKS = ['Drone4D_2agent']
+RUN_BENCHMARKS = list(BENCHMARKS)
+
+RUN_DENSE = True           # Also run the dense baseline (once, seed 0) for benchmarks that have one
+ALGOS = ['ppo', 'sac']             # Any of 'ppo', 'sac'
+SEEDS = range(5)                 # E.g. range(5)
 EXTRA_ARGS = []             # Appended to every run, e.g. ["--total_timesteps", 1000]
 
 if __name__ == "__main__":
