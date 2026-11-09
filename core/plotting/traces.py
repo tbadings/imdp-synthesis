@@ -3,12 +3,13 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 import numpy as np
 from matplotlib.patches import Rectangle
+from matplotlib.colors import to_rgba
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 from scipy.interpolate import CubicSpline
 
 from core.plotting.utils import (
     col, style_axes, save_fig, set_plot_ticks, set_plot_lims, plot_boxes, plot_grid, plot_missing_cells,
-    GOAL_COLOR, CRITICAL_COLOR, CRITICAL_HATCH, UNACTIVE_COLOR, START_COLOR, END_COLOR
+    GOAL_COLOR, CRITICAL_COLOR, CRITICAL_HATCH, UNACTIVE_COLOR, START_COLOR, END_COLOR, X0_COLOR
 )
 
 def _format_state_label_math(var_name):
@@ -160,6 +161,12 @@ def plot_traces(args, stamp, idx_show, partition, model, traces, line=True, num_
     if mc:
         mc = np.array(mc)
         plot_missing_cells(ax, x0 + mc[:, 0] * w1, y0 + mc[:, 1] * w2, w1, w2, zorder=4)
+
+    # Initial state set (if given), from which the initial states of the traces are sampled
+    x0_box = getattr(model, 'x0_box', None)
+    if x0_box is not None:
+        lb0, ub0 = np.asarray(x0_box[0])[[i1, i2]], np.asarray(x0_box[1])[[i1, i2]]
+        ax.add_patch(Rectangle(lb0, *(ub0 - lb0), facecolor=to_rgba(X0_COLOR, 0.3), edgecolor=col(X0_COLOR), lw=1.5, zorder=3))
 
     # Unsafe boundary box
     if add_unsafe_box:

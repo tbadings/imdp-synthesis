@@ -99,36 +99,15 @@ class DubinsDynamics4D:
         self.v_min = -0.5
         self.v_max = 0.5
 
-        if args.model_version == 0:
-            logger.info('- Load Dubins without parameter uncertainty')
-            # No parameter uncertainty
-            self.alpha_min = 0.85
-            self.alpha_max = 0.85
-            self.alpha = 0.85
+        logger.info('- Load Dubins without parameter uncertainty')
+        # No parameter uncertainty
+        self.alpha_min = 0.85
+        self.alpha_max = 0.85
+        self.alpha = 0.85
 
-            self.beta_min = 0.2
-            self.beta_max = 0.2
-            self.beta = 0.2
-        elif args.model_version == 1:
-            logger.info('- Load Dubins with uncertain parameters in the interval [0.80,0.90]')
-            # High parameter uncertainty
-            self.alpha_min = 0.80
-            self.alpha_max = 0.90
-            self.alpha = 0.85
-
-            self.beta_min = 0.2
-            self.beta_max = 0.2
-            self.beta = 0.2
-        else:
-            logger.info('- Load Dubins with uncertain parameters in the interval [0.75,0.95]')
-            # High parameter uncertainty
-            self.alpha_min = 0.75
-            self.alpha_max = 0.95
-            self.alpha = 0.85
-
-            self.beta_min = 0.2
-            self.beta_max = 0.2
-            self.beta = 0.2
+        self.beta_min = 0.2
+        self.beta_max = 0.2
+        self.beta = 0.2
 
         # Covariance of the process noise
         if args.noise_distr == 'gaussian':

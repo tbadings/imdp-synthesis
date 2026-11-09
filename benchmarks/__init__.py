@@ -5,11 +5,14 @@ import numpy as np
 
 from .Dubins3D import Dubins3D
 from .Dubins4D import Dubins4D
+from .Dubins4D_x0set import Dubins4D_x0set
 from .Drone4D import Drone4D, Drone4D_battery
+from .Drone4D_x0set import Drone4D_x0set
 from .Drone6D import Drone6D, Drone6D_small, Drone6D_battery
 from .Pendulum import Pendulum
 from .MountainCar import MountainCar
 from .CartPole import CartPole
+from .CartPole_x0set import CartPole_x0set
 from .Integrators import DoubleIntegrator
 from .Test1D import Test1D
 
@@ -40,14 +43,17 @@ def create_model(args):
 	model_map = {
 		'Dubins3D': Dubins3D,
 		'Dubins4D': Dubins4D,
+		'Dubins4D_x0set': Dubins4D_x0set,
 		'Drone4D': Drone4D,
 		'Drone4D_battery': Drone4D_battery,
+		'Drone4D_x0set': Drone4D_x0set,
 		'Drone6D': Drone6D,
 		'Drone6D_small': Drone6D_small,
 		'Drone6D_battery': Drone6D_battery,
 		'Pendulum': Pendulum,
 		'MountainCar': MountainCar,
 		'CartPole': CartPole,
+		'CartPole_x0set': CartPole_x0set,
 		'DoubleIntegrator': DoubleIntegrator,
 		'Test1D': Test1D,
 	}

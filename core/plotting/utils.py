@@ -15,6 +15,7 @@ CRITICAL_COLOR = 'crimson'
 UNACTIVE_COLOR = 'darkred'
 START_COLOR = 'black'
 END_COLOR = 'black'
+X0_COLOR = 'royalblue'
 GOAL_HATCH = '//////'
 CRITICAL_HATCH = 'xxxxxx'
 

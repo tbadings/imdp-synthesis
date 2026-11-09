@@ -50,6 +50,7 @@ if __name__ == '__main__':
         partition = ckpt['partition']
         svmdp = ckpt['svmdp']
         args.model = ckpt['args'].model
+        args.model_version = getattr(ckpt['args'], 'model_version', args.model_version)
         out_dict.update(ckpt.get('out_dict', {}))
 
         run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
@@ -219,12 +220,19 @@ if __name__ == '__main__':
             }, f, protocol=pickle.HIGHEST_PROTOCOL)
         logger.info('Checkpoint saved.\n')
 
-    # Export output dictionary to csv
+    # Export output dictionary to csv (all run arguments and the benchmark's initial set first, then the metrics)
+    x0_box = getattr(model, 'x0_box', None)
+    summary = {
+        **vars(args),
+        'x0': np.asarray(model.x0).tolist(),
+        'x0_box': None if x0_box is None else np.asarray(x0_box).tolist(),
+        **out_dict,
+    }
     csv_path = args.output_dir / 'summary.csv'
     with csv_path.open('w', newline='', encoding='utf-8') as csv_file:
         writer = csv.writer(csv_file)
         writer.writerow(['metric', 'value'])
-        writer.writerows(out_dict.items())
+        writer.writerows(summary.items())
     logger.info('Run summary saved to %s', csv_path)
 
     heatmap(
