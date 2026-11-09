@@ -78,11 +78,15 @@ class MonteCarloSim():
         a = np.zeros(self.horizon).astype(int)
 
         # Determine initial state
-        if self.random_initial_state:
+        x0_box = getattr(self.model, 'x0_box', None)
+        if x0_box is not None:
+            x[0] = np.random.uniform(low=x0_box[0], high=x0_box[1])
+
+        elif self.random_initial_state:
             s0, _ = self.partition.x2state(x0)
             x[0] = np.random.uniform(
                 low=self.partition.regions['lower_bounds'][s0],
-                high=self.partition.regions['lower_bounds'][s0])
+                high=self.partition.regions['upper_bounds'][s0])
 
         else:
             x[0] = x0

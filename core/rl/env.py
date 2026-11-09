@@ -50,12 +50,17 @@ class BenchmarkEnv:
         self.distance_span = np.where(span > 0, span, 1.0).astype(np.float32)
         self.distance_weights = np.broadcast_to(np.asarray(cfg.distance_cost, dtype=np.float32), (self.obs_dim,))
 
-        # Reset region around initial state x0
-        x0_cell = np.floor((model.x0 - self.obs_low) / self.bin_widths)
-        cell_lb = self.obs_low + x0_cell * self.bin_widths
-        eps = 0.1 * self.bin_widths
-        self.reset_low = np.clip(cell_lb - eps, self.obs_low, self.obs_high)
-        self.reset_high = np.clip(cell_lb + self.bin_widths + eps, self.obs_low, self.obs_high)
+        # Reset region: the box of initial states x0_box (if given), or the cell around initial state x0
+        x0_box = getattr(model, "x0_box", None)
+        if x0_box is not None:
+            self.reset_low = np.clip(np.asarray(x0_box[0], dtype=np.float32), self.obs_low, self.obs_high)
+            self.reset_high = np.clip(np.asarray(x0_box[1], dtype=np.float32), self.obs_low, self.obs_high)
+        else:
+            x0_cell = np.floor((model.x0 - self.obs_low) / self.bin_widths)
+            cell_lb = self.obs_low + x0_cell * self.bin_widths
+            eps = 0.1 * self.bin_widths
+            self.reset_low = np.clip(cell_lb - eps, self.obs_low, self.obs_high)
+            self.reset_high = np.clip(cell_lb + self.bin_widths + eps, self.obs_low, self.obs_high)
 
         # JAX arrays for JIT execution
         self.obs_low_jnp = jnp.asarray(self.obs_low)

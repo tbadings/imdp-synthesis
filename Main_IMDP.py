@@ -88,12 +88,14 @@ if __name__ == '__main__':
             del active_states, active_actions
 
         s_init_debug, s_init_exists = partition.x2state(model.x0)
+        x0_box = getattr(model, 'x0_box', None)
+        S0, S0_exist = partition.initial_states(model.x0, x0_box)
 
         # Create actions based on forward reachable sets
         actions = RectangularForward(args=args, partition=partition, model=model)
         
-        if not s_init_exists:
-            raise ValueError(f"Initial state x0={model.x0} is not an active cell in the partition.")
+        if not S0_exist:
+            raise ValueError(f"Initial state x0={model.x0} (x0_box={x0_box}) is not (fully) covered by active cells in the partition.")
         
         # print(f"\n=== Forward reachable sets for initial state s0={s_init_debug} (x0={model.x0}) ===")
         # for a_idx in range(len(actions.id_to_input)):
@@ -104,8 +106,8 @@ if __name__ == '__main__':
         #     print(f"  action {a_idx:3d}: u={np.array(u)}  FRS=[{np.array(lb)}, {np.array(ub)}]  grid_idx_lb={np.array(idx_lb)}")
         # print("=== End forward reachable sets ===\n")
 
-        logger.info('Initial state x0=%s maps to state index %d (exists in partition: %s)',
-                    model.x0, s_init_debug, s_init_exists)
+        logger.info('Initial state x0=%s maps to state index %d (exists in partition: %s); x0_box=%s → %d state(s)',
+                    model.x0, s_init_debug, s_init_exists, x0_box, len(S0))
         P_full, S_id, A_id, P_absorbing = compute_probability_intervals(args=args,
                                                         model=model,
                                                         partition=partition,
@@ -169,7 +171,8 @@ if __name__ == '__main__':
                     P_full=P_full,
                     S_id=S_id,
                     A_id=A_id,
-                    P_absorbing=P_absorbing)
+                    P_absorbing=P_absorbing,
+                    x0_box=x0_box)
 
         logger.info('<<< Generating abstraction took %.3f sec. >>>', (time.time() - t))
 
@@ -187,7 +190,7 @@ if __name__ == '__main__':
                 V, policy = RVI_JAX(
                     args=args,
                     imdp=imdp,
-                    s0=partition.x2state(model.x0)[0],
+                    s0=imdp.s_init,
                     max_iterations=10000,
                     epsilon=1e-6,
                     RND_SWEEPS=True,
@@ -215,8 +218,9 @@ if __name__ == '__main__':
         mask = policy[:-1] >= 0
         policy_inputs[mask] = actions_np[mask, policy[:-1][mask]]
 
-    s0 = partition.x2state(model.x0)[0]
-    logger.info('=== IMDP value in initial state s0=%s: %s ===', s0, V[s0])    
+    # Guarantee for the initial state(s) = minimum value over all initial cells
+    S0 = np.atleast_1d(imdp.s_init)
+    logger.info('=== IMDP value in initial state (min over %d cells): %s ===', len(S0), V[S0].min())
 
     # %% Simulations and plot
 

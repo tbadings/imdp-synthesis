@@ -151,7 +151,8 @@ def _build_storm_imdp(imdp: IMDP):
 
     state_labeling = stormpy.storage.StateLabeling(imdp.nr_states)
     state_labeling.add_label("init")
-    state_labeling.add_label_to_state("init", int(imdp.s_init))
+    for s_init in np.atleast_1d(imdp.s_init):
+        state_labeling.add_label_to_state("init", int(s_init))
 
     state_labeling.add_label("absorbing")
     state_labeling.add_label_to_state("absorbing", int(imdp.absorbing_state))

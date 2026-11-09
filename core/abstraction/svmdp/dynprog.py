@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import time
 import argparse
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from jaxtyping import Array, UInt8, Float32
 
 from core.abstraction.svmdp.svmdp import SVMDP
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def SVMDP_DP(
     args: argparse.Namespace, 
     svmdp: SVMDP, 
-    s0: Optional[int] = None, 
+    s0: Optional[Union[int, np.ndarray]] = None, 
     max_iterations: int = 1000, 
     epsilon: float = 1e-6, 
     RND_SWEEPS: bool = False, 
@@ -35,7 +35,7 @@ def SVMDP_DP(
 
     :param args: Argument namespace
     :param svmdp: Instance of SVMDP class
-    :param s0: Initial state for tracking
+    :param s0: Initial state(s) for tracking (minimum value over them)
     :param max_iterations: Maximum number of iterations
     :param epsilon: Convergence threshold
     :param RND_SWEEPS: Whether to use random state sweeps
@@ -47,6 +47,7 @@ def SVMDP_DP(
     :param max_eval_it: Maximum evaluation iteration index (keeps eval_it <= max_eval_it, strictly < 32 by default)
     :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
+    s0 = None if s0 is None else np.atleast_1d(s0)  # Initial state(s); values are tracked as min over V[s0]
 
     start_time = time.time()
 
@@ -198,7 +199,8 @@ def SVMDP_DP(
     vmap_fn3 = jax.jit(jax.vmap(fn3, in_axes=(0, 0, None), out_axes=(0)))
 
     if prune_states:
-        s_init_skipped_before_pruning = skip_mask[svmdp.s_init]
+        s_init = np.atleast_1d(svmdp.s_init)
+        s_init_skipped_before_pruning = skip_mask[s_init]
         # Track the fix-point generation at which each sweep prunes states (and specifically when
         # s_init is pruned). The generation of s_init is the depth of the dead-end funnel from x0:
         # generation 1 means all of s_init's own successors are already absorbing; a larger value
@@ -228,7 +230,7 @@ def SVMDP_DP(
                 states_not_to_update = svmdp.states[skip_mask]
 
             if pruned_this_gen > 0:
-                if s_init_prune_generation == -1 and skip_mask[svmdp.s_init] and not s_init_skipped_before_pruning:
+                if s_init_prune_generation == -1 and np.any(skip_mask[s_init] & ~s_init_skipped_before_pruning):
                     s_init_prune_generation = prune_generation
                 logger.info(f'  Prune generation {prune_generation}: pruned {pruned_this_gen} states '
                             f'(remaining active {len(states_to_update)})'
@@ -239,8 +241,8 @@ def SVMDP_DP(
 
         logger.info(f'  (States after pruning: {len(states_to_update)})')
 
-        if skip_mask[svmdp.s_init] and not s_init_skipped_before_pruning:
-            logger.warning(f'  Initial state ({svmdp.s_init}) was pruned (all actions directly lead to '
+        if np.any(skip_mask[s_init] & ~s_init_skipped_before_pruning):
+            logger.warning(f'  {np.sum(skip_mask[s_init] & ~s_init_skipped_before_pruning)} initial state(s) were pruned (all actions directly lead to '
                            f'absorbing states) at prune generation {s_init_prune_generation} '
                            f'(dead-end funnel depth from x0)')
 
@@ -294,7 +296,7 @@ def SVMDP_DP(
             pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                postfix_dict['min v[s0]'] = f'{V[s0].min():.6f}'
                 postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
             pbar.set_postfix(postfix_dict)
             
@@ -307,8 +309,8 @@ def SVMDP_DP(
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence
@@ -363,12 +365,12 @@ def SVMDP_DP(
                 postfix_dict = {}
                 if s0 is not None:
                     postfix_dict[f'eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                    postfix_dict['min v[s0]'] = f'{V[s0].min():.6f}'
                     postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
                     postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
-                    if float(V[s0]) >= satprob:
+                    if float(V[s0].min()) >= satprob:
                         logger.info(f'Policy is above the satisfaction threshold {satprob:.2f} after {iteration + 1} iterations')
                         # Policy is already good enough, so skip policy improvement and only keep evaluating it until convergence
                         sat_policy = True
@@ -388,7 +390,7 @@ def SVMDP_DP(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
-                    or (float(V[s0]) >= satprob)
+                    or (float(V[s0].min()) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -415,8 +417,8 @@ def SVMDP_DP(
                 for state_batch, policy_batch in zip(state_batches, jax.device_get(policy_refs)):
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence: improvement step is monotone, so max gain suffices

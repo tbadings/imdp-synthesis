@@ -95,9 +95,10 @@ if __name__ == '__main__':
             # large forward-reachability arrays are allocated below.
             del active_states, active_actions
 
-        s_init, s_init_exists = partition.x2state(model.x0)
-        if not s_init_exists:
-            raise ValueError(f"Initial state x0={model.x0} is not in the partition.")
+        x0_box = getattr(model, 'x0_box', None)
+        S0, S0_exist = partition.initial_states(model.x0, x0_box)
+        if not S0_exist:
+            raise ValueError(f"Initial state x0={model.x0} (x0_box={x0_box}) is not (fully) in the partition.")
 
         # Compute forward reachable sets and noise-shifted successor cell IDs.
         actions = RectangularForward(args=args, partition=partition, model=model)
@@ -123,12 +124,13 @@ if __name__ == '__main__':
             box_to_ids=box_to_ids,  
             A_id=A_id,
             P_absorbing=model.noise.partition['remainder'],
+            x0_box=x0_box,
         )
 
         del actions
 
         out_dict['time_abstraction'] = time.time() - t
-        logger.info('Initial state x0=%s → state index %d\n', model.x0, s_init)
+        logger.info('Initial state x0=%s (x0_box=%s) → %d state(s): %s\n', model.x0, x0_box, len(S0), S0[:10])
         logger.info('<<< Generating SVMDP abstraction took %.3f sec. >>>\n', out_dict['time_abstraction'])
 
         out_dict['abstraction_states'] = len(svmdp.states)
@@ -148,7 +150,7 @@ if __name__ == '__main__':
             V, policy = SVMDP_DP(
                 args=args,
                 svmdp=svmdp,
-                s0=partition.x2state(model.x0)[0],
+                s0=svmdp.s_init,
                 max_iterations=10000,
                 epsilon=1e-6,
                 RND_SWEEPS=True,
@@ -160,9 +162,10 @@ if __name__ == '__main__':
         out_dict['time_synthesis'] = time.time() - t
         logger.info('<<< SVMDP policy synthesis done (took %.3f sec.) >>>\n', out_dict['time_synthesis'])
 
-    s0 = partition.x2state(model.x0)[0]
-    out_dict['optimal_value'] = float(V[s0])
-    logger.info('Value in initial state s0=%d: %.6f\n', s0, V[s0])
+    # Guarantee for the initial state(s) = minimum value over all initial cells
+    S0 = np.atleast_1d(svmdp.s_init)
+    out_dict['optimal_value'] = float(V[S0].min())
+    logger.info('Value in initial state (min over %d cells): %.6f\n', len(S0), V[S0].min())
 
     # %% Extract policy inputs
 

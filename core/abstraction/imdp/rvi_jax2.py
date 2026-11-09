@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import time
 import argparse
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from jaxtyping import Array, UInt8, Float32
 
 from core.abstraction.imdp.imdp import IMDP
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 def RVI_JAX2(
     args: argparse.Namespace,
     imdp: IMDP,
-    s0: Optional[int] = None,
+    s0: Optional[Union[int, np.ndarray]] = None,
     max_iterations: int = 1000,
     epsilon: float = 1e-6,
     RND_SWEEPS: bool = False,
@@ -38,6 +38,7 @@ def RVI_JAX2(
       3. Static arrays (successors, prob bounds, sort_indices) transferred to device once
          before the loop instead of slicing in NumPy and device_put-ing on every iteration.
     """
+    s0 = None if s0 is None else np.atleast_1d(s0)  # Initial state(s); values are tracked as min over V[s0]
 
     start_time = time.time()
 
@@ -177,7 +178,7 @@ def RVI_JAX2(
             pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{float(V[s0]):.6f}'
+                postfix_dict['min v[s0]'] = f'{float(V[s0].min()):.6f}'
                 postfix_dict[f'v_avg'] = f'{float(jnp.mean(V[states_to_update])):.6f}'
             pbar.set_postfix(postfix_dict)
 
@@ -193,8 +194,8 @@ def RVI_JAX2(
                 V = V.at[state_batch].set(V_batch)
                 policy[state_batch] = np.asarray(jax.device_get(policy_batch), dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Convergence check: one cheap scalar device_get per iteration
@@ -217,11 +218,11 @@ def RVI_JAX2(
                 postfix_dict = {}
                 if s0 is not None:
                     postfix_dict['eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{float(V[s0]):.6f}'
+                    postfix_dict['min v[s0]'] = f'{float(V[s0].min()):.6f}'
                     postfix_dict[f'v_avg'] = f'{float(jnp.mean(V[states_to_update])):.6f}'
                     postfix_dict['max(v-v_old)'] = f'{delta:.6f}'
 
-                    if float(V[s0]) >= satprob:
+                    if float(V[s0].min()) >= satprob:
                         sat_policy = True
                     else:
                         sat_policy = False
@@ -243,7 +244,7 @@ def RVI_JAX2(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
-                    or (float(V[s0]) >= satprob)
+                    or (float(V[s0].min()) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -267,8 +268,8 @@ def RVI_JAX2(
                     V = V.at[state_batch].set(V_batch)
                     policy[state_batch] = np.asarray(jax.device_get(policy_batch), dtype=np.int32)
 
-            if float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             if float(jnp.max(V - V_before_improvement)) < epsilon:

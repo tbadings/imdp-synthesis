@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import numpy as np
 
+from core.abstraction.partition import box2grid_idxs
 from .base import BaseRL
 from .config import RLConfig, resolve_rl_config
 from .env import BenchmarkEnv
@@ -50,6 +51,13 @@ def find_active(model, args):
         return_trajectories=True,
     )
     logger.info("Goal reached in %d/%d evaluation episodes.", goal_reached, cfg.eval_episodes)
+
+    # Rollouts need not visit every cell of the initial set, so add all of them explicitly
+    x0_box = getattr(model, "x0_box", None)
+    if x0_box is not None:
+        x0_cells = box2grid_idxs(x0_box, model.partition["boundary"], model.partition["number_per_dim"])
+        newly_visited.update(map(tuple, x0_cells))
+        logger.info("Added %d cells of the initial set x0_box to the visited cells.", len(x0_cells))
 
     # Tube construction (active states)
     active_states = build_tube(newly_visited, cfg, model, env, agent=agent, discrete_actions=discrete_actions)

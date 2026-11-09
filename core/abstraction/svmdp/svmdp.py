@@ -6,13 +6,14 @@ class SVMDP:
     Class to construct the SVMDP abstraction.
     """
 
-    def __init__(self, partition, states, x0, goal_regions, critical_regions, P_full, S_idx_lb, S_idx_ub, box_to_ids, A_id, P_absorbing):
+    def __init__(self, partition, states, x0, goal_regions, critical_regions, P_full, S_idx_lb, S_idx_ub, box_to_ids, A_id, P_absorbing, x0_box=None):
         '''
         Generate the SVMDP abstraction
 
         :param partition:
         :param states:
-        :param x0:
+        :param x0: Initial state (used if x0_box is None)
+        :param x0_box: Optional box [lb, ub] of initial states
         :param goal_regions:
         :param critical_regions:
         :param P_full: Per-(state, action, noise cell) probability mass, shape [S, A, nc]
@@ -37,8 +38,8 @@ class SVMDP:
         self.A_id = A_id
         self.P_absorbing = P_absorbing
 
-        # Define initial state
-        self.s_init = partition.x2state(x0)[0]
+        # Define initial state(s): array of the cells containing x0 or overlapping x0_box
+        self.s_init = partition.initial_states(x0, x0_box)[0]
 
         # Define absorbing state
         self.absorbing_state = np.max(self.states) + 1

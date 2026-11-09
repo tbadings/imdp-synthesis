@@ -211,6 +211,22 @@ def _compute_critical_regions(critical_regions, lower_bounds, upper_bounds, regi
     return critical
 
 
+def box2grid_idxs(box, boundary, number_per_dim):
+    '''
+    Unit-cube grid indices [K, n] of all cells overlapping the box [lb, ub] (shape [2, n]). A dimension of
+    zero width (lb == ub) yields the cell containing that coordinate, consistent with x2state.
+    '''
+    box, boundary = np.asarray(box, dtype=float), np.asarray(boundary, dtype=float)
+    number_per_dim = np.asarray(number_per_dim, dtype=int)
+    t = (box - boundary[0]) / (boundary[1] - boundary[0]) * number_per_dim
+    t = np.where(np.isclose(t, np.round(t), rtol=0, atol=1e-4), np.round(t), t)  # Snap box edges on grid lines (float round-off)
+    lo = np.floor(t[0]).astype(int)
+    hi = np.maximum(lo, np.ceil(t[1]).astype(int) - 1)
+    lo, hi = np.clip(lo, 0, number_per_dim - 1), np.clip(hi, 0, number_per_dim - 1)
+    axes = [np.arange(l, h + 1) for l, h in zip(lo, hi)]
+    return np.stack(np.meshgrid(*axes, indexing='ij'), axis=-1).reshape(-1, len(number_per_dim))
+
+
 class _HyperrectangularPartition(object):
     """
     Base class for a partitioning of a state space into hyperrectangular regions (cells).
@@ -342,6 +358,20 @@ class _HyperrectangularPartition(object):
         if state == -1:
             return self.size, False
         return int(state), True
+
+    def initial_states(self, x0, x0_box=None):
+        '''
+        Return (state IDs, all exist) of the initial states: the cell containing x0 or, if the box
+        x0_box = [lb, ub] is given, all cells overlapping that box.
+        '''
+        if x0_box is None:
+            s, exists = self.x2state(x0)
+            return np.array([s]), exists
+        in_partition = np.all(np.asarray(x0_box[0]) >= np.asarray(self.boundary_lb)) and \
+                       np.all(np.asarray(x0_box[1]) <= np.asarray(self.boundary_ub))
+        grid_idxs = box2grid_idxs(x0_box, [self.boundary_lb, self.boundary_ub], self.number_per_dim)
+        states, exists = zip(*(self.grid_idx2state(idx) for idx in grid_idxs))
+        return np.array(states), bool(in_partition and all(exists))
 
 
 class DensePartition(_HyperrectangularPartition):

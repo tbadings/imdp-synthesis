@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import time
 import argparse
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 from jaxtyping import Array, UInt8, Bool, Float32, PyTree
 
 from core.abstraction.imdp.imdp import IMDP
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 def RVI_JAX(
     args: argparse.Namespace, 
     imdp: IMDP, 
-    s0: Optional[int] = None, 
+    s0: Optional[Union[int, np.ndarray]] = None, 
     max_iterations: int = 1000, 
     epsilon: float = 1e-6, 
     RND_SWEEPS: bool = False, 
@@ -33,7 +33,7 @@ def RVI_JAX(
 
     :param args: Argument namespace
     :param imdp: Instance of IMDP class
-    :param s0: Initial state for tracking
+    :param s0: Initial state(s) for tracking (minimum value over them)
     :param max_iterations: Maximum number of iterations
     :param epsilon: Convergence threshold
     :param RND_SWEEPS: Whether to use random state sweeps
@@ -43,6 +43,7 @@ def RVI_JAX(
     :param max_eval_it: Maximum evaluation iteration index (keeps eval_it <= max_eval_it, strictly < 32 by default)
     :return: Tuple of (values, policy_labels) where policy_labels[s] is the global action ID chosen for state s, or -1
     """
+    s0 = None if s0 is None else np.atleast_1d(s0)  # Initial state(s); values are tracked as min over V[s0]
 
     start_time = time.time()
 
@@ -216,7 +217,7 @@ def RVI_JAX(
             pbar.update(1)
             postfix_dict = {}
             if s0 is not None:
-                postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                postfix_dict['min v[s0]'] = f'{V[s0].min():.6f}'
                 postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
             pbar.set_postfix(postfix_dict)
             
@@ -235,8 +236,8 @@ def RVI_JAX(
                 V[state_batch] = np.asarray(V_batch, dtype=args.floatprecision)
                 policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
 
-            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if s0 is not None and satprob is not None and float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
             
             # Check convergence
@@ -261,12 +262,12 @@ def RVI_JAX(
                 postfix_dict = {}
                 if s0 is not None:
                     postfix_dict[f'eval_it'] = i
-                    postfix_dict[f'v[{s0}]'] = f'{V[s0]:.6f}'
+                    postfix_dict['min v[s0]'] = f'{V[s0].min():.6f}'
                     postfix_dict[f'v_avg'] = f'{np.mean(V[states_to_update]):.6f}'
                     postfix_dict[f'max(v-v_old)'] = f'{delta:.6f}'
 
                     # Check if policy is above the preset threshold quality
-                    if float(V[s0]) >= satprob:
+                    if float(V[s0].min()) >= satprob:
                         sat_policy = True
                     else:
                         sat_policy = False
@@ -298,7 +299,7 @@ def RVI_JAX(
                 if (
                     delta < epsilon
                     or i >= max_eval_it
-                    or (float(V[s0]) >= satprob)
+                    or (float(V[s0].min()) >= satprob)
                     or (
                         not partial_convergence_reached
                         and i >= min(phase1_initial_it + iteration * phase1_increment_it, phase1_max_it)
@@ -328,8 +329,8 @@ def RVI_JAX(
                     policy[state_batch] = np.asarray(policy_batch, dtype=np.int32)
                     # print(f'- Policy improvement batch took: {time.time() - t:.6f} sec')
 
-            if s0 is not None and satprob is not None and float(V[s0]) >= satprob:
-                pbar.write(f'Threshold reached: v[{s0}]={float(V[s0]):.6f} >= {satprob} after {iteration + 1} iterations')
+            if s0 is not None and satprob is not None and float(V[s0].min()) >= satprob:
+                pbar.write(f'Threshold reached: min v[s0]={float(V[s0].min()):.6f} >= {satprob} after {iteration + 1} iterations')
                 break
 
             # Check convergence: improvement step is monotone, so max gain suffices
