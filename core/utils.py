@@ -117,16 +117,24 @@ class DPStagnationCheck:
     Early termination of dynamic programming when the tracked value stagnates.
 
     Terminates once the tracked value (the minimum value over the initial states) has improved by
-    less than ``improvement`` over the last ``iterations`` iterations. Disabled (never terminates)
-    if either ``iterations`` or ``improvement`` is zero, so that dynamic programming runs until
-    convergence.
+    less than ``improvement`` over the last ``iterations`` iterations. Termination is never triggered
+    before ``min_iterations`` full iterations have been performed (the window keeps sliding in the
+    meantime). Disabled (never terminates) if either ``iterations`` or ``improvement`` is zero, so that
+    dynamic programming runs until convergence.
     """
 
-    def __init__(self, iterations: int, improvement: float):
+    def __init__(self, iterations: int, improvement: float, min_iterations: int = 0):
         self.iterations = int(iterations)
         self.improvement = float(improvement)
+        self.min_iterations = int(min_iterations)
         self.enabled = self.iterations > 0 and self.improvement > 0
         self.history = deque(maxlen=self.iterations + 1)
+        self.num_updates = 0
+
+    @property
+    def iterations_done(self) -> int:
+        """Number of full iterations recorded (the first update is the value before the first iteration)."""
+        return max(self.num_updates - 1, 0)
 
     def update(self, value: float) -> bool:
         """
@@ -138,7 +146,10 @@ class DPStagnationCheck:
         if not self.enabled:
             return False
         self.history.append(float(value))
-        return len(self.history) == self.history.maxlen and self.gain < self.improvement
+        self.num_updates += 1
+        return (self.iterations_done >= self.min_iterations
+                and len(self.history) == self.history.maxlen
+                and self.gain < self.improvement)
 
     @property
     def gain(self) -> float:
@@ -146,8 +157,11 @@ class DPStagnationCheck:
         return self.history[-1] - self.history[0]
 
     def describe(self) -> str:
-        return (f'stop if min v[s0] improves by less than {self.improvement:g} '
+        desc = (f'stop if min v[s0] improves by less than {self.improvement:g} '
                 f'over {self.iterations} iterations')
+        if self.min_iterations > 0:
+            desc += f' (after at least {self.min_iterations} iterations)'
+        return desc
 
     def message(self, iteration: int) -> str:
         return (f'Early termination after {iteration} iterations: min v[s0]={self.history[-1]:.6f} improved by '

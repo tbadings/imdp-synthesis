@@ -201,7 +201,8 @@ def RVI_JAX(
     policy[states_not_to_update] = -1  # Mark states that we do not update with a special action index (e.g., -1)
 
     # Optional early termination if the value in the initial state(s) stagnates (disabled if either option is 0)
-    stagnation = DPStagnationCheck(getattr(args, 'dp_terminate_window', 0), getattr(args, 'dp_terminate_improvement', 0.0))
+    stagnation = DPStagnationCheck(getattr(args, 'dp_terminate_window', 0), getattr(args, 'dp_terminate_improvement', 0.0),
+                                    getattr(args, 'dp_terminate_min_iterations', 0))
     if stagnation.enabled and s0 is None:
         logger.warning('- Early termination of dynamic programming requires initial state(s) s0; disabled')
         stagnation.enabled = False

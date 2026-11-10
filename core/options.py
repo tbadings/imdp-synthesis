@@ -81,6 +81,8 @@ def parse_arguments(argv=None):
                         help="Terminate dynamic programming if the value in the initial state(s) (min over V[s0]) has not improved by at least --dp_terminate_improvement over the last this many iterations. If 0 (or if --dp_terminate_improvement is 0), run until convergence.")
     parser.add_argument('--dp_terminate_improvement', type=_nonnegative_float, default=0.0,
                         help="Minimum improvement of the value in the initial state(s) (min over V[s0]) required over the last --dp_terminate_window iterations to keep running dynamic programming. If 0 (or if --dp_terminate_window is 0), run until convergence.")
+    parser.add_argument('--dp_terminate_min_iterations', type=_nonnegative_int, default=0,
+                        help="Minimum number of full dynamic programming iterations before early termination (--dp_terminate_window / --dp_terminate_improvement) may trigger. Has no effect if early termination is disabled.")
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
