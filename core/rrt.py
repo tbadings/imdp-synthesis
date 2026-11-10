@@ -173,25 +173,30 @@ def find_active(model, args):
                    time_planning=perf_counter() - started, planner_cost='elapsed_time')
     started = perf_counter()
     # Replay the same open-loop controls with independent noise, retaining each
-    # collision-free prefix rather than discarding an entire failed trajectory.
+    # valid prefix rather than discarding an entire failed trajectory.
     count = config['tube_trajectories']
     trajectory_noise = np.asarray(model.noise.sample(size=(count, len(controls)), rng=rng), dtype=dtype)
     trajectories = np.broadcast_to(start, (count, len(controls) + 1, model.n)).copy()
     if len(controls):
         replay = jax.jit(jax.vmap(rollout, in_axes=(None, None, 0)))
         trajectories[:, 1:] = np.asarray(replay(jnp.asarray(start), jnp.asarray(controls), jnp.asarray(trajectory_noise)))
-    # Use the actual obstacles, without the RRT's extra planning clearance.
+    # Use the actual obstacles and grid bounds, without extra planning clearance.
     hit = np.zeros(trajectories.shape[:2], dtype=bool)
     for lo, hi in np.asarray(model.critical).reshape(-1, 2, model.n):
         hit |= np.all((trajectories >= lo) & (trajectories <= hi), axis=-1)
-    stopped = np.logical_or.accumulate(hit, axis=1)
+    outside = ~np.all(np.isfinite(trajectories) &
+                      (wrap | ((trajectories >= low) & (trajectories < high))), axis=-1)
+    stopped = np.logical_or.accumulate(hit | outside, axis=1)
+    first_stop = stopped & np.concatenate((np.ones((count, 1), dtype=bool), ~stopped[:, :-1]), axis=1)
     trajectory_lengths = np.sum(~stopped, axis=1)
     trajectories[stopped] = np.nan
     metrics.update(time_replays=perf_counter() - started, tube_trajectories=count,
-                   replay_obstacle_hits=int(stopped[:, -1].sum()))
+                   replay_obstacle_hits=int(np.count_nonzero(first_stop & hit & ~outside)),
+                   replay_boundary_exits=int(np.count_nonzero(first_stop & outside)))
     logger.info('RRT: sampled %d noisy trajectories using the same %d inputs in %.3fs',
                 count, len(controls), metrics['time_replays'])
-    logger.info('RRT: truncated %d replays at their first obstacle hit', metrics['replay_obstacle_hits'])
+    logger.info('RRT: truncated %d replays at obstacles and %d at grid exits or non-finite states',
+                metrics['replay_obstacle_hits'], metrics['replay_boundary_exits'])
     logger.info('RRT: building tube around reference and %d noisy input replays', count)
     started = perf_counter()
     active = build_tube(np.concatenate((path[None], trajectories)), model, radius)
