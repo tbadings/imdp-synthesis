@@ -5,18 +5,23 @@ The RL settings (PPO training, reward function, and the tube around the rollouts
 each benchmark's `rl_config` in `benchmarks/`; only what is not benchmark-specific is passed
 here. Any RL option can still be overridden per run by adding e.g. "--total_timesteps",
 "1000" below, which takes precedence over the benchmark's `rl_config`.
+RRT settings are supplied directly to a single run_fixed_SVMDP call via its rrt argument.
 """
 
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
-def run_fixed_SVMDP(args: list[str]) -> None:
-    root = Path(__file__).resolve().parent
-    runfile = root / "Main_SVMDP.py"
 
-    cmd = [sys.executable, str(runfile), *args]
-    subprocess.run(cmd, check=True, cwd=root)
+def run_fixed_SVMDP(args: list[str], *, rrt=None) -> None:
+    root = Path(__file__).resolve().parent
+    env = os.environ.copy()
+    env['IMDP_RRT_SETTINGS'] = json.dumps(rrt or {})
+    subprocess.run([sys.executable, str(root / 'Main_SVMDP.py'), *args],
+                   check=True, cwd=root, env=env)
+
 
 def config_MountainCar() -> list[str]:
     return [
@@ -155,15 +160,20 @@ def config_Drone4D_battery() -> list[str]:
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-
-    # run_fixed_SVMDP(config_MountainCar() + ["--shrink_frs", "0"])
-    # run_fixed_SVMDP(config_MountainCar() + ["--rrt", "--shrink_frs", "0"])
-
-    # run_fixed_SVMDP(args = ["--model","Dubins3D", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    run_fixed_SVMDP(args = ["--model","Drone4D", "--rrt", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
-    # run_fixed_SVMDP(config_Dubins3D() + ["--rrt", "--shrink_frs", "0"])
-    # run_fixed_SVMDP(config_Drone4D() + ["--rrt", "--shrink_frs", "0"])
-
+    run_fixed_SVMDP(
+        args=["--model", "Drone4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", "0"],
+        rrt=dict(
+            iterations=2000,
+            step_horizon=64,
+            control_samples=16,
+            parent_candidates=8,
+            goal_bias=0.1,
+            time_weight=0.5,
+            tube_trajectories=100,
+            tube_radius=(3, 3, 3, 3),
+            clearance=(2,),
+        ),
+    )
     # MountainCar
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
