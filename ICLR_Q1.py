@@ -160,20 +160,21 @@ def config_Drone4D_battery() -> list[str]:
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-    run_fixed_SVMDP(
-        args=["--model", "Drone4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", "0"],
-        rrt=dict(
-            iterations=2000,
-            step_horizon=64,
-            control_samples=16,
-            parent_candidates=8,
-            goal_bias=0.1,
-            time_weight=0.5,
-            tube_trajectories=100,
-            tube_radius=(3, 3, 3, 3),
-            clearance=(2,),
-        ),
-    )
+    for tube_radius in ((4, 2, 4, 2), (5, 3, 5, 3), (6, 4, 6, 4), (7, 5, 7, 5), (8, 6, 8, 6)):
+        for seed in range(5):
+            run_fixed_SVMDP(
+                args=["--model", "Drone4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", str(seed)],
+                rrt=dict(
+                    iterations=15000,
+                    step_horizon=1,
+                    control_samples=16,
+                    parent_candidates=16,
+                    goal_bias=0.1,
+                    time_weight=0.01,
+                    tube_radius=tube_radius,
+                    clearance=(2,),
+                ),
+            )
     # MountainCar
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])

@@ -1,4 +1,4 @@
-"""Grow a dynamics-based tree, then inflate noisy replays of its selected inputs."""
+"""Grow a dynamics-based tree, then inflate its selected path."""
 import json
 import logging
 import os
@@ -12,35 +12,68 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from matplotlib import pyplot as plt
-from matplotlib.collections import PatchCollection
-from matplotlib.patches import Rectangle
+from matplotlib.collections import LineCollection
 
 from core.abstraction.partition import EPS, box2grid_idxs
 from core.plotting.utils import plot_boxes, save_fig
 
 logger = logging.getLogger(__name__)
 
-def _difference(a, b, *, wrap, span):
+
+def _plot_path(ax, path, dims, low, high, wrap, color, alpha, label):
+    points = np.asarray(path, dtype=float)[:, dims]
+    seams = np.any(wrap & (np.abs(np.diff(points, axis=0)) > (high - low) / 2), axis=1)
+    line = np.insert(points, np.flatnonzero(seams) + 1, np.nan, axis=0)
+    ax.plot(*line.T, color=color, alpha=alpha, label=label)
+    ax.scatter(*points.T, color=color, alpha=alpha, s=12 if color == 'black' else 3,
+               zorder=4 if color == 'black' else 2, rasterized=True)
+
+
+def _plot_tree(args, model, nodes, segments, reference):
+    """Plot every accepted branch using its simulated states, including node markers."""
+    dims = model.plot_dimensions[:2]
+    low, high = np.asarray(model.partition['boundary'])[:, dims]
+    wrap = np.asarray(model.wrap)[dims]
+    projected = segments[:, :, dims]
+    seams = np.any(wrap & (np.abs(projected[:, 1] - projected[:, 0]) > (high - low) / 2), axis=1)
+    fig, ax = plt.subplots(figsize=(7, 6))
+    plot_boxes(ax, args, model, plot_dimensions=dims)
+    ax.add_collection(LineCollection(projected[~seams], colors='steelblue', linewidths=0.6,
+                                    alpha=0.35, label='RRT tree', rasterized=True))
+    ax.scatter(*nodes[:, dims].T, color='steelblue', s=5, alpha=0.5, rasterized=True)
+    _plot_path(ax, reference, dims, low, high, wrap, 'black', 1, 'Selected path')
+    ax.scatter(*nodes[0, dims], color='darkorange', marker='*', s=100, zorder=5, label='Start')
+    ax.set(xlim=(low[0], high[0]), ylim=(low[1], high[1]),
+           xlabel=model.state_variables[dims[0]], ylabel=model.state_variables[dims[1]])
+    if not args.plot_ticks:
+        ax.set(xticks=[], yticks=[])
+    if args.plot_title:
+        ax.set_title('Full RRT tree and selected path')
+    ax.legend()
+    save_fig(fig, Path(args.output_dir) / 'rrt_tree')
+
+
+def _difference(a, b, *, wrap, span, xp=np):
     delta = a - b
-    return np.where(wrap, (delta + span / 2) % span - span / 2, delta)
+    return xp.where(wrap, (delta + span / 2) % span - span / 2, delta)
 
 
-def _safe(x, *, low, high, width, wrap, lower, upper, obstacles):
-    x = np.atleast_2d(x).astype(float)
+def _safe(x, *, low, high, width, wrap, lower, upper, obstacles, xp=np):
+    x = xp.atleast_2d(x).astype(float)
     span = high - low
-    x = np.where(wrap, low + (x - low) % span, x)
-    valid = np.all(np.isfinite(x) & (x >= lower) & (x <= upper) & (x < high), axis=1)
-    center = low + (np.floor((np.where(np.isfinite(x), x, low) - low) / width) + 0.5) * width
+    x = xp.where(wrap, low + (x - low) % span, x)
+    valid = xp.all(xp.isfinite(x) & (x >= lower) & (x <= upper) & (x < high), axis=-1)
+    center = low + (xp.floor((xp.where(xp.isfinite(x), x, low) - low) / width) + 0.5) * width
     for lo, hi in obstacles:
-        delta = _difference(center, (lo + hi) / 2, wrap=wrap, span=span)
-        valid &= ~np.all(np.abs(delta) <= (hi - lo + width) / 2 - EPS, axis=1)
+        delta = _difference(center, (lo + hi) / 2, wrap=wrap, span=span, xp=xp)
+        valid &= ~xp.all(xp.abs(delta) <= (hi - lo + width) / 2 - EPS, axis=-1)
     return valid
 
 
-def _goal(x, *, low, width, span, wrap, first, last):
-    x = np.where(wrap, low + (np.asarray(x, dtype=float) - low) % span, x)
-    cell = np.floor((x - low) / width).astype(int)
-    return bool(np.any(np.all((cell >= first) & (cell <= last), axis=1)))
+def _goal(x, *, low, width, span, wrap, first, last, xp=np):
+    x = xp.where(wrap, low + (xp.asarray(x, dtype=float) - low) % span, x)
+    cell = xp.floor((x - low) / width).astype(int)
+    return xp.any(xp.all((cell[..., None, :] >= first) & (cell[..., None, :] <= last), axis=-1), axis=-1)
 
 
 def _sample(rng, goal_bias, goal_low, goal_high, lower, upper, safe):
@@ -68,33 +101,50 @@ def _rollout(x, controls, noise, *, model, low, span, wrap, dtype):
     return jax.lax.scan(step, x, (controls, noise))[1]
 
 
-def _replay_inputs(model, start, controls, rollout, rng, count):
-    """Run fixed inputs with fresh noise and retain each replay's valid prefix."""
-    started = perf_counter()
-    low, high = np.asarray(model.partition['boundary'], dtype=float)
-    wrap = np.asarray(model.wrap)
-    noise = np.asarray(model.noise.sample(size=(count, len(controls)), rng=rng), dtype=start.dtype)
-    trajectories = np.broadcast_to(start, (count, len(controls) + 1, model.n)).copy()
-    replay = jax.jit(jax.vmap(rollout, in_axes=(None, None, 0)))
-    trajectories[:, 1:] = np.asarray(replay(jnp.asarray(start), jnp.asarray(controls), jnp.asarray(noise)))
-    # Use the actual obstacles and grid bounds, without extra planning clearance.
-    hit = np.zeros(trajectories.shape[:2], dtype=bool)
-    for lo, hi in np.asarray(model.critical).reshape(-1, 2, model.n):
-        hit |= np.all((trajectories >= lo) & (trajectories <= hi), axis=-1)
-    outside = ~np.all(np.isfinite(trajectories) &
-                      (wrap | ((trajectories >= low) & (trajectories < high))), axis=-1)
-    stopped = np.logical_or.accumulate(hit | outside, axis=1)
-    first_stop = stopped & np.concatenate((np.ones((count, 1), dtype=bool), ~stopped[:, :-1]), axis=1)
-    lengths = np.sum(~stopped, axis=1)
-    trajectories[stopped] = np.nan
-    metrics = dict(time_replays=perf_counter() - started, tube_trajectories=count,
-                   replay_obstacle_hits=int(np.count_nonzero(first_stop & hit & ~outside)),
-                   replay_boundary_exits=int(np.count_nonzero(first_stop & outside)))
-    logger.info('RRT: sampled %d noisy trajectories using the same %d inputs in %.3fs',
-                count, len(controls), metrics['time_replays'])
-    logger.info('RRT: truncated %d replays at obstacles and %d at grid exits or non-finite states',
-                metrics['replay_obstacle_hits'], metrics['replay_boundary_exits'])
-    return trajectories, noise, lengths, metrics
+def _select_candidate(traces, starts, costs, target, best_cost, parent_count, *,
+                      safe, goal, difference, span, time_weight):
+    """Select the first minimum in parent/action order, using only valid prefixes."""
+    horizon = traces.shape[2]
+    steps = jnp.arange(1, horizon + 1)
+    valid = jnp.cumprod(safe(traces, xp=jnp), axis=-1).astype(bool)
+    valid &= costs[:, None, None] + steps < best_cost
+    valid &= jnp.arange(len(starts))[:, None, None] < parent_count
+    reached = goal(traces, xp=jnp) & valid
+    has_goal = jnp.any(reached, axis=-1)
+    distances = jnp.linalg.norm(difference(traces, target, xp=jnp) / span, axis=-1)
+    stationary = jnp.linalg.norm(difference(traces, starts[:, None, None], xp=jnp) / span, axis=-1) <= 1e-8
+    scores = distances + time_weight * (costs[:, None, None] + steps) / horizon
+    scores = jnp.where(valid & ~stationary, scores, jnp.inf)
+    endpoint = jnp.where(has_goal, jnp.argmax(reached, axis=-1), jnp.argmin(scores, axis=-1))
+    selected_score = jnp.take_along_axis(scores, endpoint[..., None], axis=-1)[..., 0]
+    usable = jnp.isfinite(selected_score)
+    # Goal-reaching candidates always beat other candidates; ties keep traversal order.
+    goal_candidate = has_goal & usable
+    rank = jnp.where(jnp.any(goal_candidate),
+                     jnp.where(goal_candidate, costs[:, None] + endpoint + 1, jnp.inf),
+                     jnp.where(usable, selected_score, jnp.inf))
+    winner = jnp.argmin(rank)
+    parent, action = winner // traces.shape[1], winner % traces.shape[1]
+    length = jnp.where(usable[parent, action], endpoint[parent, action] + 1, 0)
+    return parent, action, length, traces[parent, action]
+
+
+def _candidate_evaluator(rollout, *, safe, goal, difference, span, time_weight):
+    """Fuse simulation and selection, keeping dynamics at the configured precision."""
+    simulation_x64 = jax.config.x64_enabled
+    simulate = jax.vmap(jax.vmap(rollout, in_axes=(None, 0, 0)), in_axes=(0, None, 0))
+
+    @jax.jit
+    def evaluate(starts, controls, noise, costs, target, best_cost, parent_count):
+        with jax.enable_x64(simulation_x64):
+            traces = simulate(starts, controls, noise)
+        # The original NumPy geometry and scores use float64 even with float32 dynamics.
+        with jax.enable_x64():
+            return _select_candidate(traces, starts, costs, target, best_cost, parent_count,
+                                     safe=safe, goal=goal, difference=difference,
+                                     span=span, time_weight=time_weight)
+
+    return evaluate
 
 
 def _distance(a, b, low, high):
@@ -122,7 +172,7 @@ def build_tube(path, model, radius):
     paths = paths.reshape((-1,) + paths.shape[-2:])
     grid = (paths - low) / ((high - low) / counts)
     grid = np.where(wrap, grid % counts, grid)
-    # Store linear cell IDs so repeated replays can skip cells already covered.
+    # Store linear cell IDs so overlapping segments can skip cells already covered.
     active = set()
     ends = np.concatenate((grid[:, 1:], grid[:, -1:]), axis=1)
     # A NaN-padded trajectory still contributes its last collision-free point.
@@ -173,7 +223,7 @@ def build_tube(path, model, radius):
 def find_active(model, args, config=None):
     # The launcher passes settings only to this subprocess, without extra CLI flags.
     config = dict(iterations=2000, step_horizon=64, control_samples=16, parent_candidates=8,
-                  goal_bias=0.1, time_weight=0.5, tube_trajectories=100, tube_radius=(2,), clearance=(2,)) \
+                  goal_bias=0.1, time_weight=0.5, tube_radius=(2,), clearance=(2,)) \
              | json.loads(os.environ.get('IMDP_RRT_SETTINGS', '{}')) | (config or {})
     started, rng = perf_counter(), np.random.default_rng(args.seed)
     low, high = np.asarray(model.partition['boundary'], dtype=float)
@@ -203,57 +253,56 @@ def find_active(model, args, config=None):
     action_grid = np.asarray(list(product(*[np.linspace(lo, hi, int(n)) for lo, hi, n in
                                            zip(model.uMin, model.uMax, model.num_actions)])), dtype=dtype)
     rollout = partial(_rollout, model=model, low=low, span=span, wrap=wrap, dtype=dtype)
-    simulate = jax.jit(jax.vmap(rollout, in_axes=(None, 0, 0)))
+    evaluate = _candidate_evaluator(rollout, safe=safe, goal=goal, difference=difference,
+                                   span=span, time_weight=config['time_weight'])
     start = np.where(wrap, low + (np.asarray(model.x0) - low) % span, model.x0).astype(dtype)
-    nodes, parents, edges, costs = [start], [-1], [None], [0]
-    best, found = (0, 0) if goal(start) else (None, None)
     iterations, horizon = config['iterations'], config['step_horizon']
+    nodes = np.empty((iterations + 1, model.n), dtype=dtype)
+    costs = np.empty(iterations + 1, dtype=np.int64)
+    nodes[0], costs[0] = start, 0
+    parents, edges = [-1], [None]
+    best, found = (0, 0) if goal(start) else (None, None)
+    parent_limit = config['parent_candidates']
+    batch_noise = np.zeros((parent_limit, config['control_samples'], horizon, model.n), dtype=dtype)
+    batch_parents = np.zeros(parent_limit, dtype=int)
     logger.info('RRT: bounds %s to %s; clearance %s; tube %s cells', lower, upper, margin, radius)
     for iteration in range(1, (0 if best == 0 else iterations) + 1):
         target = _sample(rng, config['goal_bias'], goal_low, goal_high, lower, upper, safe)
         # Shortlist geometrically, then select the parent using reachable rollout states.
-        node_array = np.asarray(nodes)
-        node_costs = np.asarray(costs)
-        eligible = np.flatnonzero(node_costs + 1 < costs[best]) if best is not None else np.arange(len(nodes))
-        nearby = eligible[np.argsort(np.linalg.norm(difference(node_array[eligible], target) / span, axis=1))[:config['parent_candidates']]]
+        node_array, node_costs = nodes[:len(parents)], costs[:len(parents)]
+        eligible = np.flatnonzero(node_costs + 1 < costs[best]) if best is not None else np.arange(len(parents))
+        nearby = eligible[np.argsort(np.linalg.norm(difference(node_array[eligible], target) / span, axis=1))[:parent_limit]]
         actions = action_grid[rng.integers(len(action_grid), size=config['control_samples'])]
         controls = np.repeat(actions[:, None], horizon, axis=1).astype(dtype)
-        candidates = []
-        for parent in map(int, nearby):
-            noise = np.asarray(model.noise.sample(size=controls.shape[:2], rng=rng), dtype=dtype)
-            traces = np.asarray(simulate(jnp.asarray(nodes[parent]), jnp.asarray(controls), jnp.asarray(noise)))
-            for trace, inputs, disturbances in zip(traces, controls, noise):
-                bad = np.flatnonzero(~safe(trace))
-                n = int(bad[0]) if len(bad) else horizon
-                if best is not None:
-                    n = min(n, costs[best] - costs[parent] - 1)
-                if not n:
-                    continue
-                reached = next((i + 1 for i, x in enumerate(trace[:n]) if goal(x)), None)
-                distances = np.linalg.norm(difference(trace[:n], target) / span, axis=1)
-                # Ignore stationary prefixes when choosing the closest endpoint.
-                distances[np.linalg.norm(difference(trace[:n], nodes[parent]) / span, axis=1) <= 1e-8] = np.inf
-                # Penalize elapsed time both within a rollout and across parent branches.
-                scores = distances + config['time_weight'] * (costs[parent] + np.arange(1, n + 1)) / horizon
-                n = reached or int(np.argmin(scores)) + 1
-                if np.isfinite(scores[n - 1]):
-                    score = (0, costs[parent] + n) if reached else (1, scores[n - 1])
-                    candidates.append((score, parent, trace[:n], inputs[:n], disturbances[:n]))
-        if candidates:
-            _, parent, path, inputs, disturbances = min(candidates, key=lambda c: c[0])
-            duplicate = np.linalg.norm(difference(node_array, path[-1]) / span, axis=1) <= 1e-8
-            if not np.any(duplicate & (node_costs <= costs[parent] + len(inputs))):
-                nodes.append(path[-1].copy())
-                parents.append(parent)
-                edges.append((path.copy(), inputs.copy(), disturbances.copy()))
-                costs.append(costs[parent] + len(inputs))
-                if goal(path[-1]) and (best is None or costs[-1] < costs[best]):
-                    best, found = len(nodes) - 1, found if found is not None else iteration
+        # Pad early/small shortlists so their shape does not trigger recompilation.
+        batch_parents[:len(nearby)] = nearby
+        for i in range(len(nearby)):
+            # Preserve the original per-parent RNG calls, including distribution semantics.
+            batch_noise[i] = model.noise.sample(size=controls.shape[:2], rng=rng)
+        if len(nearby):
+            with jax.enable_x64():
+                parent_slot, action, length, trace = jax.device_get(evaluate(
+                    nodes[batch_parents], controls, batch_noise, costs[batch_parents], target,
+                    int(costs[best]) if best is not None else iterations * horizon + 1, len(nearby)))
+            parent, action, length = int(batch_parents[parent_slot]), int(action), int(length)
+            if length:
+                path = trace[:length]
+                inputs = controls[action, :length]
+                disturbances = batch_noise[parent_slot, action, :length]
+                duplicate = np.linalg.norm(difference(node_array, path[-1]) / span, axis=1) <= 1e-8
+                if not np.any(duplicate & (node_costs <= costs[parent] + length)):
+                    node = len(parents)
+                    nodes[node], costs[node] = path[-1], costs[parent] + length
+                    parents.append(parent)
+                    edges.append((path.copy(), inputs.copy(), disturbances.copy()))
+                    if goal(path[-1]) and (best is None or costs[node] < costs[best]):
+                        best, found = node, found if found is not None else iteration
         if iteration % 100 == 0:
             logger.info('RRT: %d/%d, nodes=%d, best steps=%s', iteration, iterations,
-                        len(nodes), None if best is None else costs[best])
+                        len(parents), None if best is None else costs[best])
     if best is None:
         raise RuntimeError('RRT found no goal-reaching path. Adjust iterations or clearance in the run settings.')
+    nodes, costs = nodes[:len(parents)], costs[:len(parents)]
     chain, cursor = [], best
     while parents[cursor] >= 0:
         chain.append(edges[cursor])
@@ -268,52 +317,23 @@ def find_active(model, args, config=None):
                    planner_path_steps=len(controls), planner_path_time=float(len(controls) * model.tau),
                    planner_obstacle_margin=margin.tolist(), planner_boundary=[lower.tolist(), upper.tolist()],
                    time_planning=perf_counter() - started, planner_cost='elapsed_time')
-    count = config['tube_trajectories']
-    trajectories, trajectory_noise, trajectory_lengths, replay_metrics = _replay_inputs(
-        model, start, controls, rollout, rng, count)
-    metrics.update(replay_metrics)
-    logger.info('RRT: building tube around reference and %d noisy input replays', count)
-    started = perf_counter()
-    active = build_tube(np.concatenate((path[None], trajectories)), model, radius)
-    metrics.update(time_tube=perf_counter() - started, tube_states=len(active), tube_radius_cells=radius.tolist())
+    # Each edge includes the parent-to-first-state segment and every rollout step.
+    tree_segments = np.concatenate([np.empty((0, 2, model.n))] + [
+        np.stack((np.vstack((nodes[parent], edge[0][:-1])), edge[0]), axis=1)
+        for parent, edge in zip(parents[1:], edges[1:])
+    ])
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(output / 'rrt_tree.npz', nodes=np.asarray(nodes), parents=parents,
+                        segments=tree_segments, costs=costs, reference=path)
+    _plot_tree(args, model, np.asarray(nodes), tree_segments, path)
+    logger.info('RRT: saved full tree with %d nodes to %s', len(nodes), output / 'rrt_tree.png')
+    logger.info('RRT: building tube around the selected path')
+    started = perf_counter()
+    active = build_tube(path, model, radius)
+    metrics.update(time_tube=perf_counter() - started, tube_states=len(active), tube_radius_cells=radius.tolist())
     np.savez_compressed(output / 'rrt_reference.npz', states=path, controls=controls, noise=noise, active_states=active,
-                        trajectories=trajectories, trajectory_noise=trajectory_noise, trajectory_lengths=trajectory_lengths,
                         tube_radius_cells=radius, step_duration=float(model.tau), seed=args.seed)
     config.update(tube_radius=radius.tolist(), clearance=clearance.tolist())
     (output / 'rrt_plan.json').write_text(json.dumps(dict(config=config, metrics=metrics), indent=2))
-    return active, dict.fromkeys(map(tuple, active), action_grid), path, trajectories, metrics
-
-
-def plot_plan(args, model, partition, reference, traces, trajectories=None):
-    dims = model.plot_dimensions[:2]
-    low, high = np.asarray(partition.boundary_lb)[dims], np.asarray(partition.boundary_ub)[dims]
-    width = np.asarray(partition.cell_width)[dims]
-    cells = np.unique(np.asarray(partition.region_idx_inv)[:, dims], axis=0)
-    fig, ax = plt.subplots(figsize=(7, 6))
-    ax.add_collection(PatchCollection([Rectangle(low + c * width, *width) for c in cells],
-                                     facecolor='cornflowerblue', alpha=0.35, rasterized=True))
-    plot_boxes(ax, args, model, plot_dimensions=dims)
-    paths = []
-    if trajectories is not None:
-        paths.extend((path, 'seagreen', 0.2, 'Noisy input replays' if i == 0 else None)
-                     for i, path in enumerate(trajectories))
-    paths.extend((t['x'], 'darkorange', 0.4, 'Synthesized policy' if i == 0 else None)
-                 for i, t in enumerate(list(traces.values())[:30]))
-    paths.append((reference, 'black', 1, 'RRT reference'))
-    for path, color, alpha, label in paths:
-        points = np.asarray(path, dtype=float)[:, dims].copy()
-        seams = np.any(np.asarray(model.wrap)[dims] & (np.abs(np.diff(points, axis=0)) > (high - low) / 2), axis=1)
-        # Insert gaps at periodic seams without dropping any sample markers.
-        line = np.insert(points, np.flatnonzero(seams) + 1, np.nan, axis=0)
-        ax.plot(*line.T, color=color, alpha=alpha, label=label)
-        ax.scatter(*points.T, color=color, alpha=alpha, s=12 if color == 'black' else 3,
-                   zorder=4 if color == 'black' else 2, rasterized=True)
-    ax.set(xlim=(low[0], high[0]), ylim=(low[1], high[1]), xlabel=model.state_variables[dims[0]], ylabel=model.state_variables[dims[1]])
-    if not args.plot_ticks:
-        ax.set(xticks=[], yticks=[])
-    if args.plot_title:
-        ax.set_title('RRT reference, noisy input replays and tube')
-    ax.legend()
-    save_fig(fig, args.output_dir / 'rrt_trajectory_tube')
+    return active, dict.fromkeys(map(tuple, active), action_grid), path, metrics
