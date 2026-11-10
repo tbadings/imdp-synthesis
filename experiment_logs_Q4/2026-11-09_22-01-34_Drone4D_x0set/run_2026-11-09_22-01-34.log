@@ -1,0 +1,56 @@
+22:01:34 INFO     Run 2026-11-09_22-01-34 | model=Drone4D_x0set | noise=gaussian
+22:01:34 INFO     Output directory: /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-01-34_Drone4D_x0set
+22:01:34 INFO     
+=== Generate SVMDP from scratch ===
+22:01:34 INFO     - Noise partition: 100 cells total  |  remainder=0.0001
+22:01:34 INFO     Parse nonlinear dynamical model...
+22:01:34 INFO     Model parsing done (took 0.006 sec.)
+22:01:34 INFO     Resolved RL config (algorithm: ppo): RLConfig(rl_algo='ppo', goal_reward=10.0, unsafe_penalty=-1.0, out_of_bounds_penalty=-1.0, distance_cost=0.0, per_step_cost=0.05, proximity_penalty=0.5, proximity_dims=[0, 2], max_steps=128, eval_steps=None, eval_episodes=25000, total_timesteps=3000000, learning_rate=0.0003, ent_coef=0.02, rl_batch_size=128, n_steps=128, n_envs=32, update_epochs=10, clip_eps=0.2, vf_coef=0.5, max_grad_norm=0.5, gamma=0.99, gae_lambda=0.95, adam_eps=1e-05, pi_arch=(64, 64), vf_arch=(64, 64), buffer_size=262144, sac_batch_size=512, warmup_steps=65536, tau=0.01, RL_actions_per_state=9, tube_method='inflation', inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2)], smart_tube_rate=0.75, output_dir=PosixPath('/Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-01-34_Drone4D_x0set'))
+22:01:56 INFO     Training PPO (JAX) finished in 21.27s (2949120 timesteps).
+22:01:58 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:01:58 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+22:01:58 INFO     Goal reached in 24999/25000 evaluation episodes.
+22:01:58 INFO     Added 5625 cells of the initial set x0_box to the visited cells.
+22:01:58 INFO     Growing the tube around the RL rollouts (method: inflation)...
+22:02:00 INFO     Identified 133013 active states from RL exploration.
+
+22:02:00 INFO     <<< Generating model and running RL took 25.387 sec. >>>
+
+22:02:00 INFO     === Define sparse partition ===
+22:02:00 INFO     - Partition cell keys: int32 (dense grid 80x10x80x10 = 640,000 cells)
+22:02:00 INFO     (Number of states: 133013)
+22:02:00 INFO     (Number of actions: 9)
+22:02:00 INFO     === Start forward reachability computations ===
+22:02:00 INFO     - FRS merge key: int32 (radix product 625)
+22:02:02 INFO     - FRS index boxes stored as int8
+22:02:02 INFO     - Maximum span of the forward reachable sets: (4, 2, 4, 2)
+22:02:02 INFO     - Max number of noise cells state-slice after merging: 16
+22:02:02 INFO     - Forward reachable sets computed (took 2.167 sec.)
+22:02:02 INFO     Reachability computations took 2.167 sec.
+22:02:02 INFO     Initial state x0=[-14.75   0.2  -14.75   0.2 ] (x0_box=[[-18.5  -0.8 -18.5  -0.8]
+ [-11.    1.2 -11.    1.2]]) → 5625 state(s): [6487 6488 6489 6490 6491 6497 6498 6499 6500 6501]
+
+22:02:02 INFO     <<< Generating SVMDP abstraction took 2.491 sec. >>>
+
+22:02:02 INFO     === SVMDP policy synthesis ===
+22:02:02 INFO     (Algorithm: robust policy iteration)
+22:02:02 INFO     - Number of states: 133013
+22:02:02 INFO     - Total number of choices: 1197117 (total number of state-action pairs)
+22:02:02 INFO     - Max number of actions per state: 9
+22:02:02 INFO     - Batch size for dynamic programming over states: 1000
+22:02:02 INFO     - Set states to update...
+22:02:02 INFO       (Active states in initial mask: 125011)
+22:02:02 INFO     - SVMDP defined (took 0.057s)
+22:02:17 INFO     - Policy synthesis finished (took 15.044s)
+
+22:02:17 INFO     <<< SVMDP policy synthesis done (took 15.102 sec.) >>>
+
+22:02:17 INFO     Value in initial state (min over 5625 cells): 0.990203
+
+22:02:18 INFO     === Start Monte Carlo simulations ===
+22:02:35 INFO     Empirical satisfaction probability: 1.0
+22:02:35 INFO     Run summary saved to /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-01-34_Drone4D_x0set/summary.csv
+22:02:36 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:02:36 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+22:02:36 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:02:36 WARNING  'modified' timestamp seems very low; regarding as unix timestamp

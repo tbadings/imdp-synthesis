@@ -1,0 +1,65 @@
+22:30:30 INFO     Run 2026-11-09_22-30-30 | model=Drone4D_x0set | noise=gaussian
+22:30:30 INFO     Output directory: /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-30-30_Drone4D_x0set
+22:30:30 INFO     
+=== Generate SVMDP from scratch ===
+22:30:30 INFO     - Noise partition: 100 cells total  |  remainder=0.0001
+22:30:30 INFO     Parse nonlinear dynamical model...
+22:30:30 INFO     Model parsing done (took 0.005 sec.)
+22:30:30 INFO     Resolved RL config (algorithm: ppo): RLConfig(rl_algo='ppo', goal_reward=10.0, unsafe_penalty=-1.0, out_of_bounds_penalty=-1.0, distance_cost=0.0, per_step_cost=0.05, proximity_penalty=0.5, proximity_dims=[0, 2], max_steps=128, eval_steps=None, eval_episodes=25000, total_timesteps=3000000, learning_rate=0.0003, ent_coef=0.02, rl_batch_size=128, n_steps=128, n_envs=32, update_epochs=10, clip_eps=0.2, vf_coef=0.5, max_grad_norm=0.5, gamma=0.99, gae_lambda=0.95, adam_eps=1e-05, pi_arch=(64, 64), vf_arch=(64, 64), buffer_size=262144, sac_batch_size=512, warmup_steps=65536, tau=0.01, RL_actions_per_state=9, tube_method='inflation', inflation_rate=[(-4, 4), (-2, 2), (-4, 4), (-2, 2)], smart_tube_rate=0.75, output_dir=PosixPath('/Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-30-30_Drone4D_x0set'))
+22:30:52 INFO     Training PPO (JAX) finished in 21.27s (2949120 timesteps).
+22:30:54 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:30:54 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+22:30:54 INFO     Goal reached in 24865/25000 evaluation episodes.
+22:30:54 INFO     Added 11025 cells of the initial set x0_box to the visited cells.
+22:30:54 INFO     Growing the tube around the RL rollouts (method: inflation)...
+22:30:56 INFO     Identified 142807 active states from RL exploration.
+
+22:30:56 INFO     <<< Generating model and running RL took 25.911 sec. >>>
+
+22:30:56 INFO     === Define sparse partition ===
+22:30:56 INFO     - Partition cell keys: int32 (dense grid 80x10x80x10 = 640,000 cells)
+22:30:56 INFO     (Number of states: 142807)
+22:30:56 INFO     (Number of actions: 9)
+22:30:56 INFO     === Start forward reachability computations ===
+22:30:56 INFO     - FRS merge key: int32 (radix product 625)
+22:30:59 INFO     - FRS index boxes stored as int8
+22:30:59 INFO     - Maximum span of the forward reachable sets: (4, 2, 4, 2)
+22:30:59 INFO     - Max number of noise cells state-slice after merging: 16
+22:30:59 INFO     - Forward reachable sets computed (took 2.401 sec.)
+22:30:59 INFO     Reachability computations took 2.401 sec.
+22:30:59 INFO     Initial state x0=[-14.75   0.2  -14.75   0.2 ] (x0_box=[[-20.   -0.8 -20.   -0.8]
+ [ -9.5   1.2  -9.5   1.2]]) → 11025 state(s): [452 453 454 455 456 461 462 463 464 465]
+
+22:30:59 INFO     <<< Generating SVMDP abstraction took 2.765 sec. >>>
+
+22:30:59 INFO     === SVMDP policy synthesis ===
+22:30:59 INFO     (Algorithm: robust policy iteration)
+22:30:59 INFO     - Number of states: 142807
+22:30:59 INFO     - Total number of choices: 1285263 (total number of state-action pairs)
+22:30:59 INFO     - Max number of actions per state: 9
+22:30:59 INFO     - Batch size for dynamic programming over states: 1000
+22:30:59 INFO     - Set states to update...
+22:30:59 INFO       (Active states in initial mask: 133454)
+22:30:59 INFO     - SVMDP defined (took 0.061s)
+22:31:21 INFO     - Policy synthesis finished (took 22.124s)
+
+22:31:21 INFO     <<< SVMDP policy synthesis done (took 22.187 sec.) >>>
+
+22:31:21 INFO     Value in initial state (min over 11025 cells): 0.000066
+
+22:31:21 INFO     === Start Monte Carlo simulations ===
+22:31:23 INFO     - Absorbing state reached at k = 1 (x_k = [-20.17320442   0.20039171  -9.94838142  -0.05033332]; s_(k-1) = 626; a_(k-1) = 0), so abort
+22:31:24 INFO     - Absorbing state reached at k = 1 (x_k = [-20.32746124   0.43581855 -15.48816299  -0.18794666]; s_(k-1) = 534; a_(k-1) = 4), so abort
+22:31:27 INFO     - Absorbing state reached at k = 1 (x_k = [-20.20114136   0.27598786 -13.70764637   1.01487768]; s_(k-1) = 545; a_(k-1) = 1), so abort
+22:31:28 INFO     - Absorbing state reached at k = 1 (x_k = [-15.99981213   0.22911495 -20.416502     0.20796704]; s_(k-1) = 15976; a_(k-1) = 0), so abort
+22:31:28 INFO     - Absorbing state reached at k = 1 (x_k = [-20.01750565   0.35833716 -13.25803947  -0.66673124]; s_(k-1) = 582; a_(k-1) = 4), so abort
+22:31:32 INFO     - Absorbing state reached at k = 1 (x_k = [-12.90250969   0.24443138 -20.47890472   0.26570135]; s_(k-1) = 38212; a_(k-1) = 0), so abort
+22:31:33 INFO     - Absorbing state reached at k = 1 (x_k = [-11.37766171   1.3480922  -20.00592613   0.23514694]; s_(k-1) = 38894; a_(k-1) = 0), so abort
+22:31:36 INFO     - Absorbing state reached at k = 1 (x_k = [-18.27964783   0.47117013 -20.20042038   0.2013272 ]; s_(k-1) = 7084; a_(k-1) = 0), so abort
+22:31:41 INFO     - Absorbing state reached at k = 1 (x_k = [-11.70588589   1.99496198 -20.30108452   0.22159743]; s_(k-1) = 33210; a_(k-1) = 0), so abort
+22:31:41 INFO     Empirical satisfaction probability: 0.991
+22:31:41 INFO     Run summary saved to /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_22-30-30_Drone4D_x0set/summary.csv
+22:31:41 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:31:41 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+22:31:42 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+22:31:42 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
