@@ -52,6 +52,8 @@ def parse_arguments(argv=None):
 
     parser.add_argument('--dense', action=argparse.BooleanOptionalAction, default=False,
                         help="If True, use dense partitioning without the need of RL exploration.")
+    parser.add_argument('--rrt', action='store_true',
+                        help="Use the optional kinodynamic RRT experiment in Main_SVMDP.py.")
     parser.add_argument('--model', type=str, default='',
                         help="Benchmark model to run")
     parser.add_argument('--model_version', type=int, default=0,
