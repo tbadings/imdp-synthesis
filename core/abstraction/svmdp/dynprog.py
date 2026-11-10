@@ -9,7 +9,7 @@ from typing import Optional, Tuple, Union
 from jaxtyping import Array, UInt8, Float32
 
 from core.abstraction.svmdp.svmdp import SVMDP
-from core.utils import create_batches
+from core.utils import create_batches, DPStagnationCheck
 
 logger = logging.getLogger(__name__)
 
@@ -289,6 +289,13 @@ def SVMDP_DP(
     start_time = time.time()
     
     satprob = args.satprob
+
+    # Optional early termination if the value in the initial state(s) stagnates (disabled if either option is 0)
+    stagnation = DPStagnationCheck(getattr(args, 'dp_terminate_window', 0), getattr(args, 'dp_terminate_improvement', 0.0))
+    if stagnation.enabled:
+        logger.info(f'- Early termination enabled: {stagnation.describe()}')
+        stagnation.update(V[s0].min())
+
     pbar = tqdm(desc='Iteration', total=None, unit='it', dynamic_ncols=True, leave=True)
     if not policy_iteration:
         # Value iteration
@@ -316,6 +323,11 @@ def SVMDP_DP(
             # Check convergence
             if np.max(np.abs(V - V_old)) < epsilon:
                 pbar.write(f'Converged after {iteration + 1} iterations')
+                break
+
+            # Early termination if the value in the initial state(s) stagnates
+            if stagnation.update(V[s0].min()):
+                pbar.write(stagnation.message(iteration + 1))
                 break
 
     else:
@@ -433,6 +445,11 @@ def SVMDP_DP(
                         'Decrease epsilon to refine values...'
                     )
                     partial_convergence_reached = True
+
+            # Early termination if the value in the initial state(s) stagnates
+            if stagnation.update(V[s0].min()):
+                pbar.write(stagnation.message(iteration + 1))
+                break
 
     pbar.close()
 

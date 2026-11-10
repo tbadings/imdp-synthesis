@@ -22,6 +22,11 @@ path_to_prism.txt
 output/*
 !output/.dontRemove
 
+# Avoid figures from experiment logs to be pushed
+experiment_logs_Q4/**/*.pdf
+experiment_logs_Q4/**/*.png
+figures_Q4/*
+
 # Avoid ancillary folder to be pushed
 _ancillary/*
 

@@ -1,4 +1,5 @@
 import logging
+from collections import deque
 
 import numpy as np
 
@@ -109,3 +110,45 @@ def jit_compile_count(jitted_function) -> int | None:
         return int(cache_size_fn())
     except Exception:
         return None
+
+
+class DPStagnationCheck:
+    """
+    Early termination of dynamic programming when the tracked value stagnates.
+
+    Terminates once the tracked value (the minimum value over the initial states) has improved by
+    less than ``improvement`` over the last ``iterations`` iterations. Disabled (never terminates)
+    if either ``iterations`` or ``improvement`` is zero, so that dynamic programming runs until
+    convergence.
+    """
+
+    def __init__(self, iterations: int, improvement: float):
+        self.iterations = int(iterations)
+        self.improvement = float(improvement)
+        self.enabled = self.iterations > 0 and self.improvement > 0
+        self.history = deque(maxlen=self.iterations + 1)
+
+    def update(self, value: float) -> bool:
+        """
+        Record the tracked value (call once before the first iteration and once after every iteration).
+
+        :param value: Current tracked value
+        :return: True if dynamic programming should terminate
+        """
+        if not self.enabled:
+            return False
+        self.history.append(float(value))
+        return len(self.history) == self.history.maxlen and self.gain < self.improvement
+
+    @property
+    def gain(self) -> float:
+        """Improvement of the tracked value over the current window."""
+        return self.history[-1] - self.history[0]
+
+    def describe(self) -> str:
+        return (f'stop if min v[s0] improves by less than {self.improvement:g} '
+                f'over {self.iterations} iterations')
+
+    def message(self, iteration: int) -> str:
+        return (f'Early termination after {iteration} iterations: min v[s0]={self.history[-1]:.6f} improved by '
+                f'{self.gain:.6f} < {self.improvement:g} over the last {self.iterations} iterations')

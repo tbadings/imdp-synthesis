@@ -16,6 +16,13 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if not parsed >= 0.0:
+        raise argparse.ArgumentTypeError('Expected a non-negative number.')
+    return parsed
+
+
 def _probability(value: str) -> float:
     parsed = float(value)
     if not 0.0 <= parsed <= 1.0:
@@ -70,6 +77,10 @@ def parse_arguments(argv=None):
                         help="If true, run policy iteration. Otherwise, run value iteration")
     parser.add_argument('--solver', type=str, default='jax', choices=['jax', 'storm'],
                         help="Solver backend to use for robust dynamic programming")
+    parser.add_argument('--dp_terminate_window', type=_nonnegative_int, default=0,
+                        help="Terminate dynamic programming if the value in the initial state(s) (min over V[s0]) has not improved by at least --dp_terminate_improvement over the last this many iterations. If 0 (or if --dp_terminate_improvement is 0), run until convergence.")
+    parser.add_argument('--dp_terminate_improvement', type=_nonnegative_float, default=0.0,
+                        help="Minimum improvement of the value in the initial state(s) (min over V[s0]) required over the last --dp_terminate_window iterations to keep running dynamic programming. If 0 (or if --dp_terminate_window is 0), run until convergence.")
 
     parser.add_argument('--mode', type=str, default='fori_loop',
                         help="Should be one of 'fori_loop', 'vmap', 'python'")
