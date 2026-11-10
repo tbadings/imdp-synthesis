@@ -371,7 +371,7 @@ if __name__ == "__main__":
 
     # Dubins4D_x0set
     # Stop dynamic programming if min V[s0] improves by less than 0.001 within 10 iterations
-    dubins_dp_stop = ["--dp_terminate_window", "10", "--dp_terminate_improvement", "0.001"]
+    dubins_dp_stop = ["--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001"]
     for v in [1, 2, 3, 4]:
         v = str(v)
         run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version", v, *dubins_dp_stop])
