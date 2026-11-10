@@ -160,10 +160,10 @@ def config_Drone4D_battery() -> list[str]:
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-    for tube_radius in ((4, 2, 4, 2), (5, 3, 5, 3), (6, 4, 6, 4), (7, 5, 7, 5), (8, 6, 8, 6)):
+    for tube_radius in ((5, 5, 5, 5), (6, 6, 6, 6), (7, 7, 7, 7), (8, 8, 8, 8), (9, 9, 9, 9)):
         for seed in range(5):
             run_fixed_SVMDP(
-                args=["--model", "Drone4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", str(seed)],
+                args=["--model", "Dubins4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", str(seed)],
                 rrt=dict(
                     iterations=15000,
                     step_horizon=1,
