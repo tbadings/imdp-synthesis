@@ -13,12 +13,12 @@ if __name__ == "__main__":
     root = Path(__file__).resolve().parent
 
     inflation_rates = [
-        ["1", "1", "1", "1"],
+        # ["1", "1", "1", "1"],
         ["2", "1", "2", "1"], 
         ["4", "2", "4", "2"],
-        ["6", "3", "6", "3"],
+        # ["6", "3", "6", "3"],
     ]
-    active_actions = [1, 4, 9, 16, 25]
+    active_actions = [9] # [1, 4, 9, 16, 25]
 
     for inf in inflation_rates:
         for act in active_actions:

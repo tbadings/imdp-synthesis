@@ -58,7 +58,7 @@ class Dubins4D_x0set(DubinsDynamics4D):
         self.x0 = np.array([-3, 2, np.pi/2, 0.0]) + 0.5 * cell_width
 
         # The initial state set is defined through the provided model version
-        factor = 0.5 + np.array([1 * args.model_version, 1 * args.model_version, 1 * args.model_version, 2])
+        factor = 0.5 + np.array([1 * args.model_version, 1 * args.model_version, 2, 2])
         self.x0_box = np.array([self.x0 - factor * cell_width,
                                 self.x0 + factor * cell_width])
 

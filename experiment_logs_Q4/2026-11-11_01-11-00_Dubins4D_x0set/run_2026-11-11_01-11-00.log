@@ -1,0 +1,15 @@
+01:11:00 INFO     Run 2026-11-11_01-11-00 | model=Dubins4D_x0set | noise=gaussian
+01:11:00 INFO     Output directory: /Users/tbadings/Documents/Code/ICLR27_rebuttal/imdp-synthesis/experiment_logs_Q4/2026-11-11_01-11-00_Dubins4D_x0set
+01:11:00 INFO     
+=== Generate SVMDP from scratch ===
+01:11:00 INFO     - Load Dubins without parameter uncertainty
+01:11:00 INFO     - Noise partition: 25 cells total  |  remainder=0.0001
+01:11:00 INFO     Parse nonlinear dynamical model...
+01:11:00 INFO     Model parsing done (took 0.014 sec.)
+01:11:00 INFO     Using DensePartition (RL exploration skipped).
+01:11:00 INFO     Define dense partition...
+01:11:12 INFO     - Partition cell keys: int32 (dense grid 100x50x100x100 = 50,000,000 cells)
+01:11:31 INFO     (Number of states: 50000000)
+01:11:31 INFO     (Number of actions: 25)
+01:11:32 INFO     === Start forward reachability computations ===
+01:11:32 INFO     - FRS merge key: int32 (radix product 225)

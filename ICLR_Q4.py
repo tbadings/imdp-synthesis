@@ -83,6 +83,12 @@ _XY_DIMS = {
     "Dubins4D_x0set": [(0, -10.0, 10.0, 100), (1, 0.0, 10.0, 50)],   # state [x, y, theta, v]
     "CartPole_x0set": [(0, -2.4, 2.4, 200), (2, -0.25, 0.25, 200)],  # same X0 scaling as Drone4D_x0set
 }
+# Per benchmark, the number of cells per dimension of the dense grid (partition['number_per_dim'] in
+# benchmarks/<model>.py; keep in sync). The dense baseline has one state per cell, whatever X0 is, so
+# the states plot shows this number for every X0 span without a dense run (e.g. one that ran out of memory).
+_DENSE_GRID = {
+    "Dubins4D_x0set": (100, 50, 100, 100),  # 5.0*10^7 states
+}
 
 
 def _x0_cell_span(lb: float, ub: float, grid_lb: float, grid_ub: float, n: int) -> float:
@@ -180,6 +186,13 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
     """One pgfplots axis: per RL method a min/max band over seeds with the median as a line."""
     spec = _METRICS[metric]
     data = spec.get("data", metric)
+    # The dense baseline's number of states, at the X0 spans without a dense run (see _DENSE_GRID)
+    filled = []
+    if data == "states" and spec["dense"] and model in _DENSE_GRID:
+        dense = dict(per_method.get("dense", {}))
+        filled = sorted({x for m, runs in per_method.items() if m != "dense" for x in runs} - set(dense))
+        dense.update({x: {0: {"states": math.prod(_DENSE_GRID[model])}} for x in filled})
+        per_method = {**per_method, "dense": dense}
     methods = _ordered(m for m in per_method if m != "dense" or spec["dense"])
     spans = sorted({x for m in methods for x in per_method[m]})
     if len(spans) <= 5:
@@ -246,6 +259,9 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
         medians = _coords((v, median(vals)) for v, vals in per_span.items())
         if m == "dense":
             out.append(f"% {_style(m)['label']} (single deterministic run per X0 span)")
+            if filled:
+                out.append(f"% No dense run for X0 span(s) {', '.join(f'{x:g}' for x in filled)}: there, the number "
+                           f"of cells of the dense grid ({'x'.join(map(str, _DENSE_GRID[model]))}) is plotted")
         else:
             lower = [(v, min(vals)) for v, vals in per_span.items()]
             upper = [(v, max(vals)) for v, vals in per_span.items()]
@@ -317,7 +333,7 @@ def generate_Q4_plots(log_dir: Path = ROOT / "experiment_logs_Q4", out_dir: Path
       <model>_bound.tex    bound on the reach-avoid probability, plus the dense baseline
       <model>_bound_broken.tex  the same, on a broken y axis (0-0.9 and 0.9-1, half the height each)
       <model>_runtime.tex  total runtime (RL + abstraction + synthesis)
-      <model>_states.tex   number of states of the abstraction
+      <model>_states.tex   number of states of the abstraction (for the dense baseline, see _DENSE_GRID)
     plus one shared `legend.tex`. Each file holds one tikzpicture to `\\input` into a paper.
     `width` is the width of the whole picture (labels included), `height` that of the axis box.
     By default a plot fills the width of its container, so put each one in a
@@ -332,7 +348,10 @@ def generate_Q4_plots(log_dir: Path = ROOT / "experiment_logs_Q4", out_dir: Path
     out_dir.mkdir(parents=True, exist_ok=True)
 
     written = []
-    all_methods = _ordered({m for per_method in results.values() for m in per_method})
+    all_methods = {m for per_method in results.values() for m in per_method}
+    if any(model in _DENSE_GRID for model in results):
+        all_methods.add("dense")  # its number of states is plotted even without dense runs
+    all_methods = _ordered(all_methods)
     legend = out_dir / "legend.tex"
     legend.write_text(_tikz_legend(all_methods))
     written.append(legend)
@@ -368,12 +387,8 @@ if __name__ == "__main__":
     if "--plot" in sys.argv[1:]:
         generate_Q4_plots()
         sys.exit(0)
-
-    dubins_dp_stop = ["--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001", "--dp_terminate_min_iterations", "10"]
-    v = str(4)
-    run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version",v, *dubins_dp_stop])
     
-    # # Drone4D_x0set
+    # Drone4D_x0set
     # for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
     #     v = str(v)
     #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version",v])
@@ -390,36 +405,19 @@ if __name__ == "__main__":
     #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version",v])
     #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version",v])
 
-    # # Dubins4D_x0set
-    # # Stop dynamic programming if min V[s0] improves by less than 0.001 within 5 iterations (but do at least 10 iterations)
-    # dubins_dp_stop = ["--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001", "--dp_terminate_min_iterations", "20"]
-    # for v in [1, 2, 3, 4]:
-    #     v = str(v)
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version", v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version", v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
-    # for v in [1, 2, 3, 4]:
-    #     v = str(v)
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version",v, *dubins_dp_stop])
-    #     run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version",v, *dubins_dp_stop])
-
-    # CartPole_x0set
-    # for v in [2, 5, 8]:
-    #         v = str(v)
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version", v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version", v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version",v])
-    #         run_fixed_SVMDP(args = ["--model","Cartpole_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version",v])
+    # Dubins4D_x0set
+    # Stop dynamic programming if min V[s0] improves by less than 0.001 within 5 iterations (but do at least 10 iterations)
+    dubins_dp_stop = ["--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001", "--dp_terminate_min_iterations", "10"]
+    for v in [1, 2, 3, 4, 5, 6]:
+        v = str(v)
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version", v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version", v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version",v, *dubins_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version",v, *dubins_dp_stop])
