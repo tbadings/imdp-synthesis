@@ -38,6 +38,7 @@ if __name__ == '__main__':
 
     stamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     out_dict = {}
+    planning_reference = None
 
     ckpt = {}
     if args.load_checkpoint:
@@ -52,6 +53,7 @@ if __name__ == '__main__':
         args.model = ckpt['args'].model
         args.model_version = getattr(ckpt['args'], 'model_version', args.model_version)
         out_dict.update(ckpt.get('out_dict', {}))
+        planning_reference = ckpt.get('planning_reference')
 
         run_output_dir = args.root_dir / args.output_root / f"{stamp}_{args.model}"
         run_output_dir.mkdir(parents=True, exist_ok=True)
@@ -80,6 +82,15 @@ if __name__ == '__main__':
         if args.dense:
             logger.info('Using DensePartition (RL exploration skipped).')
             partition = DensePartition(model=model)
+        elif args.rrt:
+            from core.rrt import find_active as find_planned_states
+
+            active_states, active_actions, planning_reference, metrics = find_planned_states(model, args)
+            out_dict.update(metrics)
+            t = time.time()
+            partition = SparsePartition(model=model, active_states=active_states, active_actions=active_actions)
+            out_dict['exploration'] = 'rrt'
+            del active_states, active_actions
         else:
             active_states, active_actions, _ = find_active(model, args=args)
             logger.info(f"Identified {len(active_states)} active states from RL exploration.\n")
@@ -217,6 +228,7 @@ if __name__ == '__main__':
                 'model': model, 'partition': partition, 'svmdp': svmdp,
                 'args': args_to_save, 'V': np.asarray(V), 'policy': np.asarray(policy),
                 'sim_results': sim_results, 'out_dict': out_dict,
+                'planning_reference': planning_reference,
             }, f, protocol=pickle.HIGHEST_PROTOCOL)
         logger.info('Checkpoint saved.\n')
 
