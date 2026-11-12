@@ -48,8 +48,10 @@ _FALLBACK_STYLE = {"rgb": "27,175,122", "mark": "diamond*"}
 # "legend": put a legend inside that plot, at this pgfplots `legend pos`.
 # "data": plot this metric's data instead of the key's own (to show one metric in two ways).
 # "break": (b, f) gives a broken y axis on [0, 1]: values 0..b take the bottom fraction f of the
-#          plot height and b..1 the rest, with a zigzag line across the plot and break marks on
-#          the y axis at b.
+#          plot height and b..1 the rest, with a zigzag line across the plot at b.
+# "invlog": plot 1 - p instead of p. With "ymode=log, y dir=reverse" in "axis", this gives an inverse
+#           log axis: each "nine" (0-0.9, 0.9-0.99, ...) takes the same height and p = 1 is at the top.
+#           The ticks are then given in 1 - p, with the labels in p.
 _METRICS = {
     "bound":   {"ylabel": r"Reach-avoid prob.", "axis": "ymin=0.9, ymax=1", "dense": True,
                 "legend": "south west", "note": "Bounds below ymin lie outside the axis range and are clipped."},
@@ -57,16 +59,32 @@ _METRICS = {
                      "axis": "ymin=0, ymax=1, ytick={0,0.5,0.9,0.95,1}, yticklabels={0,0.5,0.9,0.95,1}",
                      "legend": "south west",
                      "note": "Broken y axis: 0-0.9 fills the bottom half of the plot, 0.9-1 the top half."},
+    "bound_invlog": {"data": "bound", "ylabel": r"Reach-avoid prob.", "invlog": True, "dense": True,
+                     # Labeled ticks at p = 0, 0.5, 0.9, 0.95, 0.99 and, as usual on a log scale, minor
+                     # ticks at 2, 3, ..., 9 times each power of 10 (in 1 - p)
+                     "axis": "ymode=log, y dir=reverse, ymin=0.005, ymax=1,\n"
+                             "    ytick={1,0.5,0.1,0.05,0.01}, yticklabels={0,0.5,0.9,0.95,0.99},\n"
+                             "    minor ytick={0.2,0.3,...,0.9, 0.02,0.03,...,0.09, 0.006,0.007,...,0.009}",
+                     "legend": "south west",
+                     "note": "Inverse log y axis: the y coordinates are 1 - p on a reversed log axis; the tick labels show p. "
+                             "Bounds above 0.995 lie outside the axis range and are clipped."},
     # Ticks of 1000 s or more are shown as multiples of 10^3 (as "1, 2, ..." with "x10^3" on top),
     # since labels like "4,000" are too wide for the left label margin
     "runtime": {"ylabel": r"Total runtime [s]", "axis": "ymin=0, scale ticks above exponent=2", "dense": True},
     "states":  {"ylabel": r"Abstract states ($|S|$)", "axis": "ymin=0", "dense": True},
+    "states_log": {"data": "states", "ylabel": r"Abstract states ($|S|$)", "axis": "ymode=log", "dense": True},
+}
+# Per benchmark, the legend position (pgfplots `legend pos`) that replaces the metrics' "legend" above
+_MODEL_LEGEND = {
+    "Dubins4D_x0set": "north east",
 }
 # Per benchmark, axis options that replace a metric's "axis" above (e.g. a fixed y range that only
 # suits that benchmark's data). Without an entry, the metric's "axis" is used, and with only ymin
 # set, pgfplots picks the upper limit and ticks from the data.
 _MODEL_AXIS = {
-    "Drone4D_x0set": {"runtime": "ymin=0, ymax=150, ytick={0,50,100,150}"},
+    "Drone4D_x0set": {"runtime": "ymin=0, ymax=150, ytick={0,50,100,150}",
+                      # The data spans less than a decade, for which pgfplots would label 10^5.5
+                      "states_log": "ymode=log, ymin=5e4, ymax=1e6"},
 }
 _PREVIEW_MACROS = [r"\providecommand{\satprob}{\mathrm{Pr}}",  # as in the paper's ancillary/include.tex
                    r"\providecommand{\X}{\mathcal{X}}"]
@@ -204,6 +222,8 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
     else:
         xticks = _nice_ticks(spans[0], spans[-1])  # at most 5 round ticks, so the labels fit
         xmin, xmax = spans[0], spans[-1]
+    # The y coordinate of a value: 1 - p on an inverse log axis, else the value itself
+    to_y = (lambda p: 1 - p) if spec.get("invlog") else (lambda v: v)
     axis = _MODEL_AXIS.get(model, {}).get(metric, spec["axis"])
 
     out = [
@@ -223,7 +243,7 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
         f"    xmin={xmin:g}, xmax={xmax:g}, xtick={{{','.join(f'{t:g}' for t in xticks)}}},",
         f"    {axis},",
         "    grid=major, grid style={gray!20}, clip marker paths=true,",
-        "    label style={font=\\footnotesize}, tick label style={font=\\footnotesize, inner sep=2pt},",
+        "    label style={font=\\footnotesize}, tick label style={font=\\fontsize{8}{9}\\selectfont, inner sep=2pt},",
         "    xlabel shift=-2pt, ylabel shift=-3pt,  % labels close to the tick labels",
     ]
     if "break" in spec:
@@ -236,10 +256,11 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
         ]
     if "legend" in spec:
         out += [
-            f"    legend pos={spec['legend']}, legend cell align=left,",
-            "    legend style={font=\\footnotesize, draw=none, fill=white, fill opacity=0.8, text opacity=1,",
-            "        inner sep=1pt, row sep=-3pt},",
-            "    legend image post style={xscale=0.6},",
+            f"    legend pos={_MODEL_LEGEND.get(model, spec['legend'])}, legend cell align=left,",
+            "    legend style={xshift=0pt, yshift=0pt, font=\\fontsize{8}{9}\\selectfont, draw=none, fill=white, fill opacity=0.8, text opacity=1,",
+            "        inner sep=0.5pt, row sep=-3.5pt},",
+            "    % Short line samples (0.36cm instead of 0.6cm) with the marker at full size in the middle",
+            "    legend image code/.code={\\draw[mark repeat=2, mark phase=2, #1] plot coordinates {(0cm,0cm) (0.15cm,0cm) (0.30cm,0cm)};},",
         ]
     out += [
         "]",
@@ -255,7 +276,7 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
             f"\\draw[gray!70, thin, line join=round] {zigzag};",
         ]
     for m in methods:
-        per_span = {v: [run[data] for run in seeds.values()] for v, seeds in sorted(per_method[m].items())}
+        per_span = {v: [to_y(run[data]) for run in seeds.values()] for v, seeds in sorted(per_method[m].items())}
         medians = _coords((v, median(vals)) for v, vals in per_span.items())
         if m == "dense":
             out.append(f"% {_style(m)['label']} (single deterministic run per X0 span)")
@@ -273,18 +294,6 @@ def _tikz_plot(model: str, per_method: dict, metric: str, width: str, height: st
         if "legend" in spec:
             out.append(f"\\addlegendentry{{{_style(m)['label']}}}")
     out.append("\\end{axis}")
-    if "break" in spec:
-        b, f = spec["break"]
-        out += [
-            f"% Break marks on both sides of the y axis at {b:g}, where the scale changes",
-            f"\\path (current axis.south west) -- (current axis.north west) coordinate[pos={f:g}] (q4brkW);",
-            f"\\path (current axis.south east) -- (current axis.north east) coordinate[pos={f:g}] (q4brkE);",
-            "\\foreach \\p in {q4brkW, q4brkE} {",
-            "    \\fill[white] ([xshift=-1.5pt, yshift=-0.6pt]\\p) rectangle ([xshift=1.5pt, yshift=0.6pt]\\p);",
-            "    \\draw[semithick] ([xshift=-1.5pt, yshift=-1.6pt]\\p) -- ([xshift=1.5pt, yshift=-0.4pt]\\p)",
-            "                     ([xshift=-1.5pt, yshift=0.4pt]\\p) -- ([xshift=1.5pt, yshift=1.6pt]\\p);",
-            "}",
-        ]
     out += [
         f"% Fix the bounding box to exactly {width} wide: the axis box plus the label margins",
         f"\\path (current axis.south west |- current bounding box.south) ++(-{_LABEL_MARGIN_LEFT},0) coordinate (q4sw)",
@@ -306,7 +315,7 @@ def _tikz_legend(methods) -> str:
         *_color_defs(methods),
         "\\begin{axis}[",
         "    hide axis, scale only axis, width=1pt, height=1pt, xmin=0, xmax=1, ymin=0, ymax=1,",
-        "    legend columns=-1, legend style={draw=none, font=\\footnotesize, at={(0.5,0.5)}, anchor=center,",
+        "    legend columns=-1, legend style={draw=none, font=\\fontsize{8}{9}\\selectfont, at={(0.5,0.5)}, anchor=center,",
         "        /tikz/every even column/.append style={column sep=1em}},",
         "]",
     ]
@@ -324,7 +333,7 @@ def _tikz_legend(methods) -> str:
 
 
 def generate_Q4_plots(log_dir: Path = ROOT / "experiment_logs_Q4", out_dir: Path = ROOT / "figures_Q4",
-                      width: str = "\\linewidth", height: str = "2.5cm") -> list[Path]:
+                      width: str = "\\linewidth", height: str = "2.4cm") -> list[Path]:
                       
     """Write TikZ/pgfplots figures for every benchmark in `log_dir` to `out_dir`.
 
@@ -332,8 +341,10 @@ def generate_Q4_plots(log_dir: Path = ROOT / "experiment_logs_Q4", out_dir: Path
     over seeds (band) and the median (line) per RL algorithm:
       <model>_bound.tex    bound on the reach-avoid probability, plus the dense baseline
       <model>_bound_broken.tex  the same, on a broken y axis (0-0.9 and 0.9-1, half the height each)
+      <model>_bound_invlog.tex  the same, on an inverse log y axis (equal height per "nine": 0.9, 0.99, ...)
       <model>_runtime.tex  total runtime (RL + abstraction + synthesis)
       <model>_states.tex   number of states of the abstraction (for the dense baseline, see _DENSE_GRID)
+      <model>_states_log.tex  the same, on a log y axis
     plus one shared `legend.tex`. Each file holds one tikzpicture to `\\input` into a paper.
     `width` is the width of the whole picture (labels included), `height` that of the axis box.
     By default a plot fills the width of its container, so put each one in a
@@ -387,23 +398,28 @@ if __name__ == "__main__":
     if "--plot" in sys.argv[1:]:
         generate_Q4_plots()
         sys.exit(0)
-    
+
+    # Runs for RL rollout plots
+    # Drone4D (w=8.5)
+    run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4/rollout_plots", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version","8", "--paper_figures", "--no-mc_simulations"])
+    # Dubins4D (w=1.8)
+    run_fixed_SVMDP(args = ["--model","Dubins4D_x0set", "--output_root", "experiment_logs_Q4/rollout_plots", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version","4", "--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001", "--dp_terminate_min_iterations", "10", "--paper_figures", "--no-mc_simulations"])
+
     # Drone4D_x0set
-    # for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
-    #     v = str(v)
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo", "--model_version",v])
-    # for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]:
-    #     v = str(v)
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version",v])
-    #     run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version",v])
+    drone_dp_stop = ["--dp_terminate_window", "5", "--dp_terminate_improvement", "0.001", "--dp_terminate_min_iterations", "25"]
+    for v in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]:
+        v = str(v)
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--dense", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","ppo", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","ppo", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","ppo", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","ppo", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","sac", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","1", "--algo","sac", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","2", "--algo","sac", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","3", "--algo","sac", "--model_version", v, *drone_dp_stop])
+        run_fixed_SVMDP(args = ["--model","Drone4D_x0set", "--output_root", "experiment_logs_Q4", "--solver","jax", "--satprob","0.99", "--seed","4", "--algo","sac", "--model_version", v, *drone_dp_stop])
 
     # Dubins4D_x0set
     # Stop dynamic programming if min V[s0] improves by less than 0.001 within 5 iterations (but do at least 10 iterations)

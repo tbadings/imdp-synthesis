@@ -2,10 +2,11 @@ from pathlib import Path
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection, PatchCollection
+from matplotlib.colors import to_rgba
 import numpy as np
 from core.plotting.utils import (
     col, style_axes, save_fig, set_plot_ticks,
-    GOAL_COLOR, CRITICAL_COLOR, GOAL_HATCH, CRITICAL_HATCH, START_COLOR, END_COLOR
+    GOAL_COLOR, CRITICAL_COLOR, GOAL_HATCH, CRITICAL_HATCH, START_COLOR, END_COLOR, X0_COLOR
 )
 from core.plotting.traces import _format_state_label_math
 
@@ -102,7 +103,7 @@ def plot_rl_trajectories(args, base_model, eval_env, trajectories, dims, output_
     legend_handles = []
 
     # Goal & unsafe regions
-    regions = [(getattr(eval_env, "critical", None), CRITICAL_COLOR, 'darkred', 'Critical', CRITICAL_HATCH),
+    regions = [(getattr(eval_env, "critical", None), CRITICAL_COLOR, 'darkred', 'Unsafe', CRITICAL_HATCH),
                (getattr(eval_env, "goal", None), GOAL_COLOR, 'darkgreen', 'Goal', GOAL_HATCH)]
     for boxes, c, ec, lbl, hatch in regions:
         if boxes is not None and boxes.size > 0:
@@ -113,6 +114,13 @@ def plot_rl_trajectories(args, base_model, eval_env, trajectories, dims, output_
         ax.add_patch(mpatches.Rectangle(s[0][[d0, d1]], *(s[1] - s[0])[[d0, d1]], facecolor=col('limegreen'), alpha=0.4, lw=1))
         ax.text(*(s[0] + s[1])[[d0, d1]] / 2, '⚡', fontsize=40, ha='center', va='center', color=col('darkgreen'))
         legend_handles.append(mpatches.Patch(facecolor=col('limegreen'), alpha=0.4, label='Charging'))
+
+    # Initial state set (if given), from which the initial states of the rollouts are sampled.
+    # Same style as in the trace plots (core/plotting/traces.py).
+    x0_box = getattr(base_model, 'x0_box', None)
+    if x0_box is not None:
+        lb0, ub0 = np.asarray(x0_box[0])[[d0, d1]], np.asarray(x0_box[1])[[d0, d1]]
+        ax.add_patch(mpatches.Rectangle(lb0, *(ub0 - lb0), facecolor=to_rgba(X0_COLOR, 0.3), edgecolor=col(X0_COLOR), lw=1.5, zorder=3))
 
     # RL trajectories
     for trace in (trajectories or [])[:max_trajectories]:

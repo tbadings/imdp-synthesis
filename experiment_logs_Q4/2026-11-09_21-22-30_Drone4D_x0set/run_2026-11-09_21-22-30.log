@@ -1,0 +1,46 @@
+21:22:30 INFO     Run 2026-11-09_21-22-30 | model=Drone4D_x0set | noise=gaussian
+21:22:30 INFO     Output directory: /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_21-22-30_Drone4D_x0set
+21:22:30 INFO     
+=== Generate SVMDP from scratch ===
+21:22:30 INFO     - Noise partition: 100 cells total  |  remainder=0.0001
+21:22:30 INFO     Parse nonlinear dynamical model...
+21:22:30 INFO     Model parsing done (took 0.005 sec.)
+21:22:30 INFO     Using DensePartition (RL exploration skipped).
+21:22:30 INFO     Define dense partition...
+21:22:30 INFO     - Partition cell keys: int32 (dense grid 80x10x80x10 = 640,000 cells)
+21:22:31 INFO     (Number of states: 640000)
+21:22:31 INFO     (Number of actions: 25)
+21:22:31 INFO     === Start forward reachability computations ===
+21:22:31 INFO     - FRS merge key: int32 (radix product 625)
+21:23:02 INFO     - FRS index boxes stored as int8
+21:23:02 INFO     - Maximum span of the forward reachable sets: (4, 2, 4, 2)
+21:23:02 INFO     - Max number of noise cells state-slice after merging: 16
+21:23:02 INFO     - Forward reachable sets computed (took 31.429 sec.)
+21:23:02 INFO     Reachability computations took 31.430 sec.
+21:23:02 INFO     Initial state x0=[-14.75   0.2  -14.75   0.2 ] (x0_box=[[-16.5  -0.8 -16.5  -0.8]
+ [-13.    1.2 -13.    1.2]]) → 1225 state(s): [58473 58474 58475 58476 58477 58483 58484 58485 58486 58487]
+
+21:23:02 INFO     <<< Generating SVMDP abstraction took 32.067 sec. >>>
+
+21:23:02 INFO     === SVMDP policy synthesis ===
+21:23:02 INFO     (Algorithm: robust policy iteration)
+21:23:02 INFO     - Number of states: 640000
+21:23:02 INFO     - Total number of choices: 16000000 (total number of state-action pairs)
+21:23:02 INFO     - Max number of actions per state: 25
+21:23:02 INFO     - Batch size for dynamic programming over states: 1000
+21:23:02 INFO     - Set states to update...
+21:23:02 INFO       (Active states in initial mask: 532800)
+21:23:03 INFO     - SVMDP defined (took 0.518s)
+21:24:32 INFO     - Policy synthesis finished (took 89.247s)
+
+21:24:32 INFO     <<< SVMDP policy synthesis done (took 89.766 sec.) >>>
+
+21:24:32 INFO     Value in initial state (min over 1225 cells): 0.993323
+
+21:24:32 INFO     === Start Monte Carlo simulations ===
+21:25:51 INFO     Empirical satisfaction probability: 1.0
+21:25:51 INFO     Run summary saved to /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/output/2026-11-09_21-22-30_Drone4D_x0set/summary.csv
+21:25:51 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+21:25:51 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+21:25:52 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+21:25:52 WARNING  'modified' timestamp seems very low; regarding as unix timestamp

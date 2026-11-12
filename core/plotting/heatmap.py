@@ -33,7 +33,7 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
         shrink = 0.8
 
     ax = sns.heatmap(DF, cmap='rocket', vmin=0, vmax=1, xticklabels=False, yticklabels=False, square=False,
-                     cbar_kws={'label': 'Satisfaction Probability', 'shrink': shrink, 'aspect': 25, 'pad': 0.03}, ax=ax)
+                     cbar_kws={'label': 'Reach-avoid Probability', 'shrink': shrink, 'aspect': 25, 'pad': 0.03}, ax=ax)
     ax.set_box_aspect(1)
 
     # Frame styling
@@ -45,12 +45,12 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     if not args.paper_figures:
         cbar = ax.collections[0].colorbar
         cbar.ax.tick_params(labelsize=18, length=5, width=1)
-        cbar.set_label('Satisfaction Probability', fontsize=18, labelpad=12)
+        cbar.set_label('Reach-avoid Probability', fontsize=18, labelpad=12)
         cbar.outline.set_linewidth(1)
     else:
         cbar = ax.collections[0].colorbar
         cbar.ax.tick_params(labelsize=40, length=5, width=1)
-        cbar.set_label('Satisfaction Probability', fontsize=45, labelpad=12)
+        cbar.set_label('Reach-avoid Probability', fontsize=45, labelpad=12)
         cbar.outline.set_linewidth(1)
 
     # Missing inactive cells
@@ -81,6 +81,8 @@ def heatmap(args, stamp, idx_show, slice_values=None, partition=None, results=No
     if args.plot_title and not args.paper_figures:
         ax.set_title(f"Heatmap for {args.model} ({filename})", fontsize=18, pad=12)
 
-    # Save figure
+    # Save figure. In paper style, the colorbar label is taller than the colorbar, and matplotlib's
+    # tight bounding box does not fully include it, so use a slightly wider margin to avoid cropping it.
     fig.tight_layout()
-    save_fig(fig, Path(getattr(args, 'output_dir', 'output')) / f'{filename}_{stamp}')
+    save_fig(fig, Path(getattr(args, 'output_dir', 'output')) / f'{filename}_{stamp}',
+             pad_inches=0.3 if args.paper_figures else 0.1)

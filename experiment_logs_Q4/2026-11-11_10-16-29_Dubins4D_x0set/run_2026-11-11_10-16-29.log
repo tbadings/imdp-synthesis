@@ -1,0 +1,59 @@
+10:16:29 INFO     Run 2026-11-11_10-16-29 | model=Dubins4D_x0set | noise=gaussian
+10:16:29 INFO     Output directory: /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/experiment_logs_Q4/2026-11-11_10-16-29_Dubins4D_x0set
+10:16:29 INFO     
+=== Generate SVMDP from scratch ===
+10:16:29 INFO     - Load Dubins without parameter uncertainty
+10:16:29 INFO     - Noise partition: 25 cells total  |  remainder=0.0001
+10:16:29 INFO     Parse nonlinear dynamical model...
+10:16:29 INFO     Model parsing done (took 0.014 sec.)
+10:16:29 INFO     Resolved RL config (algorithm: sac): RLConfig(rl_algo='sac', goal_reward=10.0, unsafe_penalty=-1.0, out_of_bounds_penalty=-1.0, distance_cost=0.0, per_step_cost=0.05, proximity_penalty=0.5, proximity_dims=[0, 1], max_steps=128, eval_steps=None, eval_episodes=25000, total_timesteps=20000000, learning_rate=0.0003, ent_coef=0.02, rl_batch_size=128, n_steps=128, n_envs=32, update_epochs=10, clip_eps=0.2, vf_coef=0.5, max_grad_norm=0.5, gamma=0.99, gae_lambda=0.95, adam_eps=1e-05, pi_arch=(64, 64), vf_arch=(64, 64), buffer_size=262144, sac_batch_size=512, warmup_steps=65536, tau=0.01, RL_actions_per_state=9, tube_method='inflation', inflation_rate=[(-5, 5), (-5, 5), (-5, 5), (-5, 5)], smart_tube_rate=0.75, output_dir=PosixPath('/Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/experiment_logs_Q4/2026-11-11_10-16-29_Dubins4D_x0set'))
+10:22:23 INFO     Training SAC (JAX) finished in 353.25s (20000000 timesteps).
+10:22:24 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+10:22:24 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+10:22:25 INFO     Goal reached in 25000/25000 evaluation episodes.
+10:22:25 INFO     Added 225 cells of the initial set x0_box to the visited cells.
+10:22:25 INFO     Growing the tube around the RL rollouts (method: inflation)...
+10:23:33 INFO     Identified 1732135 active states from RL exploration.
+
+10:23:33 INFO     <<< Generating model and running RL took 424.135 sec. >>>
+
+10:23:33 INFO     === Define sparse partition ===
+10:23:33 INFO     - Partition cell keys: int32 (dense grid 100x50x100x100 = 50,000,000 cells)
+10:23:34 INFO     (Number of states: 1732135)
+10:23:34 INFO     (Number of actions: 9)
+10:23:34 INFO     === Start forward reachability computations ===
+10:23:34 INFO     - FRS merge key: int32 (radix product 225)
+10:23:40 INFO     - FRS index boxes stored as int8
+10:23:40 INFO     - Maximum span of the forward reachable sets: (3, 3, 3, 1)
+10:23:40 INFO     - Max number of noise cells state-slice after merging: 25
+10:23:40 INFO     - Forward reachable sets computed (took 6.035 sec.)
+10:23:40 INFO     Reachability computations took 6.036 sec.
+10:23:40 INFO     Initial state x0=[-2.9         2.1         1.60221225  0.005     ] (x0_box=[[-3.2         1.8         1.44513262 -0.02      ]
+ [-2.6         2.4         1.75929189  0.03      ]]) → 225 state(s): [1297040 1297041 1297042 1297043 1297044 1297075 1297076 1297077 1297078
+ 1297079]
+
+10:23:40 INFO     <<< Generating SVMDP abstraction took 7.148 sec. >>>
+
+10:23:40 INFO     === SVMDP policy synthesis ===
+10:23:40 INFO     (Algorithm: robust policy iteration)
+10:23:40 INFO     - Number of states: 1732135
+10:23:40 INFO     - Total number of choices: 15589215 (total number of state-action pairs)
+10:23:40 INFO     - Max number of actions per state: 9
+10:23:40 INFO     - Batch size for dynamic programming over states: 1000
+10:23:40 INFO     - Set states to update...
+10:23:40 INFO       (Active states in initial mask: 1692994)
+10:23:42 INFO     - SVMDP defined (took 2.164s)
+10:23:42 INFO     - Early termination enabled: stop if min v[s0] improves by less than 0.001 over 5 iterations (after at least 10 iterations)
+10:29:37 INFO     - Policy synthesis finished (took 355.174s)
+
+10:29:37 INFO     <<< SVMDP policy synthesis done (took 357.344 sec.) >>>
+
+10:29:37 INFO     Value in initial state (min over 225 cells): 0.990508
+
+10:29:38 INFO     === Start Monte Carlo simulations ===
+10:30:23 INFO     Empirical satisfaction probability: 1.0
+10:30:23 INFO     Run summary saved to /Users/tbadings/Documents/Code/ICLR2027_rebuttal/imdp-synthesis/experiment_logs_Q4/2026-11-11_10-16-29_Dubins4D_x0set/summary.csv
+10:30:23 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+10:30:23 WARNING  'modified' timestamp seems very low; regarding as unix timestamp
+10:30:24 WARNING  'created' timestamp seems very low; regarding as unix timestamp
+10:30:24 WARNING  'modified' timestamp seems very low; regarding as unix timestamp

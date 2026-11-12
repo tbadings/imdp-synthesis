@@ -78,12 +78,12 @@ def style_axes(ax):
         ax.spines[s].set_color(col('gray'))
     ax.grid(True, ls=':', color=col('lightgray'), lw=0.5, alpha=0.8)
 
-def save_fig(fig, path_without_ext):
-    # Save PDF and PNG
+def save_fig(fig, path_without_ext, pad_inches=0.1):
+    # Save PDF and PNG (pad_inches: whitespace around the tight bounding box; 0.1 is matplotlib's default)
     p = Path(path_without_ext)
     p.parent.mkdir(parents=True, exist_ok=True)
     for ext in ('pdf', 'png'):
-        fig.savefig(f'{p}.{ext}', bbox_inches='tight', dpi=300)
+        fig.savefig(f'{p}.{ext}', bbox_inches='tight', pad_inches=pad_inches, dpi=300)
     plt.close(fig)
 
 def plot_missing_cells(ax, x, y, w=1, h=1, zorder=4):
