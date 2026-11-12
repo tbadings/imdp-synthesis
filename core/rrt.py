@@ -41,15 +41,15 @@ def _plot_tree(args, model, nodes, segments, reference):
     ax.add_collection(LineCollection(projected[~seams], colors='steelblue', linewidths=0.6,
                                     alpha=0.35, label='RRT tree', rasterized=True))
     ax.scatter(*nodes[:, dims].T, color='steelblue', s=5, alpha=0.5, rasterized=True)
-    _plot_path(ax, reference, dims, low, high, wrap, 'black', 1, 'Selected path')
-    ax.scatter(*nodes[0, dims], color='darkorange', marker='*', s=100, zorder=5, label='Start')
-    ax.set(xlim=(low[0], high[0]), ylim=(low[1], high[1]),
-           xlabel=model.state_variables[dims[0]], ylabel=model.state_variables[dims[1]])
+    _plot_path(ax, reference, dims, low, high, wrap, 'black', 1, 'RRT path')
+    ax.set(xlim=(low[0], high[0]), ylim=(low[1], high[1]))
+    ax.set_xlabel(r'$x$', fontsize=20)
+    ax.set_ylabel(r'$y$', fontsize=20)
     if not args.plot_ticks:
         ax.set(xticks=[], yticks=[])
     if args.plot_title:
         ax.set_title('Full RRT tree and selected path')
-    ax.legend()
+    ax.legend(loc='lower right', fontsize=20)
     save_fig(fig, Path(args.output_dir) / 'rrt_tree')
 
 
