@@ -5,7 +5,6 @@ The RL settings (PPO training, reward function, and the tube around the rollouts
 each benchmark's `rl_config` in `benchmarks/`; only what is not benchmark-specific is passed
 here. Any RL option can still be overridden per run by adding e.g. "--total_timesteps",
 "1000" below, which takes precedence over the benchmark's `rl_config`.
-RRT settings are supplied directly to a single run_fixed_SVMDP call via its rrt argument.
 """
 
 import json
@@ -160,21 +159,7 @@ def config_Drone4D_battery() -> list[str]:
 
 # To run a particular benchmark, simply change the argument in the function call below
 if __name__ == "__main__":
-    for tube_radius in ((5, 5, 5, 5), (6, 6, 6, 6), (7, 7, 7, 7), (8, 8, 8, 8), (9, 9, 9, 9)):
-        for seed in range(5):
-            run_fixed_SVMDP(
-                args=["--model", "Dubins4D", "--rrt", "--solver", "jax", "--satprob", "0.99", "--seed", str(seed)],
-                rrt=dict(
-                    iterations=15000,
-                    step_horizon=1,
-                    control_samples=16,
-                    parent_candidates=16,
-                    goal_bias=0.1,
-                    time_weight=0.01,
-                    tube_radius=tube_radius,
-                    clearance=(2,),
-                ),
-            )
+    pass  # Uncomment a benchmark run below to launch an experiment.
     # MountainCar
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--dense"])
     # run_fixed_SVMDP(args = ["--model","MountainCar", "--solver","jax", "--satprob","0.99", "--seed","0", "--algo","ppo"])
