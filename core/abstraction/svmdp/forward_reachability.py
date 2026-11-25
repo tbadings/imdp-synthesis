@@ -263,10 +263,17 @@ class RectangularForward(object):
         # Pass 2: the merged intervals and the successor boxes' probabilities. Every pair's probabilities sum
         # to the noise partition's total mass (no merged interval is cut off by the slots).
         noise_mass = float(np.prod([np.sum(p) for p in per_dim_probs]))
-        self.interval_lb = np.zeros((S, A, int(slots.sum())), dtype=idx_dtype)
-        self.interval_ub = np.zeros((S, A, int(slots.sum())), dtype=idx_dtype)
-        self.box_probs = np.zeros((S, A, num_boxes), dtype=args.floatprecision)
         boundary_lb, cell_width = np.asarray(partition.boundary_lb), np.asarray(partition.cell_width)
+        store = None
+        if getattr(args, 'compress_frs', False):
+            from core.abstraction.svmdp.pattern_store import PatternStore
+            cells = np.rint((np.asarray(partition.regions['lower_bounds']) - boundary_lb) / cell_width).astype(np.int32)
+            store = PatternStore(cells, self.slots, A, idx_dtype, args.floatprecision)
+            del cells
+        else:
+            self.interval_lb = np.zeros((S, A, int(slots.sum())), dtype=idx_dtype)
+            self.interval_ub = np.zeros((S, A, int(slots.sum())), dtype=idx_dtype)
+            self.box_probs = np.zeros((S, A, num_boxes), dtype=args.floatprecision)
         for batch_start, batch_end in tqdm(zip(starts, ends), total=len(starts), desc='FRS pass 2/2'):
             lb, ub, probs = jax.device_get(batch_intervals(*batch_inputs(batch_start, batch_end)))
             rows = fixed[batch_start:batch_end]
@@ -286,9 +293,19 @@ class RectangularForward(object):
                     f"(min {int(lb.min())}, max {int(ub.max())})."
                 )
             assert np.allclose(probs.sum(axis=-1), noise_mass, atol=1e-5)
+            if store is not None:
+                store.add(batch_start, batch_end, lb, ub, probs)
+                continue
             self.interval_lb[batch_start:batch_end] = lb
             self.interval_ub[batch_start:batch_end] = ub
             self.box_probs[batch_start:batch_end] = probs
+
+        if store is not None:
+            self.interval_lb, self.interval_ub, self.box_probs = store.finalize()
+            dense = S * A * (2 * int(slots.sum()) * np.dtype(idx_dtype).itemsize
+                             + num_boxes * np.dtype(args.floatprecision).itemsize)
+            logger.info(f'- FRS stored compressed: {store.num_patterns:,} distinct patterns, '
+                        f'{store.nbytes / 2**30:.2f} GB instead of {dense / 2**30:.2f} GB')
 
         logger.info(f"- FRS index intervals stored as {np.dtype(idx_dtype).name}")
         logger.info(f"- Maximum span of the forward reachable sets: {self.max_slice}")

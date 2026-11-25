@@ -20,18 +20,18 @@ def run_fixed_SVMDP(args: list[str | int]) -> None:
 
 # Every benchmark of the experiment: the model-specific arguments, and whether the dense (no RL) baseline is run
 BENCHMARKS = {
-    'MountainCar':      {'args': ["--model", "MountainCar"], 'dense': True},
-    'Pendulum':         {'args': ["--model", "Pendulum"], 'dense': True},
-    'CartPole':         {'args': ["--model", "CartPole"], 'dense': False},
+    # 'MountainCar':      {'args': ["--model", "MountainCar"], 'dense': True},
+    # 'Pendulum':         {'args': ["--model", "Pendulum"], 'dense': True},
+    # 'CartPole':         {'args': ["--model", "CartPole"], 'dense': False},
     # 'CartPole_hard':    {'args': ["--model", "CartPole_hard"], 'dense': False},
-    'Dubins3D':         {'args': ["--model", "Dubins3D"], 'dense': True},
-    'Dubins4D':         {'args': ["--model", "Dubins4D"], 'dense': False},
-    'Quadcopter2D':          {'args': ["--model", "Quadcopter2D"], 'dense': True},
-    'Quadcopter2D_damping':  {'args': ["--model", "Quadcopter2D", "--damping", 0.1], 'dense': True},
-    # 'Quadcopter2D_2agent':   {'args': ["--model", "Quadcopter2D_2agent"], 'dense': False},
-    'Quadcopter3D':          {'args': ["--model", "Quadcopter3D"], 'dense': False},
+    # 'Dubins3D':         {'args': ["--model", "Dubins3D"], 'dense': True},
+    # 'Dubins4D':         {'args': ["--model", "Dubins4D"], 'dense': False},
+    # 'Quadcopter2D':          {'args': ["--model", "Quadcopter2D"], 'dense': True},
+    # 'Quadcopter2D_damping':  {'args': ["--model", "Quadcopter2D", "--damping", 0.1], 'dense': True},
+    'Quadcopter2D_2agent':   {'args': ["--model", "Quadcopter2D_2agent", "--compress_frs"], 'dense': False},
+    # 'Quadcopter3D':          {'args': ["--model", "Quadcopter3D"], 'dense': False},
     # 'Quadcopter3D_small':    {'args': ["--model", "Quadcopter3D_small"], 'dense': False},
-    'Quadcopter2D_battery':  {'args': ["--model", "Quadcopter2D_battery", "--damping", 0.1], 'dense': True},
+    # 'Quadcopter2D_battery':  {'args': ["--model", "Quadcopter2D_battery", "--damping", 0.1], 'dense': True},
     # 'Quadcopter3D_battery':  {'args': ["--model", "Quadcopter3D_battery", "--damping", 0], 'dense': False},
 }
 

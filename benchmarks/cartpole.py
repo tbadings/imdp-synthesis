@@ -247,8 +247,8 @@ class CartPole_hard(CartPoleDynamics):
 
         # The pole has to tilt beyond the obstacle's clearance angle (~0.14 rad), so the angle range
         # is wider than for CartPole.
-        self.state_space = Box([-2.4, -3.0, -0.5, -3.0], [2.4, 3.0, 0.5, 3.0], names=self.state_variables)
-        self.state_grid = [200, 200, 400, 200]
+        self.state_space = Box([-2.4, -5.0, -0.5, -3.0], [2.4, 5.0, 0.5, 3.0], names=self.state_variables)
+        self.state_grid = [200, 400, 400, 200]
         # Force on the cart
         self.input_space = Box([-10], [10])
         self.input_grid = [41]
@@ -258,14 +258,14 @@ class CartPole_hard(CartPoleDynamics):
         self.pole_length = 2 * self.length  # self.length is half the pole's length
         # The pole must tilt past ~8 deg to pass. Wider or lower obstacles need a longer or larger tilt,
         # which SAC does not learn reliably with this reward (e.g. 0.4 m wide at bottom 0.97 never succeeds).
-        self.obstacles = [(-0.05, 0.05, 0.99)]
+        self.obstacles = [(-0.05, 0.05, 0.97)]
 
         # Goal: balance the pole upright on the right side of the track, past the obstacle
         self.goal = [self.state_space.restrict(position=(1, 2.4), velocity=(-1.5, 1.5), angle=(-0.05, 0.05),
                                                angular_velocity=(-1.0, 1.0))]
 
         # Cart position and pole angle for which the pole hits an obstacle, covered by boxes
-        self.critical = self.obstacle_boxes(num_bands=16)
+        self.critical = self.obstacle_boxes(num_bands=32)
 
         # Start upright on the left side of the obstacle
         self.x0 = np.array([-1, 0.0, 0, 0.0])
@@ -276,13 +276,13 @@ class CartPole_hard(CartPoleDynamics):
         # so that ending an episode on purpose never beats surviving.
         self.rl_config = RLConfig(
             rl_algo="sac",
-            total_timesteps=5000000,
+            total_timesteps=10000000,
             goal_reward=20.0,
-            unsafe_penalty=-20.0,
-            out_of_bounds_penalty=-20.0,
+            unsafe_penalty=-35.0,
+            out_of_bounds_penalty=-35.0,
             distance_cost=[0.1, 0.0, 0.0, 0.0],
-            per_step_cost=0.05,
-            inflation_rate=[(-7, 7), (-7, 7), (-7, 7), (-7, 7)],
+            per_step_cost=0.2,
+            inflation_rate=[(-9, 9), (-9, 9), (-9, 9), (-9, 9)],
             RL_actions_per_state=21,
         )
 

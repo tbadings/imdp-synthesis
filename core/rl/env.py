@@ -54,7 +54,7 @@ class BenchmarkEnv:
         # Reset region around initial state x0
         x0_cell = np.floor((model.x0 - self.obs_low) / self.bin_widths)
         cell_lb = self.obs_low + x0_cell * self.bin_widths
-        eps = 0.1 * self.bin_widths
+        eps = cfg.reset_margin * self.bin_widths
         self.reset_low = np.clip(cell_lb - eps, self.obs_low, self.obs_high)
         self.reset_high = np.clip(cell_lb + self.bin_widths + eps, self.obs_low, self.obs_high)
 

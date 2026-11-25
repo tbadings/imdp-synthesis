@@ -27,6 +27,7 @@ _ancillary/*
 
 # Avoid large experiment logs beind pushed
 experiment_logs-2026-11-08/*
+experiment_logs-2026-11-23/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

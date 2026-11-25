@@ -87,6 +87,10 @@ def parse_arguments(argv=None):
                              "each state-action pair's successor intervals.")
     parser.add_argument('--frs_batch_size', type=_positive_int, default=1000,
                         help="Number of state regions to process per batch when computing forward reachable sets. Larger values reduce Python-JAX round trips but increase peak memory usage.")
+    parser.add_argument('--compress_frs', action=argparse.BooleanOptionalAction, default=False,
+                        help="Store each distinct successor pattern (intervals relative to the state's cell, and box "
+                             "probabilities) once, with one pattern ID per state-action pair. Gives the same results "
+                             "with far less memory when the patterns repeat (e.g., linear dynamics on a grid).")
     parser.add_argument('--shrink_frs', type=float, default=0.0001,
                         help="Amount to shrink forward reachable set bounds inward for numerical stability (avoids misclassification when the FRS lands exactly on a cell boundary).")
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
@@ -135,6 +139,9 @@ def parse_arguments(argv=None):
                     help="Total number of environment steps to train PPO for.")
     rl.add_argument("--eval_episodes", type=_positive_int, default=None,
                     help="Number of evaluation rollouts used to measure the policy and seed the tube.")
+    rl.add_argument("--reset_margin", type=float, default=None,
+                    help="Evaluation rollouts start uniformly in the cell of x0, widened by this fraction of a cell on "
+                         "each side (default 0.1).")
     rl.add_argument("--max_steps", type=_positive_int, default=None,
                     help="Truncation for *training* episodes. Shorter episodes reset more often, "
                          "which spreads the training data over the whole state space.")

@@ -26,6 +26,8 @@ class RLConfig:
     max_steps: int = 128
     eval_steps: int | None = None
     eval_episodes: int = 25000
+    # Evaluation rollouts start uniformly in the cell of x0, widened by this fraction of a cell on each side
+    reset_margin: float = 0.1
 
     # Common & PPO Hyperparameters
     total_timesteps: int = 200000

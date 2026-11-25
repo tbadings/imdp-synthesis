@@ -468,7 +468,11 @@ class Quadcopter2D_2agent(QuadcopterDynamics_2agent):
                         0.0, 0.0, 0.0, 0.0],
             per_step_cost=0.01,
             proximity_penalty=0.1,
-            eval_episodes=100,
+            # Many rollouts, all starting inside the cell of x0 (no margin): in 8D, a 10% margin per side puts
+            # three quarters of the starts outside that cell. 300 rollouts give V(s0) ~ 0.999 for SAC seeds 0-4,
+            # whereas 100 rollouts with the margin gave 0.53 (seed 0).
+            eval_episodes=300,
+            reset_margin=0.0,
             pi_arch=[256, 256],
             vf_arch=[256, 256],
         )
